@@ -85,7 +85,7 @@ See [docs/WORDLISTS.md](docs/WORDLISTS.md) for download sources and the one-comm
 
 ## Optional: MDX Dictionaries
 
-Offline dictionaries (OALD, Longman, Vocabulary.com) in MDX format can be placed in a directory pointed to by `DICT_DIR`. These are copyrighted materials and are not distributed with this repo.
+Offline dictionaries (OALD 9, Longman 6th, Vocabulary.com) in MDX format enable richer word analysis at zero API cost. They are copyrighted and not distributed with this repo — see [docs/DICTIONARIES.md](docs/DICTIONARIES.md) for sources (e.g. the [OALD 9 thread on FreeMdict](https://forum.freemdict.com/t/topic/3796)) and setup. If you use Eudic (欧路词典) with these dictionaries imported, they are picked up automatically with no configuration.
 
 ## Development
 
