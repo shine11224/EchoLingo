@@ -438,22 +438,25 @@ def create_sentence_pattern_scenario(
 ):
     sentence = _saved_sentence_or_404(sentence_id)
     pattern = db.get_v2_sentence_pattern(sentence_id)
-    if not pattern or not pattern.get("pattern_template"):
-        raise HTTPException(status_code=409, detail="Sentence pattern not created")
-    if pattern.get("scenario_cn") and not body.regenerate:
+    has_template = bool(pattern and pattern.get("pattern_template"))
+    # 无 AI 句式分析时直接以原句为迁移参考
+    template = pattern["pattern_template"] if has_template else sentence["text"]
+    if has_template and pattern.get("scenario_cn") and not body.regenerate:
         return _pattern_response(pattern, cached=True)
     try:
         result = _request_pattern_json(
             PATTERN_SCENARIO_PROMPT.format(
-                pattern_template=pattern["pattern_template"],
+                pattern_template=template,
                 english=sentence["text"],
             )
         )
         scenario_cn = str(result.get("scenario_cn") or "").strip()
-        pattern = db.save_v2_sentence_pattern_scenario(sentence_id, scenario_cn)
+        if has_template:
+            pattern = db.save_v2_sentence_pattern_scenario(sentence_id, scenario_cn)
+            return _pattern_response(pattern, cached=False)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
-    return _pattern_response(pattern, cached=False)
+    return {"scenario_cn": scenario_cn, "cached": False, "reference": "original_sentence"}
 
 
 @router.get("/sentence-audio/{sentence_id}")

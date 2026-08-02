@@ -656,7 +656,8 @@ async def listening_retell_analysis(request: Request):
                 }],
                 response_format={"type": "json_object"},
                 temperature=0.3,
-                max_tokens=1000,
+                max_tokens=4096,
+                extra_body={"thinking": {"type": "disabled"}},
             )
             content = (resp.choices[0].message.content or "").strip()
             if not content:
