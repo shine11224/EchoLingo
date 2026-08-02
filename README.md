@@ -87,4 +87,4 @@ All settings live in `.env` (or the in-app Settings page, which writes the same 
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal, educational and non-profit use; commercial use requires a separate license from the author.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal, educational and non-profit use; commercial use requires a separate license from the author. Third-party components remain under their own licenses, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

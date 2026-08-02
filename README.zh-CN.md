@@ -85,4 +85,4 @@ python backend/fastapi_server.py
 
 ## 许可证
 
-[PolyForm Noncommercial 1.0.0](LICENSE)——个人、教育和非营利使用免费；商业使用需另行获得作者授权。
+[PolyForm Noncommercial 1.0.0](LICENSE)——个人、教育和非营利使用免费；商业使用需另行获得作者授权。第三方组件遵循其各自许可证，详见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
