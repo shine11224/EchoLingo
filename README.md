@@ -13,6 +13,13 @@
 - **Input → output loop** — hidden-original listening drills → whole-sentence retelling with AI comparison → sentence-pattern reuse with AI correction → vocabulary memory stories
 - **Pluggable AI** — DeepSeek, OpenAI, Groq, Ollama or any OpenAI-compatible endpoint; transcription, translation and dictionaries run fully local
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Home — create lessons from real materials](docs/screenshots/home.png) | ![Lesson — bilingual subtitles, outline, AI companion](docs/screenshots/lesson.png) |
+| ![Sentence library — retell with AI comparison, pattern drills](docs/screenshots/sentence-library.png) | ![Vocabulary workshop — context-first review cards](docs/screenshots/vocab.png) |
+
 ## How it works
 
 1. **Create a lesson** from a YouTube/Bilibili link, an article URL, a local video/audio file, or pasted text. Subtitles are fetched or transcribed locally with faster-whisper, segmented into sentences, translated, and annotated with IPA and connected-speech notes.
@@ -31,7 +38,7 @@
 
 ## Quick Start
 
-Requires Python 3.11+ and [ffmpeg](https://ffmpeg.org/) on PATH.
+Requires Python 3.11+ and [ffmpeg](https://ffmpeg.org/) on PATH. See **System Requirements** below for hardware notes.
 
 ```bash
 git clone https://github.com/shine11224/EchoLingo.git
@@ -70,6 +77,15 @@ python backend/fastapi_server.py
 **Vocabulary** (home page tab): review cards stay context-first — rate yourself before revealing the meaning. Generate an AI memory story from today's words when you want narrative reinforcement, and export any time (Markdown / HTML / Anki).
 
 **Settings** (in-app): the settings page writes the same `.env` file — AI keys, Whisper model size, dictionary folder and wordlists can all be changed without editing files by hand.
+
+## System Requirements
+
+- **OS** — Windows 10/11, macOS 12+, or Linux
+- **Runtime** — Python 3.11+, ffmpeg on PATH
+- **RAM** — 8 GB minimum; 16 GB recommended when running local Whisper
+- **GPU (optional)** — an NVIDIA GPU with ≥6 GB VRAM makes large-v3 transcription several times faster; CPU-only works fine with the base/medium models, or set `GROQ_API_KEY` for fast cloud transcription
+- **Disk** — ~2 GB for the app, plus 1–3 GB per Whisper model and lesson caches
+- **Microphone** — needed for the spoken-retell feature; a modern browser (Chrome/Edge recommended)
 
 ## Configuration
 
