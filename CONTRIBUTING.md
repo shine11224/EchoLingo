@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest! This project is a local-first English learning tool — contributions of bug fixes, new content sources, and learning-flow improvements are welcome.
+Thanks for your interest! EchoLingo is a local-first English learning workspace — contributions of bug fixes, new content sources, and learning-flow improvements are welcome.
 
 ## Development setup
 
@@ -8,7 +8,7 @@ Requires Python 3.11+ and ffmpeg on PATH.
 
 ```bash
 git clone <this-repo>
-cd english-learning-tool-public
+cd echolingo
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # macOS / Linux

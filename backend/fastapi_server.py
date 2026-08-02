@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for English Learning Tool."""
+"""FastAPI entrypoint for EchoLingo."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
             pass
 
     app = FastAPI(
-        title="English Learning Tool",
+        title="EchoLingo",
         version=os.environ.get("ELT_VERSION", "0.1.0"),
         docs_url="/api/docs",
         redoc_url="/api/redoc",
@@ -93,7 +93,7 @@ def main() -> None:
 
     host = os.environ.get("ELT_HOST", "0.0.0.0")
     port = int(os.environ.get("ELT_PORT", "5173"))
-    print(f"English Learning Tool FastAPI server starting on http://localhost:{port}")
+    print(f"EchoLingo FastAPI server starting on http://localhost:{port}")
     if host == "0.0.0.0":
         print(f"LAN/mobile access enabled on http://<this-computer-ip>:{port}")
     key_status = "configured" if ai_config.AI_API_KEY else "NOT SET - set AI_API_KEY env var"

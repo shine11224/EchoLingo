@@ -366,6 +366,7 @@ def init_db():
             "ALTER TABLE v2_sentences ADD COLUMN phonetics_source TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE v2_sentences ADD COLUMN listening_result TEXT NOT NULL DEFAULT 'untested'",
             "ALTER TABLE v2_sentences ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE v2_sentences ADD COLUMN saved_manually INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE word_review_items ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
             "ALTER TABLE word_review_items ADD COLUMN lemma TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE word_review_items ADD COLUMN display_text TEXT NOT NULL DEFAULT ''",
@@ -1444,6 +1445,18 @@ def upsert_v2_sentence(text: str, *, translation: str = "", phonetics: str = "")
     return dict(row)
 
 
+def save_v2_manual_sentence(text: str, translation: str = "") -> dict:
+    """收藏无课程来源的句子（如 AI 生成句），直接进句子库。"""
+    sentence = upsert_v2_sentence(text, translation=translation)
+    with _db() as conn:
+        conn.execute(
+            "UPDATE v2_sentences SET saved_manually=1, archived=0 WHERE id=?",
+            (sentence["id"],),
+        )
+    saved = get_v2_sentence_by_id(sentence["id"])
+    return saved or sentence
+
+
 def get_v2_sentence(text: str) -> dict | None:
     normalized = _normalize_sentence_text(text)
     if not normalized:
@@ -1512,9 +1525,12 @@ def list_v2_saved_sentences(today: str = "", *, include_archived: bool = False) 
             """
             SELECT sentence.*
             FROM v2_sentences AS sentence
-            WHERE EXISTS (
-                SELECT 1 FROM v2_phase_b_sentences AS saved
-                WHERE saved.sentence_id=sentence.id
+            WHERE (
+                EXISTS (
+                    SELECT 1 FROM v2_phase_b_sentences AS saved
+                    WHERE saved.sentence_id=sentence.id
+                )
+                OR sentence.saved_manually=1
             )
               AND (? OR sentence.archived=0)
             ORDER BY

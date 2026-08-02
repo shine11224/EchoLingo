@@ -318,6 +318,23 @@ def sentence_review_queue(include_archived: bool = False):
     }
 
 
+class ManualSentenceBody(BaseModel):
+    text: str
+    translation: str = ""
+
+
+@router.post("/sentence-review/manual")
+def save_manual_sentence(body: ManualSentenceBody):
+    """收藏无课程来源的句子（如 AI 生成句），直接进句子库。"""
+    text = " ".join(body.text.split())
+    if not text:
+        raise HTTPException(status_code=400, detail="句子内容不能为空")
+    if len(text) > 2000:
+        raise HTTPException(status_code=400, detail="句子过长，无法收藏")
+    sentence = db.save_v2_manual_sentence(text, body.translation.strip())
+    return {"ok": True, "sentence": sentence}
+
+
 @router.post("/sentence-review/{sentence_id}")
 def review_sentence(sentence_id: int, body: SentenceReviewBody):
     if body.rating not in {"again", "hard", "good"}:
