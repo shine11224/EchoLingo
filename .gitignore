@@ -1,0 +1,65 @@
+# Virtual env
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Tool caches (downloads, subtitles, etc.)
+.cache/
+tmp/
+logs/
+
+# Test artifacts
+.pytest_cache/
+.pytest_tmp*/
+test-artifacts/
+
+# Generated lessons (local only)
+output/
+
+# Media files
+*.mp4
+*.mp3
+*.m4a
+*.wav
+*.webm
+
+# Local learning data (never commit)
+vocab.db
+vocab.db-shm
+vocab.db-wal
+vocab_log.json
+vocab_log.json.bak
+
+# Secrets
+cookies.txt
+*.env
+.env
+
+# IDE / tooling config (may contain tokens)
+.mcp.json
+.codegraph/
+.playwright-mcp/
+.claude/
+
+# Runtime logs
+server*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local models / binaries
+llama-cpp/
+models/
+
+# Third-party wordlist sources & compiled lists (see docs/WORDLISTS.md)
+resources/wordlists/wordlists/*.csv
+resources/wordlists/wordlists/*.xlsx
+resources/wordlists/wordlists/*.txt
+resources/wordlists/wordlists/compiled/*.json
+!resources/wordlists/wordlists/compiled/sentence_patterns.json
+resources/wordlists/wordlists/user/*
+!resources/wordlists/wordlists/user/.gitkeep
