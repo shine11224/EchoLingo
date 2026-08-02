@@ -31,7 +31,8 @@
 
 - **Multiple sources** — YouTube, Bilibili, article URLs, local video/audio, plain text/Markdown
 - **Lesson generation** — subtitle fetching or local faster-whisper transcription, sentence segmentation, translation, IPA annotation, connected-speech and oral analysis
-- **Interactive lesson pages** — per-sentence loop playback, MDX dictionary lookup (OALD / Longman), AI hints and practice
+- **Interactive lesson pages** — listening & reading dual modes, per-sentence loop playback and intensive study, MDX dictionary lookup (OALD / Longman), one-click saving of words and sentences while watching
+- **AI viewing companion** — AI-generated content outline for one-click topic jumps; ask the AI questions mid-video with the current sentence as context
 - **Sentence library** — collect sentences from lessons or AI output, listening practice with hidden original, spoken retelling with AI comparison, and pattern drills graded by AI with revision + idiomatic suggestions
 - **Vocabulary system** — CEFR-graded word highlighting, personal vocab book with review lifecycle, AI memory stories with chat, and exports (Markdown / HTML / Anki)
 - **Local-first** — lessons, vocab DB, and caches stay on your machine; AI features work with any OpenAI-compatible API (DeepSeek, OpenAI, Groq, Ollama, …)
@@ -92,7 +93,8 @@ python backend/fastapi_server.py
 All settings live in `.env` (or the in-app Settings page, which writes the same file). Only `AI_API_KEY` is needed for AI features; everything else degrades gracefully:
 
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` — any OpenAI-compatible chat API (default: DeepSeek)
-- `GROQ_API_KEY` — optional, fast cloud transcription fallback (local Whisper works without it)
+- `GROQ_API_KEY` — optional, fast cloud transcription with a **free daily tier**; get a key at [console.groq.com/keys](https://console.groq.com/keys) (local Whisper works without it)
+- Local translation — drop a Tencent HY-MT1.5 GGUF into `models/` plus llama.cpp's `llama-server` into `llama-cpp/`; the model is governed by the [Tencent HY Community License](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt) (not available in the EU/UK/South Korea), see `THIRD_PARTY_LICENSES.md`
 - `DICT_DIR` — optional, folder containing MDX dictionaries (auto-detects the Eudic dictionary folder); see `docs/DICTIONARIES.md`
 - Third-party wordlists (BNC/COCA, BSL, NAWL…) are not bundled; see `docs/WORDLISTS.md` for download and build instructions
 
