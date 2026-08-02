@@ -29,7 +29,8 @@
 
 - **多种来源**：YouTube、Bilibili、文章 URL、本地音视频、纯文本 / Markdown
 - **课程生成**：字幕抓取或本地 faster-whisper 转写、智能断句、翻译、音标标注、连读与口语分析
-- **交互式课程页**：逐句循环播放、MDX 词典查词（牛津 / 朗文）、AI 提示与练习
+- **交互式课程页**：听力 / 阅读双模式，逐句循环播放与精学，MDX 词典查词（牛津 / 朗文），看课过程中生词、好句一键收藏
+- **AI 观看搭子**：AI 自动总结视频结构大纲，点击跳转对应片段；观看中随时向 AI 提问，自动带上当前句子语境
 - **句子库**：从课程或 AI 输出中收藏句子；隐藏原文精听；整句复述 + AI 四象限对比；句式练习由 AI 批改并给出改写 + 更地道表达（这些 AI 生成句也能再收藏）
 - **词汇系统**：CEFR 分级高亮、个人词汇本与复习生命周期、AI 记忆故事（支持对话提问）、导出（Markdown / HTML / Anki）
 - **本地优先**：课程、词汇数据库、缓存都在本机；AI 功能兼容任意 OpenAI 接口
@@ -90,7 +91,8 @@ python backend/fastapi_server.py
 所有配置都在 `.env`（或应用内设置页，两者等价）。只有 `AI_API_KEY` 是 AI 功能必需的，其余都有降级方案：
 
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：任意 OpenAI 兼容聊天接口（默认 DeepSeek）
-- `GROQ_API_KEY`：可选，云端快速转写备选（没有它本地 Whisper 照常工作）
+- `GROQ_API_KEY`：可选，云端快速转写，**每天有免费额度**；到 [console.groq.com/keys](https://console.groq.com/keys) 申请 key（没有它本地 Whisper 照常工作）
+- 本地翻译：把腾讯混元 HY-MT1.5 的 GGUF 放进 `models/`，llama.cpp 的 `llama-server` 放进 `llama-cpp/`；模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束（欧盟/英国/韩国不可用），详见 `THIRD_PARTY_LICENSES.md`
 - `DICT_DIR`：可选，MDX 词典目录（自动探测欧路词典目录）；详见 `docs/DICTIONARIES.md`
 - 第三方词表（BNC/COCA、BSL、NAWL…）不随仓库分发，下载与编译方法见 `docs/WORDLISTS.md`
 

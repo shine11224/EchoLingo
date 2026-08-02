@@ -45,8 +45,34 @@ https://github.com/rany2/edge-tts
 ## Models (downloaded at runtime, not distributed)
 
 - **Whisper** (via faster-whisper / CTranslate2) — model weights MIT © OpenAI
-- **Hunyuan translation model** — downloaded by the user; subject to the
-  Tencent Hunyuan community license
+
+### Tencent HY-MT1.5 (local translation)
+
+EchoLingo can drive a user-downloaded Tencent HY-MT1.5 GGUF model (e.g.
+`models/HY-MT1.5-1.8B-Q4_K_M.gguf`) through a local llama.cpp server
+(llama.cpp itself is MIT). **No model weights are distributed by this
+repository** — users download them from Tencent's official releases.
+
+Tencent HY is licensed under the Tencent HY Community License Agreement,
+Copyright © 2025 Tencent. All Rights Reserved. The trademark rights of
+"Tencent HY" are owned by Tencent or its affiliate.
+
+Key terms of the
+[Tencent HY Community License Agreement](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)
+that apply to anyone using the model with EchoLingo:
+
+- **Territory** — the license does NOT apply in the European Union, United
+  Kingdom and South Korea; using the model there is unlicensed.
+- **No model improvement** — you must not use the model or its outputs to
+  improve any other AI model (other than Tencent HY derivatives).
+- **Scale threshold** — offerings with more than 100 million monthly active
+  users require a separate license from Tencent.
+- **Acceptable Use Policy** — Exhibit A of the agreement applies to all use.
+
+EchoLingo is an independent project by shine11224. Tencent is not affiliated
+with, associated with, sponsoring, or endorsing EchoLingo; the translation
+functionality is provided by each user running their own locally downloaded
+model copy.
 
 ## Acknowledgments
 
