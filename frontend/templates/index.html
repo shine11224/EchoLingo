@@ -727,7 +727,6 @@
       gap: 18px;
       margin-bottom: 22px;
     }
-    .sentence-review-card,
     .sentence-review-guide,
     .sentence-library-shell {
       border: 1px solid var(--line);
@@ -735,7 +734,6 @@
       background: var(--surface);
       box-shadow: 0 10px 32px rgba(35, 66, 54, .06);
     }
-    .sentence-review-card { min-height: 286px; padding: 24px; }
     .sentence-review-kicker {
       display: flex;
       align-items: center;
@@ -1324,13 +1322,6 @@
     }
     .story-btn-row { margin: 14px 0; }
 
-    .sentence-listening-session {
-      margin-bottom: 18px; padding: 14px; border: 1px solid rgba(35,93,73,.24);
-      border-radius: calc(var(--radius) + 2px);
-      background: linear-gradient(145deg, rgba(235,243,238,.86), rgba(255,249,232,.82));
-      box-shadow: 0 18px 50px rgba(35,66,54,.1);
-    }
-    .sentence-listening-session[hidden] { display: none; }
     .session-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
     .listening-card { min-height: 360px; border: 0; box-shadow: none; }
     .listening-stage {
@@ -1997,16 +1988,6 @@ let _sentencesLoaded = false;
 let _latestLesson = null;
 let _sentenceReviewData = [];
 let _sentenceReviewSummary = {total: 0, due: 0};
-let _activeSentenceReviewId = null;
-let _sentenceListeningQueue = [];
-let _sentenceListeningIndex = 0;
-let _sentenceListeningResult = null;
-let _sentenceListeningRequeued = new Set();
-let _sentenceRetellOpen = false;
-let _sentenceRetellTranscript = '';
-let _sentenceRetellAnalysis = null;
-let _sentenceRetellRecorder = null;
-let _sentenceRetellStream = null;
 let _expandedSentenceId = null;
 let _sentencePage = 1;
 let _vocabPracticeFilter = 'all';
@@ -3747,240 +3728,6 @@ async function removeSentenceLibraryTag(sentenceId, tagId) {
   }
 }
 
-function renderSentenceRetellComposer(sentence) {
-  const aiReady = Boolean(_sentenceRetellTranscript);
-  return `<div class="retell-panel">
-    <div class="retell-head"><strong>整句复述</strong><span>原句仍保持隐藏</span></div>
-    <textarea class="retell-transcript" id="sentence-retell-transcript" placeholder="点击麦克风复述；也可以编辑转写结果" oninput="updateSentenceRetellTranscript(this.value)">${esc(_sentenceRetellTranscript)}</textarea>
-    <div class="retell-status" id="sentence-retell-status">${aiReady ? '复述已就绪，可选择 AI 分析或自己对照。' : '点击开始录音，说完后再次点击停止。'}</div>
-    <div class="retell-actions">
-      <button class="mic-btn" id="sentence-retell-mic" type="button" onclick="toggleSentenceRetellRecording(${sentence.id})">🎤 开始录音</button>
-      <button id="sentence-retell-ai" type="button" onclick="analyzeSentenceRetell(${sentence.id})" ${aiReady ? '' : 'disabled'}>AI 对比分析</button>
-      <button type="button" onclick="revealSentenceRetell()">直接查看原句</button>
-    </div>
-  </div>`;
-}
-
-function renderSentenceReviewCard() {
-  const mount = document.getElementById('sentence-review-card');
-  if (!mount) return;
-  const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(_activeSentenceReviewId));
-  if (!sentence) {
-    mount.innerHTML = `
-      <div class="empty-state"><p>当前筛选中没有可练习的收藏句。</p></div>`;
-    return;
-  }
-  const lessonLinks = sentence.lesson_links || [];
-  const source = lessonLinks.length
-    ? lessonLinks.map(link =>
-        `<a class="sentence-source-link" href="/workspace/${link.lesson_id}/intensive?sentence_key=${encodeURIComponent(link.segment_index)}" title="回到课程原句">${esc(link.title)}</a>`
-      ).join(' · ')
-    : '未知课程';
-  const tags = (sentence.tags || []).map(tag => `${SENTENCE_TAG_CATEGORY_LABELS[tag.category] || tag.category} · ${tag.name}`).join('；') || '未打标签';
-  const translation = sentence.translation || '暂无中文释义';
-  const revealed = Boolean(_sentenceListeningResult);
-  const retellPendingRating = ['self_review', 'retell_review'].includes(_sentenceListeningResult);
-  const showTranslation = _sentenceListeningResult === 'not_understood';
-  const progress = document.getElementById('sentence-listening-progress');
-  if (progress) progress.textContent = `${Math.min(_sentenceListeningIndex + 1, _sentenceListeningQueue.length)} / ${_sentenceListeningQueue.length}`;
-  mount.innerHTML = `
-    <div class="listening-stage">
-      <div class="${revealed ? 'listening-reveal' : ''}">
-        <div class="sentence-review-kicker">
-          <span>${revealed ? 'Listen · reveal · notice' : 'Audio first · text hidden'}</span>
-          <span>${esc(sentenceReviewLabel(sentence))}</span>
-        </div>
-        ${revealed ? `
-          <p class="sentence-review-text">${renderInteractiveSentence(sentence)}</p>
-          <p class="sentence-review-phonetics" id="sentence-review-phonetics">${sentence.phonetics ? esc(sentence.phonetics) : ''}</p>
-          ${showTranslation ? `<p class="listening-translation">${esc(translation)}</p>` : `
-            <button type="button" onclick="revealSentenceTranslation(${sentence.id})">查看中文</button>
-            <p class="listening-translation" id="sentence-listening-translation" hidden>${esc(translation)}</p>`}
-          <div class="sentence-review-info">
-            <div><strong>来源：</strong>${source}</div><div><strong>标签：</strong>${esc(tags)}</div>
-          </div>
-          ${_sentenceRetellTranscript ? `<div class="retell-panel"><strong>你的复述</strong><p>${esc(_sentenceRetellTranscript)}</p></div>` : ''}
-          ${_sentenceRetellAnalysis ? renderSentenceRetellAnalysis(_sentenceRetellAnalysis) : ''}
-        ` : `
-          <button class="listening-orb" type="button" onclick="speakReviewSentence(${sentence.id})" aria-label="重播句子">▶</button>
-          <p class="listening-question">只听声音，你理解这句话了吗？</p>
-        `}
-        <div class="sentence-review-tools">
-          <button type="button" onclick="speakReviewSentence(${sentence.id})">🔊 重播</button>
-          <span class="sentence-rate-group" role="group" aria-label="播放倍速">
-            ${[0.6, 0.8, 1.0, 1.25].map(rate => `<button type="button" class="sentence-rate-btn${Math.abs(_reviewAudioRate-rate)<.001?' active':''}" data-rate="${rate}" onclick="setReviewAudioRate(${rate})">${rate}x</button>`).join('')}
-          </span>
-          ${revealed ? (retellPendingRating ? `
-            <span class="listening-choice-row">
-              <button class="listen-understood" type="button" onclick="recordSentenceListeningResult(${sentence.id},'understood')">基本听懂</button>
-              <button class="listen-missed" type="button" onclick="recordSentenceListeningResult(${sentence.id},'not_understood')">存在盲区</button>
-            </span>
-          ` : `
-            <button id="sentence-listening-next" class="primary sentence-listening-next" type="button" onclick="nextListeningSentence()">下一句 →</button>
-          `) : `
-            <span class="listening-choice-row">
-              <button class="listen-understood" type="button" onclick="recordSentenceListeningResult(${sentence.id},'understood')">听懂</button>
-              <button class="listen-missed" type="button" onclick="recordSentenceListeningResult(${sentence.id},'not_understood')">听不懂</button>
-              <button class="listen-retell" type="button" onclick="openSentenceRetell()">🎙 复述这句</button>
-            </span>
-          `}
-        </div>
-        ${!revealed && _sentenceRetellOpen ? renderSentenceRetellComposer(sentence) : ''}
-      </div>
-    </div>
-  `;
-  if (revealed && !sentence.phonetics) loadReviewPhonetics(sentence);
-}
-
-function renderSentenceRetellList(items) {
-  const values = Array.isArray(items) ? items.filter(Boolean) : [];
-  return values.length ? `<ul>${values.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : '<span>未发现明显问题</span>';
-}
-
-function renderSentenceRetellAnalysis(data) {
-  const score = Math.max(0, Math.min(100, Number(data.accuracy_score || 0)));
-  return `<section class="retell-analysis">
-    <h4>AI 复述对比 · ${score} 分</h4>
-    <p>${esc(data.overall_cn || '已完成复述对比。')}</p>
-    <div class="retell-analysis-grid">
-      <div class="retell-analysis-item"><strong>保留正确</strong>${renderSentenceRetellList(data.matched_content)}</div>
-      <div class="retell-analysis-item"><strong>遗漏或误听</strong>${renderSentenceRetellList(data.missed_content)}</div>
-      <div class="retell-analysis-item"><strong>知识盲区</strong>${renderSentenceRetellList(data.knowledge_gaps)}</div>
-      <div class="retell-analysis-item"><strong>听力盲区</strong>${renderSentenceRetellList(data.listening_blind_spots)}</div>
-    </div>
-    <p><strong>下次重听：</strong>${esc(data.next_step_cn || '再听一次并关注遗漏信息。')}</p>
-  </section>`;
-}
-
-function resetSentenceRetellState() {
-  const recorder = _sentenceRetellRecorder;
-  _sentenceRetellRecorder = null;
-  if (recorder) {
-    recorder.onstop = null;
-    if (recorder.state !== 'inactive') recorder.stop();
-  }
-  _sentenceRetellStream?.getTracks().forEach(track => track.stop());
-  _sentenceRetellStream = null;
-  _sentenceRetellOpen = false;
-  _sentenceRetellTranscript = '';
-  _sentenceRetellAnalysis = null;
-}
-
-function openSentenceRetell() {
-  const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(_activeSentenceReviewId));
-  if (!sentence) return;
-  _sentenceRetellOpen = true;
-  _sentenceRetellTranscript = '';
-  renderSentenceReviewCard();
-  document.getElementById('sentence-retell-mic')?.focus();
-}
-
-function updateSentenceRetellTranscript(value) {
-  _sentenceRetellTranscript = String(value || '').trim();
-  const button = document.getElementById('sentence-retell-ai');
-  if (button) button.disabled = !_sentenceRetellTranscript;
-}
-
-function setSentenceRetellStatus(message, isError=false) {
-  const status = document.getElementById('sentence-retell-status');
-  if (!status) return;
-  status.textContent = message;
-  status.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-}
-
-async function toggleSentenceRetellRecording(sentenceId) {
-  if (_sentenceRetellRecorder?.state === 'recording') {
-    _sentenceRetellRecorder.stop();
-    return;
-  }
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    setSentenceRetellStatus('当前浏览器不支持录音，请直接输入复述内容。', true);
-    return;
-  }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    const chunks = [];
-    const recorder = new MediaRecorder(stream);
-    _sentenceRetellRecorder = recorder;
-    _sentenceRetellStream = stream;
-    recorder.ondataavailable = event => { if (event.data.size > 0) chunks.push(event.data); };
-    recorder.onstart = () => {
-      const button = document.getElementById('sentence-retell-mic');
-      if (button) { button.textContent = '⏹ 停止并转写'; button.classList.add('recording'); }
-      setSentenceRetellStatus('正在录音，说完后再次点击停止…');
-    };
-    recorder.onstop = async () => {
-      stream.getTracks().forEach(track => track.stop());
-      if (_sentenceRetellRecorder === recorder) _sentenceRetellRecorder = null;
-      if (_sentenceRetellStream === stream) _sentenceRetellStream = null;
-      const button = document.getElementById('sentence-retell-mic');
-      if (button) { button.textContent = '🎤 重新录音'; button.classList.remove('recording'); }
-      setSentenceRetellStatus('正在识别你的复述…');
-      const form = new FormData();
-      form.append('audio', new Blob(chunks, {type:recorder.mimeType || 'audio/webm'}), 'retelling.webm');
-      try {
-        const response = await fetch('/api/transcribe', {method:'POST', body:form});
-        const data = await response.json();
-        if (!response.ok || !data.text) throw new Error(data.error || '识别失败，请重试');
-        if (Number(_activeSentenceReviewId) !== Number(sentenceId)) return;
-        const transcript = String(data.text).trim();
-        const textarea = document.getElementById('sentence-retell-transcript');
-        if (textarea) textarea.value = transcript;
-        updateSentenceRetellTranscript(transcript);
-        const aiButton = document.getElementById('sentence-retell-ai');
-        if (aiButton) aiButton.disabled = false;
-        setSentenceRetellStatus('转写完成，可编辑后选择 AI 分析或自己对照。');
-      } catch (error) {
-        setSentenceRetellStatus(error.message || '转写服务连接失败', true);
-      }
-    };
-    recorder.start();
-  } catch (error) {
-    setSentenceRetellStatus(error.name === 'NotAllowedError' ? '麦克风权限被拒绝，请允许后重试。' : '无法启动麦克风。', true);
-  }
-}
-
-async function analyzeSentenceRetell(sentenceId) {
-  if (!await ensureAiAvailability()) { showNoKeyToast(); return; }
-  const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
-  if (!sentence || !_sentenceRetellTranscript) return;
-  setSentenceRetellStatus('AI 正在对比复述与原句…');
-  try {
-    const response = await fetch('/api/listening-retell-analysis', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({english:sentence.text, retelling:_sentenceRetellTranscript}),
-    });
-    const data = await response.json();
-    if (!response.ok || data.error) throw new Error(data.error || '复述分析失败');
-    _sentenceRetellAnalysis = data;
-    _sentenceListeningResult = 'retell_review';
-    renderSentenceReviewCard();
-  } catch (error) {
-    setSentenceRetellStatus(`AI 分析失败：${error.message}`, true);
-  }
-}
-
-function revealSentenceRetell() {
-  const transcript = _sentenceRetellTranscript;
-  resetSentenceRetellState();
-  _sentenceRetellTranscript = transcript;
-  _sentenceListeningResult = 'self_review';
-  renderSentenceReviewCard();
-}
-
-async function loadReviewPhonetics(sentence) {
-  try {
-    const response = await fetch(`/api/v2/lessons/sentence-phonetics/${sentence.id}`);
-    const data = await response.json();
-    if (!response.ok) return;
-    sentence.phonetics = data.phonetics || '';
-    sentence.phonetics_source = data.source || 'rule';
-    const el = document.getElementById('sentence-review-phonetics');
-    if (el && Number(_activeSentenceReviewId) === Number(sentence.id)) {
-      el.textContent = sentence.phonetics;
-    }
-  } catch (error) { /* 音标加载失败不影响复习流程 */ }
-}
 
 function renderSentenceReviewList() {
   const mount = document.getElementById('sentence-review-list');
@@ -4113,114 +3860,6 @@ async function loadSentenceReview() {
   renderSentenceReview();
 }
 
-function sentenceListeningPriority(sentence) {
-  const result = normalizedSentenceListeningResult(sentence);
-  if (!result) return 0;
-  if (result === 'not_understood') return 1;
-  const last = Date.parse(sentence.last_listened_at || sentence.last_reviewed_at || 0) || 0;
-  return 2 + (last / 1e15);
-}
-
-function renderInteractiveSentence(sentence) {
-  const priority = new Set(
-    (sentence.keywords || sentence.focus_words || sentence.vocab || [])
-      .map(item => String(item.word || item).toLowerCase())
-  );
-  return String(sentence.text || '').split(/([A-Za-z][A-Za-z'-]*)/g).map(part => {
-    if (!/^[A-Za-z][A-Za-z'-]*$/.test(part)) return esc(part);
-    const normalized = part.toLowerCase();
-    const encodedPart = encodeURIComponent(part).replace(/'/g, '%27');
-    return `<button type="button" class="sentence-word-token${priority.has(normalized) ? ' priority' : ''}"
-      onclick="openSentenceWordInspector(event,${sentence.id},decodeURIComponent('${encodedPart}'))">${esc(part)}</button>`;
-  }).join('');
-}
-
-async function openSentenceWordInspector(event, sentenceId, word) {
-  event.stopPropagation();
-  const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
-  const lessonId = Number((sentence?.lesson_links || [])[0]?.lesson_id || 0);
-  const popover = document.getElementById('sentence-word-popover');
-  if (!popover) return;
-  const rect = event.currentTarget.getBoundingClientRect();
-  popover.style.left = `${Math.min(rect.left, window.innerWidth - 342)}px`;
-  popover.style.top = `${Math.min(rect.bottom + 8, window.innerHeight - 190)}px`;
-  popover.hidden = false;
-  popover.innerHTML = `<strong>${esc(word)}</strong><p style="color:var(--muted)">正在查询词义…</p>`;
-  try {
-    if (!lessonId) throw new Error('缺少课程来源');
-    const response = await fetch(`/api/v2/lessons/${lessonId}/word-meaning/${encodeURIComponent(word)}`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || '查询失败');
-    popover.innerHTML = `<strong>${esc(data.word || word)}</strong>
-      <p style="margin:6px 0;color:var(--muted);line-height:1.55">${esc(data.meaning || '暂无简短词义')}</p>
-      <div class="sentence-word-popover-actions">
-        <button class="primary" type="button" onclick="activateSentenceWord(${sentenceId},decodeURIComponent('${encodeURIComponent(data.word || word).replace(/'/g, '%27')}'),'${encodeURIComponent(data.lemma || data.word || word).replace(/'/g, '%27')}','${encodeURIComponent(data.meaning || '').replace(/'/g, '%27')}')">收藏单词</button>
-        <button type="button" onclick="document.getElementById('sentence-word-popover').hidden=true">关闭</button>
-      </div>`;
-  } catch (error) {
-    popover.innerHTML = `<strong>${esc(word)}</strong><p style="color:var(--danger)">词义查询失败：${esc(error.message)}</p>`;
-  }
-}
-
-async function activateSentenceWord(sentenceId, displayText, encodedLemma, encodedMeaning='') {
-  const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
-  const lemma = decodeURIComponent(encodedLemma);
-  const meaning = decodeURIComponent(encodedMeaning);
-  const lessonId = Number((sentence?.lesson_links || [])[0]?.lesson_id || 0) || null;
-  try {
-    const response = await fetch('/api/vocab-review/activate', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        word:lemma || displayText, target_type:'word', lemma, display_text:displayText,
-        lesson_id:lessonId, meaning, sentence_id:Number(sentenceId),
-        sentence:sentence?.text || '', source:'sentence_library',
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || '收藏失败');
-    const popover = document.getElementById('sentence-word-popover');
-    if (popover) popover.innerHTML = `<strong>${esc(displayText)}</strong><p>已收藏到词汇记忆工坊。</p>
-      <div class="sentence-word-popover-actions"><button class="primary" type="button" onclick="goToVocabTarget(decodeURIComponent('${encodeURIComponent(lemma).replace(/'/g, '%27')}'))">去工坊练习</button>
-      <button type="button" onclick="this.closest('#sentence-word-popover').hidden=true">留在当前句</button></div>`;
-  } catch (error) { alert(`收藏失败：${error.message}`); }
-}
-
-function goToVocabTarget(word) {
-  document.getElementById('sentence-word-popover').hidden = true;
-  switchTab('vocab');
-  setWorkshopView('practice');
-  const search = document.getElementById('search-input');
-  if (search) { search.value = word; setSearch(word); }
-}
-
-function startListeningPractice() {
-  const pool = filteredSentenceReviewData()
-    .filter(sentence => !sentence.archived)
-    .sort((a, b) => sentenceListeningPriority(a) - sentenceListeningPriority(b));
-  if (!pool.length) {
-    alert('当前筛选中没有可练习的收藏句。');
-    return;
-  }
-  resetSentenceRetellState();
-  _sentenceListeningQueue = pool.map(sentence => Number(sentence.id));
-  _sentenceListeningIndex = 0;
-  _sentenceListeningResult = null;
-  _sentenceListeningRequeued = new Set();
-  _activeSentenceReviewId = _sentenceListeningQueue[0];
-  document.getElementById('sentence-listening-session').hidden = false;
-  document.getElementById('sentence-library-shell').hidden = true;
-  renderSentenceReviewCard();
-  document.getElementById('sentence-listening-session')?.scrollIntoView({behavior:'smooth', block:'start'});
-  speakReviewSentence(_activeSentenceReviewId);
-}
-
-function closeListeningPractice() {
-  resetSentenceRetellState();
-  document.getElementById('sentence-listening-session').hidden = true;
-  document.getElementById('sentence-library-shell').hidden = false;
-  _reviewAudioEl?.pause();
-  renderSentenceReviewList();
-}
 
 async function recordSentenceListeningResult(sentenceId, result) {
   if (result !== 'understood' && result !== 'not_understood') return;
@@ -4238,33 +3877,12 @@ async function recordSentenceListeningResult(sentenceId, result) {
       sentence.last_listened_at = data.last_listened_at || new Date().toISOString();
       sentence.review_count = Number(data.review_count ?? sentence.review_count ?? 0) + (data.review_count == null ? 1 : 0);
     }
-    _sentenceListeningResult = result;
     renderSentenceReviewList();
   } catch (error) {
     alert(`记录失败：${error.message}`);
   }
 }
 
-function nextListeningSentence() {
-  if (!_sentenceListeningResult) return;
-  resetSentenceRetellState();
-  _sentenceListeningIndex += 1;
-  if (_sentenceListeningIndex >= _sentenceListeningQueue.length) {
-    document.getElementById('sentence-review-card').innerHTML = `
-      <div class="empty-state"><p>这一轮完成了。返回句子库，或按当前筛选再练一轮。</p>
-      <button class="primary" type="button" onclick="closeListeningPractice()">返回句子库</button></div>`;
-    return;
-  }
-  _activeSentenceReviewId = _sentenceListeningQueue[_sentenceListeningIndex];
-  _sentenceListeningResult = null;
-  renderSentenceReviewCard();
-  speakReviewSentence(_activeSentenceReviewId);
-}
-
-function revealSentenceTranslation() {
-  const translation = document.getElementById('sentence-listening-translation');
-  if (translation) translation.hidden = false;
-}
 
 function toggleSentenceRow(sentenceId) {
   _expandedSentenceId = Number(_expandedSentenceId) === Number(sentenceId) ? null : Number(sentenceId);
@@ -4550,19 +4168,6 @@ async function submitSentencePatternExample(sentenceId) {
   }
 }
 
-function revealSentenceReview() {
-  const info = document.getElementById('sentence-review-info');
-  const reveal = document.getElementById('sentence-review-reveal');
-  if (info) info.hidden = false;
-  if (reveal) reveal.hidden = true;
-}
-
-function selectSentenceReview(sentenceId) {
-  _activeSentenceReviewId = Number(sentenceId);
-  renderSentenceReviewCard();
-  renderSentenceReviewList();
-  document.getElementById('sentence-review-card')?.scrollIntoView({behavior:'smooth', block:'start'});
-}
 
 let _reviewAudioEl = null;
 let _reviewAudioStopAt = null;
