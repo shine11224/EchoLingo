@@ -41,6 +41,18 @@ def test_sentence_library_rows_can_hide_original_for_inline_listening_practice()
     assert "setReviewAudioRate(Number(this.value))" in INDEX_HTML
 
 
+def test_sentence_library_offers_spoken_retell_with_ai_comparison():
+    assert "toggleSentenceRetell" in INDEX_HTML
+    assert "renderSentenceRetellPanel" in INDEX_HTML
+    assert "toggleSentenceRetellRecording" in INDEX_HTML
+    assert "/api/transcribe" in INDEX_HTML
+    assert "AI 对比分析" in INDEX_HTML
+    assert "/api/listening-retell-analysis" in INDEX_HTML
+    assert "renderSentenceRetellAnalysis" in INDEX_HTML
+    assert "整句复述" in INDEX_HTML
+    assert "查看原句" in INDEX_HTML
+
+
 def test_sentence_rows_merge_analysis_and_practice_in_one_expanded_flow():
     assert "toggleSentenceArchive" in INDEX_HTML
     assert "openSentenceAnalysis" in INDEX_HTML
