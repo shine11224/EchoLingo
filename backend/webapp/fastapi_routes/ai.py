@@ -1,7 +1,6 @@
-"""Phase 6A–6F — AI text endpoints migrated from Flask."""
+"""Phase 6A–6E — AI text endpoints migrated from Flask."""
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import os
@@ -9,8 +8,7 @@ import re
 import threading
 
 import db
-import requests as http_req
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from prompts import (
     CONNECTED_SPEECH_PROMPT,
@@ -704,88 +702,5 @@ async def analyze_connected_speech(request: Request):
             return json.loads(content)
         except json.JSONDecodeError:
             return JSONResponse({"error": "AI 返回格式错误，请重试"}, status_code=500)
-    except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
-
-
-# ── Phase 6F: /api/pronunciation-assessment ───────────────────────────────────
-
-@router.post("/api/pronunciation-assessment")
-async def pronunciation_assessment(
-    audio: UploadFile = File(default=None),
-    mime_type: str = Form(default="audio/webm;codecs=opus"),
-    reference_text: str = Form(default=""),
-):
-    if not ai_config.AZURE_SPEECH_KEY:
-        return JSONResponse(
-            {"error": "AZURE_SPEECH_KEY 未配置，请在环境变量中设置后重启 server.py"},
-            status_code=500,
-        )
-    if audio is None:
-        return JSONResponse({"error": "未收到音频数据"}, status_code=400)
-
-    ref_text = reference_text.strip()
-    audio_bytes = await audio.read()
-
-    def _call_azure(audio_data: bytes) -> dict:
-        pa_cfg = {
-            "GradingSystem": "HundredMark",
-            "Dimension": "Comprehensive",
-            "EnableMiscue": False,
-            "EnableProsodyAssessment": True,
-        }
-        if ref_text:
-            pa_cfg["ReferenceText"] = ref_text
-        pa_header = base64.b64encode(json.dumps(pa_cfg).encode()).decode()
-        url = (
-            f"https://{ai_config.AZURE_SPEECH_REGION}.stt.speech.microsoft.com"
-            "/speech/recognition/conversation/cognitiveservices/v1"
-        )
-        try:
-            resp = http_req.post(
-                url,
-                params={"language": "en-US", "format": "detailed"},
-                headers={
-                    "Ocp-Apim-Subscription-Key": ai_config.AZURE_SPEECH_KEY,
-                    "Content-Type": mime_type,
-                    "Pronunciation-Assessment": pa_header,
-                },
-                data=audio_data,
-                timeout=30,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"请求 Azure 超时或网络错误：{exc}") from exc
-        if resp.status_code != 200:
-            raise RuntimeError(f"Azure API {resp.status_code}：{resp.text[:300]}")
-        nbest = resp.json().get("NBest", [{}])[0]
-        pa = nbest.get("PronunciationAssessment", {})
-        words = []
-        for w in nbest.get("Words", []):
-            wpa = w.get("PronunciationAssessment", {})
-            words.append({
-                "word": w.get("Word", ""),
-                "accuracy": round(wpa.get("AccuracyScore", 0)),
-                "error_type": wpa.get("ErrorType", "None"),
-                "phonemes": [
-                    {
-                        "phoneme": p.get("Phoneme", ""),
-                        "score": round(p.get("PronunciationAssessment", {}).get("AccuracyScore", 0)),
-                    }
-                    for p in w.get("Phonemes", [])
-                ],
-            })
-        return {
-            "transcription": nbest.get("Display", ""),
-            "scores": {
-                "accuracy": round(pa.get("AccuracyScore", 0)),
-                "fluency": round(pa.get("FluencyScore", 0)),
-                "completeness": round(pa.get("CompletenessScore", 0)),
-                "pron_score": round(pa.get("PronScore", 0)),
-            },
-            "words": words,
-        }
-
-    try:
-        return await run_in_threadpool(_call_azure, audio_bytes)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
