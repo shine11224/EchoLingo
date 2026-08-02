@@ -828,6 +828,21 @@
     }
     .sentence-filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
     .sentence-filter-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
+    .combo { position: relative; display: inline-block; }
+    .combo-toggle { display: inline-flex; align-items: center; gap: 6px; }
+    .combo-toggle.active { border-color: var(--brand); color: var(--brand-dark); background: #eef6ef; }
+    .combo-toggle .combo-label { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .combo-panel {
+      position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; width: 260px; padding: 10px;
+      border: 1px solid var(--line); border-radius: 12px; background: #fff;
+      box-shadow: 0 12px 32px rgba(35,66,54,.16);
+    }
+    .combo-panel .chip-search { width: 100%; margin-bottom: 6px; }
+    .combo-options { max-height: 220px; overflow-y: auto; display: grid; gap: 2px; }
+    .combo-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    .combo-option:hover { background: #f2f7f2; }
+    .combo-option input { margin: 0; }
+    .combo-empty { padding: 8px; color: var(--muted); font-size: 12px; }
     .chip-search {
       min-height: 28px;
       width: 130px;
@@ -1250,6 +1265,10 @@
       border-left: 3px solid var(--brand); display: none;
     }
     .practice-result.visible { display: block; }
+    .ai-sentence-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .ai-sentence-actions button { font-size: 12px; padding: 4px 10px; }
+    .ai-sentence-translation { margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .ai-sentence-translation:empty { display: none; }
     .practice-history-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
     .practice-history-panel {
       margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
@@ -1340,8 +1359,10 @@
     .listen-understood.active { background: var(--brand); border-color: var(--brand); color: #fff; }
     .listen-missed.active { background: #fff0c9; border-color: #c9961c; color: #664800; }
     .listen-retell { border-color: #9db0c4; color: #35566f; }
-    .retell-panel { width: min(680px, 100%); margin: 14px auto 0; padding: 14px; border: 1px solid #d7e3da; border-radius: 12px; background: #f6faf7; text-align: left; }
-    .retell-head, .retell-actions { display: flex; align-items: center; justify-content: space-between; gap: 9px; flex-wrap: wrap; }
+    .retell-panel { margin: 12px 0 0; padding: 14px; border: 1px solid #d7e3da; border-radius: 12px; background: #f6faf7; text-align: left; }
+    .retell-head, .retell-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .retell-head { justify-content: space-between; }
+    .retell-actions .mic-btn { width: auto; height: auto; padding: 7px 14px; border-radius: 8px; font-size: 13px; white-space: nowrap; }
     .retell-transcript { width: 100%; min-height: 74px; margin: 10px 0; resize: vertical; }
     .retell-status { min-height: 20px; margin: 6px 0; color: var(--muted); font-size: 12px; }
     .retell-analysis { margin-top: 14px; padding: 14px; border-left: 3px solid var(--brand); background: #f5f8f4; }
@@ -1374,7 +1395,9 @@
     .sentence-library-row.pattern-active > .sentence-row-copy,
     .sentence-library-row.pattern-active > .sentence-library-actions { visibility: hidden; }
     .sentence-library-row.pattern-active .pattern-setup { display: none; }
-    .sentence-row-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+    .sentence-workshop-shell .practice-stage { margin-top: 0; padding: 0; border: 0; background: none; }
+    .sentence-workshop-shell .sentence-practice-actions { align-items: center; }
+    .sentence-row-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line); }
     .sentence-row-toolbar button, .sentence-row-toolbar a { font-size: 12px; }
     .sentence-analysis-shell { margin-top: 12px; padding: 14px; border: 1px solid #d7e3da; border-radius: 10px; background: #fffef9; }
     .sentence-analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
@@ -3516,6 +3539,25 @@ const _sentenceTagFilter = new Set();
 const _sentenceChipQuery = { course: '', tag: '' };
 const _sentenceTagEditorOpen = new Set();
 const _sentenceHiddenOriginals = new Set();
+let _sentenceCourseComboOpen = false;
+
+function toggleSentenceCourseCombo(evt) {
+  evt?.stopPropagation();
+  _sentenceCourseComboOpen = !_sentenceCourseComboOpen;
+  if (_sentenceCourseComboOpen) _sentenceChipQuery.course = '';
+  renderSentenceReviewFilters();
+  if (_sentenceCourseComboOpen) {
+    document.querySelector('#sentence-course-combo .chip-search')?.focus();
+  }
+}
+
+document.addEventListener('click', event => {
+  if (!_sentenceCourseComboOpen) return;
+  if (event.target.closest('#sentence-course-combo')) return;
+  _sentenceCourseComboOpen = false;
+  _sentenceChipQuery.course = '';
+  renderSentenceReviewFilters();
+});
 
 function setSentenceChipQuery(kind, value) {
   _sentenceChipQuery[kind] = String(value || '').trim().toLowerCase();
@@ -3600,13 +3642,27 @@ function renderSentenceReviewFilters() {
   const tagQuery = _sentenceChipQuery.tag;
   const visibleCourses = [...courses.entries()].filter(([id, title]) =>
     !courseQuery || String(title).toLowerCase().includes(courseQuery) || _sentenceCourseFilter.has(id));
-  const courseSearchHtml = courses.size > 8
-    ? `<input class="chip-search" type="search" placeholder="搜索课程…" value="${esc(courseQuery)}" oninput="setSentenceChipQuery('course', this.value)" aria-label="搜索课程筛选">`
-    : '';
+  const selectedCourses = [..._sentenceCourseFilter].map(id => courses.get(id)).filter(Boolean);
+  const courseSummary = !selectedCourses.length ? '全部课程'
+    : selectedCourses.length === 1 ? String(selectedCourses[0])
+    : `已选 ${selectedCourses.length} 门课程`;
   courseMount.innerHTML = courses.size > 1
-    ? '<span class="sentence-filter-label">课程</span>' + courseSearchHtml + visibleCourses.map(([id, title]) =>
-        `<button type="button" class="filter-btn${_sentenceCourseFilter.has(id) ? ' active' : ''}" onclick="toggleSentenceCourseFilter(${id})">${esc(title)}</button>`
-      ).join('')
+    ? '<span class="sentence-filter-label">课程</span>' + `
+      <div class="combo" id="sentence-course-combo">
+        <button type="button" class="filter-btn combo-toggle${selectedCourses.length ? ' active' : ''}" onclick="toggleSentenceCourseCombo(event)" aria-expanded="${_sentenceCourseComboOpen}">
+          <span class="combo-label">${esc(courseSummary)}</span> ▾
+        </button>
+        <div class="combo-panel" ${_sentenceCourseComboOpen ? '' : 'hidden'}>
+          <input class="chip-search" type="search" placeholder="搜索课程…" value="${esc(courseQuery)}" oninput="setSentenceChipQuery('course', this.value)" aria-label="搜索课程筛选">
+          <div class="combo-options">
+            ${visibleCourses.map(([id, title]) => `
+              <label class="combo-option">
+                <input type="checkbox" ${_sentenceCourseFilter.has(id) ? 'checked' : ''} onchange="toggleSentenceCourseFilter(${id})">
+                <span>${esc(title)}</span>
+              </label>`).join('') || '<div class="combo-empty">没有匹配的课程</div>'}
+          </div>
+        </div>
+      </div>`
     : '';
   const visibleTags = [...tags.values()].filter(tag =>
     !tagQuery || tag.name.toLowerCase().includes(tagQuery) || _sentenceTagFilter.has(Number(tag.id)));
@@ -3801,6 +3857,8 @@ function renderSentenceReviewList() {
         </div>
         <div class="sentence-row-detail">
           ${sentence.translation ? `<p class="listening-translation">${esc(sentence.translation)}</p>` : ''}
+          ${_sentenceRetellOpenId === Number(sentence.id) ? renderSentenceRetellPanel(sentence) : ''}
+          <div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>
           <div class="sentence-row-toolbar">
             ${links.length > 1 ? `<label>当前来源
               <select onchange="selectSentenceSource(${sentence.id},this.value)">
@@ -3810,8 +3868,6 @@ function renderSentenceReviewList() {
             <button type="button" onclick="openSentenceAnalysis(${sentence.id})">${oralAnalysis ? '查看句式分析与练习' : 'AI 句式分析'}</button>
             <button type="button" onclick="toggleSentenceArchive(${sentence.id},${sentence.archived ? 'false' : 'true'})">${sentence.archived ? '恢复句子' : '归档句子'}</button>
           </div>
-          ${_sentenceRetellOpenId === Number(sentence.id) ? renderSentenceRetellPanel(sentence) : ''}
-          <div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>
         </div>
       </article>`;
   }).join('') : '<div class="empty-state"><p>没有符合条件的收藏句。</p></div>';
@@ -3932,12 +3988,6 @@ function toggleSentenceRetell(sentenceId) {
   document.querySelector(`[data-sentence-id="${id}"]`)?.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
-function closeSentenceRetell() {
-  resetSentenceRetellState();
-  _sentenceRetellOpenId = null;
-  renderSentenceReviewList();
-}
-
 function renderSentenceRetellPanel(sentence) {
   const hasTranscript = Boolean(_sentenceRetellTranscript);
   return `<div class="retell-panel">
@@ -3947,8 +3997,6 @@ function renderSentenceRetellPanel(sentence) {
     <div class="retell-actions">
       <button class="mic-btn" id="sentence-retell-mic" type="button" onclick="toggleSentenceRetellRecording(${sentence.id})">🎤 开始录音</button>
       <button id="sentence-retell-ai" type="button" onclick="analyzeSentenceRetell(${sentence.id})" ${hasTranscript ? '' : 'disabled'}>AI 对比分析</button>
-      <button type="button" onclick="revealSentenceOriginal(${sentence.id})">查看原句</button>
-      <button type="button" onclick="closeSentenceRetell()">收起</button>
     </div>
     <div id="sentence-retell-result">${_sentenceRetellAnalysis ? renderSentenceRetellAnalysis(_sentenceRetellAnalysis) : ''}</div>
   </div>`;
@@ -3965,11 +4013,6 @@ function setSentenceRetellStatus(message, isError=false) {
   if (!status) return;
   status.textContent = message;
   status.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-}
-
-function revealSentenceOriginal(sentenceId) {
-  _sentenceHiddenOriginals.delete(Number(sentenceId));
-  renderSentenceReviewList();
 }
 
 async function toggleSentenceRetellRecording(sentenceId) {
@@ -4133,7 +4176,6 @@ function renderSentencePatternPractice(sentence, errorMessage='') {
     </div>
     ${errorMessage ? `<p style="color:var(--danger)">练习暂时不可用：${esc(errorMessage)}</p>` : ''}
     <div class="practice-stage">
-      <p class="practice-target-hint">先自由造句；需要时再查看句式骨架或获取 AI 中文提示。</p>
       <div class="sentence-practice-actions">
         <button type="button" id="sentence-pattern-toggle-${sentence.id}" onclick="toggleSentencePatternTemplate(${sentence.id})">${patternVisible ? '隐藏句式骨架' : '查看句式骨架'}</button>
         <button type="button" id="sentence-hint-btn-${sentence.id}" onclick="${hintVisible ? `generateSentencePatternScenario(${sentence.id},true)` : `showSentencePatternHint(${sentence.id})`}">${hintVisible ? '换一个提示' : 'AI 中文提示'}</button>
@@ -4150,10 +4192,10 @@ function renderSentencePatternPractice(sentence, errorMessage='') {
       <div class="sentence-practice-actions">
         <button class="primary" id="sentence-practice-submit-${sentence.id}" type="button" ${answer.trim() ? '' : 'disabled'} onclick="submitSentencePatternPractice(${sentence.id})">AI 批改</button>
         <button type="button" id="sentence-example-btn-${sentence.id}" ${exampleReady ? '' : 'disabled title="提交造句后开放"'} onclick="submitSentencePatternExample(${sentence.id})">查看 AI 示例</button>
+        <button type="button" onclick="toggleSentencePracticeHistory(${sentence.id})">查看练习记录</button>
       </div>
     </div>
     <div class="practice-result" id="sentence-pattern-result-${sentence.id}"></div>
-    <div class="practice-history-actions"><button type="button" onclick="toggleSentencePracticeHistory(${sentence.id})">查看练习记录</button></div>
     <div class="practice-history-panel" id="sentence-practice-history-${sentence.id}" hidden></div>
   </section>`;
 }
@@ -6120,11 +6162,62 @@ function speakAiExample(evt, encodedText) {
   NaturalTTS.speak(text, {lang:'en-US', rate:0.92, neural:true});
 }
 
+function encodeAiSentence(text) {
+  return encodeURIComponent(String(text || '')).replace(/'/g, '%27');
+}
+
+function aiSentenceActions(encodedText, includeSpeak=true) {
+  return `<div class="ai-sentence-actions">
+    ${includeSpeak ? `<button type="button" onclick="speakAiExample(event,'${encodedText}')">🔊 朗读</button>` : ''}
+    <button type="button" onclick="translateAiSentence(this,'${encodedText}')">🌐 翻译</button>
+    <button type="button" onclick="favoriteAiSentence(this,'${encodedText}')">⭐ 收藏句子</button>
+  </div><div class="ai-sentence-translation"></div>`;
+}
+
+async function translateAiSentence(button, encodedText) {
+  const text = decodeURIComponent(encodedText || '');
+  if (!text) return;
+  const slot = button.closest('.ai-sentence-actions')?.nextElementSibling;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/story-translate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) throw new Error(data.error || data.detail || '翻译失败');
+    if (slot) slot.textContent = data.translation || '';
+  } catch (error) {
+    if (slot) slot.textContent = `翻译失败：${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function favoriteAiSentence(button, encodedText) {
+  const text = decodeURIComponent(encodedText || '');
+  if (!text) return;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/v2/lessons/sentence-review/manual', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+    button.textContent = '✓ 已收藏';
+  } catch (error) {
+    alert(`收藏失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderVocabResult(data) {
   if (data.error) return `<span style="color:var(--danger)">${esc(data.error)}</span>`;
   if (data.mode==='example' && data.example_sentence) {
-    const encodedExample = encodeURIComponent(data.example_sentence).replace(/'/g, '%27');
-    return `<div class="result-label">AI 示例 <button type="button" class="speak-btn" onclick="speakAiExample(event,'${encodedExample}')">🔊 朗读示例</button></div><div class="result-standard">${makeClickableWords(data.example_sentence)}</div>`;
+    const encodedExample = encodeAiSentence(data.example_sentence);
+    return `<div class="result-label">AI 示例 <button type="button" class="speak-btn" onclick="speakAiExample(event,'${encodedExample}')">🔊 朗读示例</button></div><div class="result-standard">${makeClickableWords(data.example_sentence)}</div>${aiSentenceActions(encodedExample, false)}`;
   }
   if (data.mode==='correction' || data.verdict) {
     if (data.verdict) {
@@ -6134,8 +6227,8 @@ function renderVocabResult(data) {
       const naturalness = data.naturalness_analysis ? `<div class="result-label" style="margin-top:8px">为什么不够地道</div><div>${esc(data.naturalness_analysis)}</div>` : '';
       const improvementPoints = Array.isArray(data.improvement_points) ? data.improvement_points : [];
       const improvements = improvementPoints.length ? `<div class="result-label" style="margin-top:8px">需要注意和改进</div><ul class="result-feedback">${improvementPoints.map(point=>`<li>${esc(point)}</li>`).join('')}</ul>` : '';
-      const revised = data.revised_sentence ? `<div class="result-label" style="margin-top:8px">参考改写</div><div class="result-corrected">${makeClickableWords(data.revised_sentence)}</div>` : '';
-      const idiomatic = data.idiomatic_suggestion ? `<div class="result-label" style="margin-top:8px">更地道的表达</div><div class="result-variant">${makeClickableWords(data.idiomatic_suggestion)}</div>` : '';
+      const revised = data.revised_sentence ? `<div class="result-label" style="margin-top:8px">参考改写</div><div class="result-corrected">${makeClickableWords(data.revised_sentence)}</div>${aiSentenceActions(encodeAiSentence(data.revised_sentence))}` : '';
+      const idiomatic = data.idiomatic_suggestion ? `<div class="result-label" style="margin-top:8px">更地道的表达</div><div class="result-variant">${makeClickableWords(data.idiomatic_suggestion)}</div>${aiSentenceActions(encodeAiSentence(data.idiomatic_suggestion))}` : '';
       return `<div class="${statusClass}">${esc(data.status_label || (data.verdict === 'accepted' ? '表达成立' : '建议修改'))}</div>
         <div class="result-label">目标使用</div><div>${data.target_used_correctly ? '目标词、短语或句式使用正确' : '目标词、短语或句式需要调整'}</div>
         ${issue}${explanation}${naturalness}${improvements}${revised}${idiomatic}`;

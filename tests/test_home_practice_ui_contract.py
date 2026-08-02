@@ -50,7 +50,17 @@ def test_sentence_library_offers_spoken_retell_with_ai_comparison():
     assert "/api/listening-retell-analysis" in INDEX_HTML
     assert "renderSentenceRetellAnalysis" in INDEX_HTML
     assert "整句复述" in INDEX_HTML
-    assert "查看原句" in INDEX_HTML
+
+
+def test_sentence_course_filter_is_searchable_dropdown():
+    assert 'id="sentence-course-combo"' in INDEX_HTML
+    assert "toggleSentenceCourseCombo" in INDEX_HTML
+    assert "combo-panel" in INDEX_HTML
+    assert "combo-option" in INDEX_HTML
+    assert "搜索课程…" in INDEX_HTML
+    assert "全部课程" in INDEX_HTML
+    assert "已选 " in INDEX_HTML
+    assert "toggleSentenceCourseFilter" in INDEX_HTML
 
 
 def test_sentence_rows_merge_analysis_and_practice_in_one_expanded_flow():
@@ -92,6 +102,18 @@ def test_direct_sentence_library_navigation_checks_ai_availability():
     )[0]
     assert "ensureAiAvailability()" in load_review
     assert "请先在“设置”中检查配置" in INDEX_HTML
+
+
+def test_ai_result_sentences_offer_translate_speak_and_favorite():
+    assert "aiSentenceActions" in INDEX_HTML
+    assert "translateAiSentence" in INDEX_HTML
+    assert "favoriteAiSentence" in INDEX_HTML
+    assert "🌐 翻译" in INDEX_HTML
+    assert "⭐ 收藏句子" in INDEX_HTML
+    assert "✓ 已收藏" in INDEX_HTML
+    assert "/api/story-translate" in INDEX_HTML
+    assert "/api/v2/lessons/sentence-review/manual" in INDEX_HTML
+    assert "ai-sentence-translation" in INDEX_HTML
 
 
 def test_vocab_workshop_keeps_story_as_secondary_subpage():

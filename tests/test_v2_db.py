@@ -95,6 +95,26 @@ def test_v2_lesson_lifecycle(tmp_path, monkeypatch):
     assert db.get_v2_lesson_words(lesson["id"]) == []
 
 
+def test_manual_sentence_saved_into_library(tmp_path, monkeypatch):
+    import db
+
+    test_db = tmp_path / "vocab.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    db.init_db()
+
+    text = "Instead of memorizing the formulas mechanically, understand the derivation."
+    sentence = db.save_v2_manual_sentence(text, translation="不要机械记忆公式，要理解推导过程。")
+    assert sentence["id"] > 0
+
+    queue = db.list_v2_saved_sentences(include_archived=True)
+    assert [item["id"] for item in queue] == [sentence["id"]]
+    assert queue[0]["translation"].startswith("不要机械记忆")
+
+    again = db.save_v2_manual_sentence(text)
+    assert again["id"] == sentence["id"]
+    assert len(db.list_v2_saved_sentences(include_archived=True)) == 1
+
+
 def test_v2_lesson_translation_state_round_trip(tmp_path, monkeypatch):
     import db
 
