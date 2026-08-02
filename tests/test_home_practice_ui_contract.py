@@ -59,7 +59,7 @@ def test_sentence_rows_merge_analysis_and_practice_in_one_expanded_flow():
     assert "AI 句式分析" in INDEX_HTML
     assert "查看句式分析与练习" in INDEX_HTML
     assert "openSentencePatternPractice" not in INDEX_HTML
-    assert "sentenceOralAnalysis(sentence) ? renderSentencePatternPractice(sentence) : ''" in INDEX_HTML
+    assert "renderSentencePatternPractice(sentence)}`" in INDEX_HTML
     assert "返回原课程" in INDEX_HTML
 
 

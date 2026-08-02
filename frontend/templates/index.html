@@ -3810,8 +3810,8 @@ function renderSentenceReviewList() {
             <button type="button" onclick="openSentenceAnalysis(${sentence.id})">${oralAnalysis ? '查看句式分析与练习' : 'AI 句式分析'}</button>
             <button type="button" onclick="toggleSentenceArchive(${sentence.id},${sentence.archived ? 'false' : 'true'})">${sentence.archived ? '恢复句子' : '归档句子'}</button>
           </div>
-          <div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>
           ${_sentenceRetellOpenId === Number(sentence.id) ? renderSentenceRetellPanel(sentence) : ''}
+          <div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>
         </div>
       </article>`;
   }).join('') : '<div class="empty-state"><p>没有符合条件的收藏句。</p></div>';
@@ -4159,10 +4159,9 @@ function renderSentencePatternPractice(sentence, errorMessage='') {
 }
 
 function renderSentencePatternSurface(sentence) {
-  if (sentence._pattern_view === 'analysis') {
-    return `${renderSentenceAnalysisPanel(sentence)}${sentenceOralAnalysis(sentence) ? renderSentencePatternPractice(sentence) : ''}`;
-  }
-  return '';
+  const showAnalysis = sentence._pattern_view === 'analysis' || sentenceOralAnalysis(sentence);
+  // 句式练习始终可用；有 AI 句式分析时分析面板置于练习上方作为参考
+  return `${showAnalysis ? renderSentenceAnalysisPanel(sentence) : ''}${renderSentencePatternPractice(sentence)}`;
 }
 
 function applySentenceAnalysisPayload(sentence, data) {
@@ -4253,14 +4252,12 @@ async function generateSentencePatternScenario(sentenceId, regenerate=false) {
   const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
   const mount = document.getElementById(`sentence-workshop-${sentenceId}`);
   if (!sentence || !mount) return;
-  sentence._pattern_view = 'analysis';
   if (!await ensureAiAvailability()) { showNoKeyToast(); return; }
   const hintEl = document.getElementById(`sentence-hint-${sentenceId}`);
   const hintButton = document.getElementById(`sentence-hint-btn-${sentenceId}`);
   if (hintEl) { hintEl.textContent = '正在生成中文提示…'; hintEl.classList.remove('placeholder'); }
   if (hintButton) hintButton.disabled = true;
   try {
-    if (!sentenceOralAnalysis(sentence)) throw new Error('请先完成 AI 句式分析');
     await requestSentencePatternScenario(sentence, regenerate);
     sentence._pattern_hint_visible = true;
     sentence._pattern_hint_used = true;
@@ -4291,7 +4288,7 @@ async function submitSentencePatternPractice(sentenceId) {
       body:JSON.stringify({
         practice_type:'pattern', hint_cn:sentence._pattern_hint_visible ? sentencePatternScenario(sentence) : '', english:sentence.text,
         source_context:sentence.text, sentence_id:Number(sentenceId),
-        target:sentencePatternTemplate(sentence), vocab:[], pattern_template:sentencePatternTemplate(sentence), user_answer:answer,
+        target:sentencePatternTemplate(sentence) || sentence.text, vocab:[], pattern_template:sentencePatternTemplate(sentence) || sentence.text, user_answer:answer,
         input_method:sentence._pattern_input_method || 'keyboard',
         hint_used:Boolean(sentence._pattern_hint_used || sentence._pattern_skeleton_used),
       }),
@@ -4322,7 +4319,7 @@ async function submitSentencePatternExample(sentenceId) {
         practice_type:'pattern', action:'example', mode:'example',
         hint_cn:sentence._pattern_hint_visible ? sentencePatternScenario(sentence) : '',
         english:sentence.text, source_context:sentence.text, sentence_id:Number(sentenceId),
-        target:sentencePatternTemplate(sentence), vocab:[], pattern_template:sentencePatternTemplate(sentence),
+        target:sentencePatternTemplate(sentence) || sentence.text, vocab:[], pattern_template:sentencePatternTemplate(sentence) || sentence.text,
         user_answer:'', viewed_example:true,
       }),
     });
