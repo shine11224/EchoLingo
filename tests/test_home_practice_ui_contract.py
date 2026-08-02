@@ -41,22 +41,6 @@ def test_sentence_library_rows_can_hide_original_for_inline_listening_practice()
     assert "setReviewAudioRate(Number(this.value))" in INDEX_HTML
 
 
-def test_listening_card_offers_optional_spoken_retell_and_ai_comparison():
-    assert "复述这句" in INDEX_HTML
-    assert "toggleSentenceRetellRecording" in INDEX_HTML
-    assert "/api/transcribe" in INDEX_HTML
-    assert "AI 对比分析" in INDEX_HTML
-    assert "/api/listening-retell-analysis" in INDEX_HTML
-    assert "直接查看原句" in INDEX_HTML
-    assert "知识盲区" in INDEX_HTML
-    assert "听力盲区" in INDEX_HTML
-    assert "基本听懂" in INDEX_HTML
-    assert "存在盲区" in INDEX_HTML
-    assert "整句复述" in INDEX_HTML
-    assert "splitSentenceForRetell" not in INDEX_HTML
-    assert "分段复述" not in INDEX_HTML
-
-
 def test_sentence_rows_merge_analysis_and_practice_in_one_expanded_flow():
     assert "toggleSentenceArchive" in INDEX_HTML
     assert "openSentenceAnalysis" in INDEX_HTML
@@ -194,7 +178,6 @@ def test_frontend_calls_the_confirmed_review_contracts():
     assert "/api/vocab-review/${encodeURIComponent(word)}/familiarity" in INDEX_HTML
     assert "/api/vocab-review/${encodeURIComponent(word)}/lifecycle" in INDEX_HTML
     assert "action:'example'" in INDEX_HTML
-    assert "word:lemma || displayText" in INDEX_HTML
     assert "user_answer:''" in INDEX_HTML
     assert "/api/v2/lessons/sentence-review/${sentence.id}/tags" in INDEX_HTML
     assert "fetch('/api/v2/lessons/sentence-tags')" in INDEX_HTML

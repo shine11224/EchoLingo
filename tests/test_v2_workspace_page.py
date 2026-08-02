@@ -473,14 +473,15 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     assert "句子复习" in resp.text
     assert "今日任务" not in resp.text
     assert 'id="tab-sentences"' in resp.text
-    assert 'id="sentence-review-card"' in resp.text
+    assert 'id="sentence-library-shell"' in resp.text
     assert 'id="sentence-review-list"' in resp.text
     assert 'id="sentence-review-search"' in resp.text
     assert 'id="sentence-review-time-filter"' in resp.text
     assert "/api/v2/lessons/sentence-review" in resp.text
     assert 'id="sentence-filter-bar"' in resp.text
     assert "speakReviewSentence" in resp.text
-    assert "submitSentencePractice" in resp.text
+    assert "recordSentenceListeningResult" in resp.text
+    assert "openSentenceAnalysis" in resp.text
     assert "toggleSentenceVoiceInput" in resp.text
     assert "批改表达" in resp.text
     assert 'id="story-word-input"' in resp.text
