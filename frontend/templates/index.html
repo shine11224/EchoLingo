@@ -1989,6 +1989,11 @@ let _latestLesson = null;
 let _sentenceReviewData = [];
 let _sentenceReviewSummary = {total: 0, due: 0};
 let _expandedSentenceId = null;
+let _sentenceRetellOpenId = null;
+let _sentenceRetellTranscript = '';
+let _sentenceRetellAnalysis = null;
+let _sentenceRetellRecorder = null;
+let _sentenceRetellStream = null;
 let _sentencePage = 1;
 let _vocabPracticeFilter = 'all';
 const SENTENCE_PAGE_SIZE = 30;
@@ -3772,6 +3777,7 @@ function renderSentenceReviewList() {
             <button type="button" onclick="toggleSentenceOriginal(${sentence.id})" aria-pressed="${originalHidden}">${originalHidden ? '显示原文' : '隐藏原文'}</button>
             <button type="button" class="listen-understood${listeningResult === 'understood' ? ' active' : ''}" onclick="recordSentenceListeningResult(${sentence.id},'understood')" aria-pressed="${listeningResult === 'understood'}">听懂</button>
             <button type="button" class="listen-missed${listeningResult === 'not_understood' ? ' active' : ''}" onclick="recordSentenceListeningResult(${sentence.id},'not_understood')" aria-pressed="${listeningResult === 'not_understood'}">听不懂</button>
+            <button type="button" class="listen-retell${_sentenceRetellOpenId === Number(sentence.id) ? ' active' : ''}" onclick="toggleSentenceRetell(${sentence.id})">🎙 复述</button>
           </span>
           <button type="button" onclick="toggleSentenceLibraryTagEditor(${sentence.id})">🏷 标签</button>
           <button type="button" onclick="toggleSentenceRow(${sentence.id})">${expanded ? '收起' : '展开'}</button>
@@ -3805,6 +3811,7 @@ function renderSentenceReviewList() {
             <button type="button" onclick="toggleSentenceArchive(${sentence.id},${sentence.archived ? 'false' : 'true'})">${sentence.archived ? '恢复句子' : '归档句子'}</button>
           </div>
           <div id="sentence-workshop-${sentence.id}">${renderSentencePatternSurface(sentence)}</div>
+          ${_sentenceRetellOpenId === Number(sentence.id) ? renderSentenceRetellPanel(sentence) : ''}
         </div>
       </article>`;
   }).join('') : '<div class="empty-state"><p>没有符合条件的收藏句。</p></div>';
@@ -3894,6 +3901,165 @@ function toggleSentenceOriginal(sentenceId) {
   if (_sentenceHiddenOriginals.has(id)) _sentenceHiddenOriginals.delete(id);
   else _sentenceHiddenOriginals.add(id);
   renderSentenceReviewList();
+}
+
+// ── 整句复述 + AI 对比 ──────────────────────────────────
+function resetSentenceRetellState() {
+  const recorder = _sentenceRetellRecorder;
+  _sentenceRetellRecorder = null;
+  if (recorder) {
+    recorder.onstop = null;
+    if (recorder.state !== 'inactive') recorder.stop();
+  }
+  _sentenceRetellStream?.getTracks().forEach(track => track.stop());
+  _sentenceRetellStream = null;
+  _sentenceRetellTranscript = '';
+  _sentenceRetellAnalysis = null;
+}
+
+function toggleSentenceRetell(sentenceId) {
+  const id = Number(sentenceId);
+  if (_sentenceRetellOpenId === id) {
+    resetSentenceRetellState();
+    _sentenceRetellOpenId = null;
+  } else {
+    resetSentenceRetellState();
+    _sentenceRetellOpenId = id;
+    _expandedSentenceId = id;
+    _sentenceHiddenOriginals.add(id);  // 复述时默认隐藏原文，先听再说
+  }
+  renderSentenceReviewList();
+  document.querySelector(`[data-sentence-id="${id}"]`)?.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function closeSentenceRetell() {
+  resetSentenceRetellState();
+  _sentenceRetellOpenId = null;
+  renderSentenceReviewList();
+}
+
+function renderSentenceRetellPanel(sentence) {
+  const hasTranscript = Boolean(_sentenceRetellTranscript);
+  return `<div class="retell-panel">
+    <div class="retell-head"><strong>整句复述</strong><span>先听原音，凭记忆复述；原句已隐藏</span></div>
+    <textarea class="retell-transcript" id="sentence-retell-transcript" placeholder="点击麦克风复述；也可以直接输入" oninput="updateSentenceRetellTranscript(this.value)">${esc(_sentenceRetellTranscript)}</textarea>
+    <div class="retell-status" id="sentence-retell-status">${hasTranscript ? '复述已就绪，可进行 AI 对比分析。' : '点击开始录音，说完后再次点击停止。'}</div>
+    <div class="retell-actions">
+      <button class="mic-btn" id="sentence-retell-mic" type="button" onclick="toggleSentenceRetellRecording(${sentence.id})">🎤 开始录音</button>
+      <button id="sentence-retell-ai" type="button" onclick="analyzeSentenceRetell(${sentence.id})" ${hasTranscript ? '' : 'disabled'}>AI 对比分析</button>
+      <button type="button" onclick="revealSentenceOriginal(${sentence.id})">查看原句</button>
+      <button type="button" onclick="closeSentenceRetell()">收起</button>
+    </div>
+    <div id="sentence-retell-result">${_sentenceRetellAnalysis ? renderSentenceRetellAnalysis(_sentenceRetellAnalysis) : ''}</div>
+  </div>`;
+}
+
+function updateSentenceRetellTranscript(value) {
+  _sentenceRetellTranscript = String(value || '').trim();
+  const button = document.getElementById('sentence-retell-ai');
+  if (button) button.disabled = !_sentenceRetellTranscript;
+}
+
+function setSentenceRetellStatus(message, isError=false) {
+  const status = document.getElementById('sentence-retell-status');
+  if (!status) return;
+  status.textContent = message;
+  status.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function revealSentenceOriginal(sentenceId) {
+  _sentenceHiddenOriginals.delete(Number(sentenceId));
+  renderSentenceReviewList();
+}
+
+async function toggleSentenceRetellRecording(sentenceId) {
+  if (_sentenceRetellRecorder?.state === 'recording') {
+    _sentenceRetellRecorder.stop();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    setSentenceRetellStatus('当前浏览器不支持录音，请直接输入复述内容。', true);
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+    _sentenceRetellRecorder = recorder;
+    _sentenceRetellStream = stream;
+    recorder.ondataavailable = event => { if (event.data.size > 0) chunks.push(event.data); };
+    recorder.onstart = () => {
+      const button = document.getElementById('sentence-retell-mic');
+      if (button) { button.textContent = '⏹ 停止并转写'; button.classList.add('recording'); }
+      setSentenceRetellStatus('正在录音，说完后再次点击停止…');
+    };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
+      if (_sentenceRetellRecorder === recorder) _sentenceRetellRecorder = null;
+      if (_sentenceRetellStream === stream) _sentenceRetellStream = null;
+      const button = document.getElementById('sentence-retell-mic');
+      if (button) { button.textContent = '🎤 重新录音'; button.classList.remove('recording'); }
+      setSentenceRetellStatus('正在识别你的复述…');
+      const form = new FormData();
+      form.append('audio', new Blob(chunks, {type:recorder.mimeType || 'audio/webm'}), 'retelling.webm');
+      try {
+        const response = await fetch('/api/transcribe', {method:'POST', body:form});
+        const data = await response.json();
+        if (!response.ok || !data.text) throw new Error(data.error || '识别失败，请重试');
+        if (Number(_sentenceRetellOpenId) !== Number(sentenceId)) return;
+        const transcript = String(data.text).trim();
+        const textarea = document.getElementById('sentence-retell-transcript');
+        if (textarea) textarea.value = transcript;
+        updateSentenceRetellTranscript(transcript);
+        setSentenceRetellStatus('转写完成，可编辑后进行 AI 对比分析。');
+      } catch (error) {
+        setSentenceRetellStatus(error.message || '转写服务连接失败', true);
+      }
+    };
+    recorder.start();
+  } catch (error) {
+    setSentenceRetellStatus(error.name === 'NotAllowedError' ? '麦克风权限被拒绝，请允许后重试。' : '无法启动麦克风。', true);
+  }
+}
+
+async function analyzeSentenceRetell(sentenceId) {
+  if (!await ensureAiAvailability()) { showNoKeyToast(); return; }
+  const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
+  if (!sentence || !_sentenceRetellTranscript) return;
+  setSentenceRetellStatus('AI 正在对比复述与原句…');
+  try {
+    const response = await fetch('/api/listening-retell-analysis', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({english:sentence.text, retelling:_sentenceRetellTranscript}),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || data.detail || '复述分析失败');
+    _sentenceRetellAnalysis = data;
+    renderSentenceReviewList();
+    document.getElementById('sentence-retell-result')?.scrollIntoView({behavior:'smooth', block:'nearest'});
+  } catch (error) {
+    setSentenceRetellStatus(`AI 分析失败：${error.message}`, true);
+  }
+}
+
+function renderSentenceRetellItems(items) {
+  const values = Array.isArray(items) ? items.filter(Boolean) : [];
+  return values.length ? `<ul>${values.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : '<span>未发现明显问题</span>';
+}
+
+function renderSentenceRetellAnalysis(data) {
+  const score = Math.max(0, Math.min(100, Number(data.accuracy_score || 0)));
+  return `<section class="retell-analysis">
+    <h4>AI 复述对比 · ${score} 分</h4>
+    <p>${esc(data.overall_cn || '已完成复述对比。')}</p>
+    <div class="retell-analysis-grid">
+      <div class="retell-analysis-item"><strong>保留正确</strong>${renderSentenceRetellItems(data.matched_content)}</div>
+      <div class="retell-analysis-item"><strong>遗漏或误听</strong>${renderSentenceRetellItems(data.missed_content)}</div>
+      <div class="retell-analysis-item"><strong>知识盲区</strong>${renderSentenceRetellItems(data.knowledge_gaps)}</div>
+      <div class="retell-analysis-item"><strong>听力盲区</strong>${renderSentenceRetellItems(data.listening_blind_spots)}</div>
+    </div>
+    <p><strong>下次重听：</strong>${esc(data.next_step_cn || '再听一次并关注遗漏信息。')}</p>
+  </section>`;
 }
 
 function selectSentenceSource(sentenceId, sourceIndex) {
