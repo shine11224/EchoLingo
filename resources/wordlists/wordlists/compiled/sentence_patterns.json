@@ -1,0 +1,294 @@
+[
+  {
+    "id": "what_i_think",
+    "name": "强调个人观点",
+    "template": "What I think is that...",
+    "triggers": ["what i think is that", "what i believe is that", "what i feel is that"],
+    "explanation_cn": "用 What I think is that 代替 I think，把观点放在句子末尾，语气更有说服力，也更口语化自然。",
+    "example": "What I think is that making friends online is very risky.",
+    "ielts_tip": "Part 3 表达个人立场时使用，比直接说 I think 更能体现 Fluency。"
+  },
+  {
+    "id": "from_what",
+    "name": "引用经验/信息来源",
+    "template": "From what I've seen/heard/read,...",
+    "triggers": ["from what i've seen", "from what i've heard", "from what i've read", "from what i have seen", "from what i have heard", "from what i have read"],
+    "explanation_cn": "引出个人观察或听说到的信息，比直接断言语气更谦逊，同时体现你有真实生活经验。",
+    "example": "From what I've heard, it's highly likely that most English teachers will be replaced by robots in the next 30 years.",
+    "ielts_tip": "Part 2/3 举例时使用，显示 Coherence & Cohesion 能力。"
+  },
+  {
+    "id": "what_i_like",
+    "name": "表达喜好原因",
+    "template": "What I like (the most) about sth is that...",
+    "triggers": ["what i like about", "what i like the most about", "what i love about", "what i enjoy about", "what i really like about"],
+    "explanation_cn": "把喜欢的具体原因后置，比 I like sth because 更地道，口语中听起来更流利自然。",
+    "example": "What I like the most about my job is that I'm good friends with most of my colleagues.",
+    "ielts_tip": "Part 1/2 描述喜好时使用，帮助展开答案避免答案过短。"
+  },
+  {
+    "id": "whats_great",
+    "name": "突出事物优点",
+    "template": "What's great/amazing about sth is that...",
+    "triggers": ["what's great about", "what's amazing about", "what's interesting about", "what is great about", "what is amazing about", "what's wonderful about"],
+    "explanation_cn": "先说事物，再说它好在哪里，结构清晰，适合 Part 2 描述一个地方/活动/人物。",
+    "example": "What's great about social media is that we can hang out with our friends anytime anywhere.",
+    "ielts_tip": "Part 2 扩展答案时使用，配合具体例子效果更好。"
+  },
+  {
+    "id": "nothing_better",
+    "name": "表达最高喜好",
+    "template": "There's nothing better than...",
+    "triggers": ["there's nothing better than", "there is nothing better than", "nothing better than"],
+    "explanation_cn": "用否定形式表达最高级，比 I love ... the most 更口语化，语气更强。",
+    "example": "There's nothing better than lying on a beach and doing a bit of reading.",
+    "ielts_tip": "Part 1/2 谈论兴趣爱好时使用，体现丰富的词汇表达。"
+  },
+  {
+    "id": "no_doubt",
+    "name": "表达确定性",
+    "template": "There's no doubt that...",
+    "triggers": ["there's no doubt that", "there is no doubt that", "no doubt that"],
+    "explanation_cn": "表达毋庸置疑的事实，语气比 Obviously 或 Clearly 更正式，适合 Part 3 论证观点。",
+    "example": "There's no doubt that Hollywood movies are popular in China, same as everywhere in the world.",
+    "ielts_tip": "Part 3 用于强调普遍现象，增加论证说服力。"
+  },
+  {
+    "id": "goes_without_saying",
+    "name": "强调显而易见",
+    "template": "It goes without saying that...",
+    "triggers": ["it goes without saying that", "goes without saying"],
+    "explanation_cn": "表示某件事不言而喻，比 Obviously 更高级，是地道英语口语中的常用表达。",
+    "example": "It goes without saying that a lot of the information online today is unreliable.",
+    "ielts_tip": "Part 3 陈述普遍认同的观点时使用，体现 Lexical Resource 广度。"
+  },
+  {
+    "id": "its_important",
+    "name": "表达重要性/难度",
+    "template": "It's important/necessary/difficult (for sb) to...",
+    "triggers": ["it's important to", "it's necessary to", "it's difficult to", "it is important to", "it is necessary to", "it's crucial to", "it's essential to", "it's vital to", "it's hard to", "it's challenging to"],
+    "explanation_cn": "用形式主语 It 开头，把真正的主题放到后面，是英语书面语和口语中非常常见的句式结构。",
+    "example": "It's incredibly important for interviewees to make a good first impression at an interview.",
+    "ielts_tip": "Part 3 讨论社会现象时使用，可以接 for sb to do 结构增加精确度。"
+  },
+  {
+    "id": "not_uncommon",
+    "name": "描述普遍现象（委婉）",
+    "template": "It's not uncommon for sb to do sth",
+    "triggers": ["it's not uncommon", "it is not uncommon", "not uncommon for"],
+    "explanation_cn": "用双重否定表示\"很常见\"，语气比 It's common to 更委婉正式，体现语言精准度。",
+    "example": "It's not uncommon for Asian parents to be more strict with their children.",
+    "ielts_tip": "Part 3 谈论社会行为或习惯时使用，避免过于武断的表达。"
+  },
+  {
+    "id": "whenever",
+    "name": "表达规律性行为",
+    "template": "Whenever... / No matter when...",
+    "triggers": ["whenever i", "whenever you", "whenever we", "whenever they", "no matter when"],
+    "explanation_cn": "表示每次某种情况发生时都会怎样，比 Every time 更口语化，适合描述习惯。",
+    "example": "Whenever you go to a park, there are absolutely many people there doing exercise.",
+    "ielts_tip": "Part 1 描述日常习惯时使用，帮助答案更具体真实。"
+  },
+  {
+    "id": "wherever",
+    "name": "表达普遍性",
+    "template": "Wherever... / No matter where...",
+    "triggers": ["wherever you", "wherever i", "wherever we", "no matter where"],
+    "explanation_cn": "表示无论在哪里都会怎样，用于强调某种现象的普遍性。",
+    "example": "No matter where you go, you can see people wearing jeans.",
+    "ielts_tip": "Part 3 描述全球化现象时使用，适合谈论技术、文化传播等话题。"
+  },
+  {
+    "id": "considered",
+    "name": "表达普遍认知",
+    "template": "sth is considered (as/to be)...",
+    "triggers": ["is considered to be", "is considered as", "are considered to be", "are considered as", "is widely considered"],
+    "explanation_cn": "被动语态表达普遍认知，比 People think that 更正式，体现客观立场。",
+    "example": "Being able to stick to a plan is considered to be one of the most important building blocks of success.",
+    "ielts_tip": "Part 3 引用普遍观点时使用，配合 by many people 可以更精确。"
+  },
+  {
+    "id": "plays_role",
+    "name": "描述重要作用",
+    "template": "sth plays a crucial/vital role in...",
+    "triggers": ["plays a crucial role", "plays a vital role", "plays an essential role", "play a crucial role", "play a vital role", "plays a key role", "plays an important role"],
+    "explanation_cn": "表达某事物在某方面起到重要作用，比 is very important for 更正式且地道。",
+    "example": "Education plays a crucial role in shaping a person's future.",
+    "ielts_tip": "Part 3 分析原因或影响时使用，是高分答案中的高频表达。"
+  },
+  {
+    "id": "effect_impact",
+    "name": "描述影响/效果",
+    "template": "have a positive/negative effect/impact on sth",
+    "triggers": ["positive effect on", "negative effect on", "positive impact on", "negative impact on", "have an effect on", "has an effect on", "have an impact on", "has an impact on"],
+    "explanation_cn": "精确描述影响的性质（积极/消极），比 affect 或 influence 更能体现词汇精准度。",
+    "example": "Having good interpersonal skills absolutely has a positive impact on one's success in the workplace.",
+    "ielts_tip": "Part 3 分析利弊时必备句式，搭配 absolutely / significantly 效果更好。"
+  },
+  {
+    "id": "toll",
+    "name": "描述严重危害",
+    "template": "take its toll on...",
+    "triggers": ["takes its toll on", "take its toll on", "taking its toll on", "took its toll on"],
+    "explanation_cn": "表达长期累积的负面影响，比 damage 或 hurt 更生动，是高级词汇表达。",
+    "example": "Not exercising for an extended period of time will definitely take its toll on our health.",
+    "ielts_tip": "Part 3 谈论健康、环境、工作压力话题时使用，体现词汇丰富度。"
+  },
+  {
+    "id": "bring_together",
+    "name": "拉近关系/促进联结",
+    "template": "bring... closer together / bring... together",
+    "triggers": ["bring people together", "brings people together", "bring us together", "brings people closer", "bring people closer", "brought people together"],
+    "explanation_cn": "表达某事拉近人与人之间关系，常用于讨论社交媒体、活动、文化等话题。",
+    "example": "A common language brings people from different countries and cultures together.",
+    "ielts_tip": "Part 3 谈论科技与人际关系、文化交流时使用，是高频搭配。"
+  },
+  {
+    "id": "so_that",
+    "name": "表达目的",
+    "template": "so that... / in order to...",
+    "triggers": ["in order to", "so that"],
+    "explanation_cn": "清晰表达做某事的目的，比 because 更精确，体现逻辑连接能力。",
+    "example": "I wanted to teach my cousin how to play the guitar so that he could be more attractive to others.",
+    "ielts_tip": "扩展答案时使用，把行为和目的连接起来，避免答案过于简短。"
+  },
+  {
+    "id": "better_understanding",
+    "name": "表达理解加深",
+    "template": "get/give a better understanding of sth",
+    "triggers": ["better understanding of", "better understanding about", "deeper understanding of"],
+    "explanation_cn": "比 understand more 更正式，适合描述学习、旅行、阅读带来的认知提升。",
+    "example": "Learning foreign languages is incredibly important because it gives us a better understanding of other cultures.",
+    "ielts_tip": "Part 2 谈论经历收获时使用，体现 Lexical Resource 的精准度。"
+  },
+  {
+    "id": "no_choice",
+    "name": "表达不得不做",
+    "template": "have no choice but to do sth",
+    "triggers": ["have no choice but to", "had no choice but to", "has no choice but to", "left with no choice"],
+    "explanation_cn": "表达被迫做某事，比 have to 或 must 更强调无奈和被迫感，语气更地道。",
+    "example": "I don't like to be an early riser, but I have no choice but to get up at 6 every day.",
+    "ielts_tip": "Part 1/2 谈论工作、学习压力时使用，体现真实生活经验。"
+  },
+  {
+    "id": "over_the_years",
+    "name": "描述变化趋势",
+    "template": "...have changed/grown over the last/past...years",
+    "triggers": ["over the last", "over the past", "in the past few years", "in recent years", "in recent decades", "over the years"],
+    "explanation_cn": "描述一段时间内的变化趋势，适合 Part 3 讨论社会现象的演变。",
+    "example": "The way people communicate has changed significantly over the last decade.",
+    "ielts_tip": "Part 3 分析历史变化时使用，搭配 significantly / drastically 增强表达力度。"
+  },
+  {
+    "id": "highly_likely",
+    "name": "预测未来可能性",
+    "template": "It's highly likely that...",
+    "triggers": ["it's highly likely that", "it is highly likely that", "highly likely that"],
+    "explanation_cn": "比 probably 或 maybe 更正式的可能性表达，适合预测未来趋势，体现词汇精准度。",
+    "example": "It's highly likely that in the near future, we will be able to read news on our ceilings.",
+    "ielts_tip": "Part 3 预测未来、谈论科技发展时使用，是高分答案标志性表达。"
+  },
+  {
+    "id": "there_will_be",
+    "name": "预测未来变化",
+    "template": "There will probably/definitely be... who/which...",
+    "triggers": ["there will probably be", "there will definitely be", "there will likely be", "there will be more and more"],
+    "explanation_cn": "用 there will be 预测未来，配合定语从句增加细节，比 In the future, ... 结构更多样。",
+    "example": "There will probably be more and more people in the next 20 or 30 years who will be out of work due to automation.",
+    "ielts_tip": "Part 3 预测未来影响时使用，配合时间状语（in the next 20 years）更具体。"
+  },
+  {
+    "id": "raise_awareness",
+    "name": "提升认知/意识",
+    "template": "raise people's awareness of...",
+    "triggers": ["raise awareness of", "raise people's awareness", "raise public awareness", "raising awareness of"],
+    "explanation_cn": "表达提升公众对某问题的认识，适合环境、健康、教育等社会话题，是高频搭配。",
+    "example": "It's crucial that we raise people's awareness of the importance of protecting old buildings.",
+    "ielts_tip": "Part 3 谈论社会问题解决方案时使用，体现词汇的话题相关性。"
+  },
+  {
+    "id": "place_emphasis",
+    "name": "强调重视某事",
+    "template": "place emphasis on sth",
+    "triggers": ["place emphasis on", "places emphasis on", "placing emphasis on", "put emphasis on", "puts emphasis on"],
+    "explanation_cn": "比 focus on 或 pay attention to 更正式，适合讨论教育、政策等话题。",
+    "example": "Many Asian parents place emphasis on academic achievement above everything else.",
+    "ielts_tip": "Part 3 分析教育或社会现象时使用，体现 Lexical Resource 的广度。"
+  },
+
+  { "id": "as_far_as_i_know", "name": "限定到个人知识范围", "template": "As far as I know / can tell, ...", "triggers": ["as far as i know", "as far as i can tell", "as far as i can see", "as far as i'm aware"], "explanation_cn": "把主张限定在说话者的个人知识范围内，既诚实又不削弱论点，语气比直接断言更谦逊自然。", "example": "As far as I can tell, most universities in the UK now offer some form of online learning.", "ielts_tip": "Part 3 回答不确定的社会问题时使用，避免过度自信引起争议。" },
+
+  { "id": "it_seems_to_me", "name": "推断而非断言", "template": "It seems / appears (to me) that...", "triggers": ["it seems to me that", "it seems to me", "it appears to me that", "it appears that", "it seems that"], "explanation_cn": "呈现观察或推断而非确定性陈述，语气比 I think 更学术，适合表达观察到的现象。", "example": "It seems to me that the benefits of remote work outweigh the drawbacks for most office-based jobs.", "ielts_tip": "Part 3 分析现象时使用，体现说话者有观察和反思能力而非主观臆断。" },
+
+  { "id": "personally_speaking", "name": "标注个人立场", "template": "Personally (speaking), I...", "triggers": ["personally speaking", "personally, i", "personally i"], "explanation_cn": "明确标注这是个人主观立场，为对话留出分歧空间，在口语中极高频且自然。", "example": "Personally, I think living in a large city has more advantages than disadvantages.", "ielts_tip": "Part 1/3 表达观点时使用，信号化说话者有独立见解，不只是在陈述事实。" },
+
+  { "id": "to_be_honest", "name": "坦诚框架", "template": "To be (perfectly / completely) honest, ...", "triggers": ["to be honest", "to be perfectly honest", "to be completely honest", "to be frank"], "explanation_cn": "把下文框定为真诚甚至出乎意料的表态，营造对话亲密感，是地道口语中的常见引导语。", "example": "To be perfectly honest, I find traditional classroom learning more effective than online courses.", "ielts_tip": "Part 1 回答个人偏好时使用，使答案听起来真实可信，而不是刻板的模板回答。" },
+
+  { "id": "generally_speaking", "name": "泛化陈述（有限适用）", "template": "Generally speaking / Broadly speaking, ...", "triggers": ["generally speaking", "broadly speaking", "generally speaking,", "broadly speaking,"], "explanation_cn": "表明主张适用于大多数情况但并非绝对，防止被具体反例推翻，是高分答案中平衡表达的关键。", "example": "Generally speaking, younger generations tend to be more comfortable with technology than older ones.", "ielts_tip": "Part 3 陈述社会趋势时使用，配合 but there are exceptions 效果更好。" },
+
+  { "id": "ideally", "name": "区分理想与现实", "template": "Ideally, ...", "triggers": ["ideally,", "ideally "], "explanation_cn": "区分理想状态和现实情况，IELTS Part 3 平衡性答案的利器，体现说话者有批判性思维。", "example": "Ideally, every child would have access to the same quality of education regardless of where they live.", "ielts_tip": "Part 3 讨论解决方案时使用，后接 but in reality / in practice 可以让答案更立体。" },
+
+  { "id": "on_top_of_that", "name": "追加论点（口语）", "template": "On top of that, / What's more, ...", "triggers": ["on top of that", "what's more,", "what's more ", "on top of this"], "explanation_cn": "在同一方向上追加论点，比 Furthermore 更口语自然，是扩展答案、避免答案过短的有效工具。", "example": "Living near work saves time. On top of that, it significantly reduces commuting costs.", "ielts_tip": "Part 2/3 扩展观点时使用，帮助答案达到足够长度同时保持逻辑清晰。" },
+
+  { "id": "having_said_that", "name": "转折让步（平衡讨论）", "template": "Having said that, ...", "triggers": ["having said that", "having said this"], "explanation_cn": "先承认前一观点，再引入对立或限定观点，是 IELTS Part 3 平衡讨论的核心标志词，体现思维成熟度。", "example": "Technology has undoubtedly made life more convenient. Having said that, it has also created new forms of social isolation.", "ielts_tip": "Part 3 回答争议性问题时必用，可以将 Band 6 的单方面回答升级为 Band 7+ 的平衡回答。" },
+
+  { "id": "not_to_mention", "name": "强化补充论点", "template": "Not to mention (the fact that) ...", "triggers": ["not to mention", "not to mention that", "not to mention the fact that"], "explanation_cn": "添加一个几乎不言而喻的额外因素，修辞上暗示这个补充点重要到不需要特别解释。", "example": "The new policy would reduce carbon emissions, not to mention the economic benefits it would bring.", "ielts_tip": "Part 3 论证观点时使用，能让论证看起来游刃有余而不是刻意堆砌。" },
+
+  { "id": "in_terms_of", "name": "切换讨论维度", "template": "In terms of [aspect], ...", "triggers": ["in terms of", "in terms of the", "in terms of how"], "explanation_cn": "通过显式信号化维度切换来组织多部分答案，是 IELTS Part 2 & 3 答案结构化的高频手段。", "example": "In terms of the environmental impact, electric vehicles are clearly a step in the right direction.", "ielts_tip": "Part 2 描述多个方面时使用，比 Firstly / Secondly 更自然流畅。" },
+
+  { "id": "in_other_words", "name": "重述解释", "template": "In other words, ... / To put it another way, ...", "triggers": ["in other words", "to put it another way", "that is to say"], "explanation_cn": "用不同措辞重述主张，信号化说话者意识到需要进一步解释，体现表达的灵活性。", "example": "The cost of living has become prohibitive — in other words, many young professionals simply can't afford to live independently.", "ielts_tip": "Part 3 解释复杂概念时使用，确保考官能理解你的论点。" },
+
+  { "id": "imagine_scenario", "name": "假设情景化", "template": "Imagine (a situation where / if) ...", "triggers": ["imagine a situation", "imagine if", "imagine that", "just imagine"], "explanation_cn": "用假设场景让抽象概念变得具体生动，是让考官对你的论点产生画面感的修辞手法。", "example": "Imagine a situation where children spend six hours a day in front of screens — the long-term effects on concentration would be severe.", "ielts_tip": "Part 3 举例论证时使用，比直接陈述事实更有感染力。" },
+
+  { "id": "while_although", "name": "经典让步结构", "template": "While / Although [X], [Y]...", "triggers": ["while it is true", "while it's true", "although it is true", "although it's true", "while some people", "although some people"], "explanation_cn": "先承认对方观点再坚持主要立场，是英语论证中最经典的让步结构，体现思维的客观性。", "example": "While it's true that social media can spread misinformation, it has also given ordinary people a platform to hold institutions accountable.", "ielts_tip": "Part 3 讨论有争议话题时使用，是平衡答案的基础结构，直接影响 Coherence 评分。" },
+
+  { "id": "despite_concession", "name": "对抗性让步", "template": "Despite / In spite of [X], [Y]...", "triggers": ["despite the fact that", "despite having", "despite this", "in spite of", "in spite of the fact"], "explanation_cn": "承认障碍或挑战的同时断言结果不因此改变，语气比 although 更紧凑，体现论证的韧性。", "example": "Despite the significant cost involved, many families still prioritize international travel as a form of education.", "ielts_tip": "Part 2/3 描述克服困难或反驳反对意见时使用。" },
+
+  { "id": "even_if", "name": "极端让步测试", "template": "Even if [X], [Y still holds]...", "triggers": ["even if", "even if we"], "explanation_cn": "通过授予最不利的假设条件来测试论点强度，体现逻辑自信，是高分答案的修辞技巧。", "example": "Even if electric cars are not yet practical for everyone, they represent the direction we need to move in.", "ielts_tip": "Part 3 反驳对立观点时使用，让自己的论点显得更加坚实有力。" },
+
+  { "id": "something_to_be_said", "name": "部分认可（细腻立场）", "template": "There is (certainly) something to be said for [X], but...", "triggers": ["something to be said for", "there is something to be said", "there's something to be said"], "explanation_cn": "部分认可对立观点而不完全接受，比简单的 agree/disagree 更细腻，体现语言的细微差别。", "example": "There is certainly something to be said for the traditional classroom model, but online learning offers flexibility that simply can't be matched.", "ielts_tip": "Part 3 被要求给出个人观点时使用，展示你能理解问题的复杂性。" },
+
+  { "id": "designed_to", "name": "被动语态表达目的", "template": "[Subject] was designed / intended / meant to...", "triggers": ["is designed to", "was designed to", "is intended to", "was intended to", "is meant to", "was meant to"], "explanation_cn": "被动语态表达某事物的设计目的，焦点在功能而非行为者，是讨论政策、系统、技术的常用结构。", "example": "This program was designed to help students who struggle with reading.", "ielts_tip": "Part 3 讨论政策效果或科技用途时使用，体现 Grammatical Range 中被动语态的自然运用。" },
+
+  { "id": "so_adj_that", "name": "程度+结果句式", "template": "so + [adjective] + that... / such [a/an + noun] that...", "triggers": ["so bad that", "so good that", "so important that", "so much that", "so many that", "so significant that", "such a", "such an"], "explanation_cn": "把程度和结果整合在一个句式中，比分成两句话更紧凑，体现句式复杂度。", "example": "The traffic was so bad that I arrived two hours late.", "ielts_tip": "Part 2 描述印象深刻的经历时使用，是 B2 级语法范围的重要体现。" },
+
+  { "id": "even_though", "name": "强调真实对比", "template": "Even though [X], [Y]...", "triggers": ["even though", "even though it"], "explanation_cn": "比 although 更强调对比的真实性——两件事都是事实，但产生矛盾，体现说话者对细节的把控。", "example": "Even though living costs are rising sharply, many people still prefer city life.", "ielts_tip": "Part 3 讨论矛盾现象时使用，适合城市化、消费主义等有悖论感的话题。" },
+
+  { "id": "the_more_the_more", "name": "比例关系句式", "template": "The more..., the more/less...", "triggers": ["the more", "the less", "the better", "the harder", "the longer"], "explanation_cn": "用关联比较级表达两件事的比例关系，是雅思考官在 Grammatical Range 维度特别关注的句式。", "example": "The more time you spend practicing, the more fluent you become.", "ielts_tip": "Part 3 分析因果关系时使用，被 Cambridge 考官明确列为 Band 7+ 语法范围标志之一。" },
+
+  { "id": "compared_to", "name": "对比参照点", "template": "Compared to/with [X], [Y]...", "triggers": ["compared to", "compared with", "in comparison to", "in comparison with"], "explanation_cn": "用参照点锚定主张的程度，避免模糊的最高级表达，是结构化对比论证的标准方法。", "example": "Compared to previous generations, young people today have far more opportunities.", "ielts_tip": "Part 3 分析社会变化或代际差异时使用，适合科技、教育、生活方式等话题。" },
+
+  { "id": "unlike_contrast", "name": "对比引导（突出差异）", "template": "Unlike [X], [Y]...", "triggers": ["unlike", "unlike many", "unlike most", "unlike traditional", "unlike other"], "explanation_cn": "直接以对比引导句子，高效突出两者差异，比 while/whereas 更简洁有力。", "example": "Unlike traditional classrooms, online learning allows students to work at their own pace.", "ielts_tip": "Part 2/3 描述新旧事物对比时使用，让答案结构一目了然。" },
+
+  { "id": "tends_to", "name": "泛化趋势（有据可查）", "template": "[Subject] tends to / is inclined to / is likely to...", "triggers": ["tends to", "tend to", "is inclined to", "are inclined to", "is likely to", "are likely to"], "explanation_cn": "表达一般趋势而非绝对规律，比 always 或 never 更准确，是学术口语中高频的泛化表达。", "example": "People who grow up in multilingual environments tend to be more adaptable.", "ielts_tip": "Part 3 谈论社会群体行为时使用，帮助避免过度概括，体现表达的准确性。" },
+
+  { "id": "according_to", "name": "引用来源/数据", "template": "According to [source], ... / [Source] suggests/argues that...", "triggers": ["according to", "according to research", "according to studies", "research suggests", "studies show", "studies suggest"], "explanation_cn": "把主张归因于外部来源，增加论证可信度，是 Part 3 引用证据的标准方式。", "example": "According to recent studies, sleep deprivation affects cognitive performance significantly.", "ielts_tip": "Part 3 支持观点时使用，不需要引用真实数据，泛指 studies/research 即可。" },
+
+  { "id": "never_rarely_inversion", "name": "否定副词倒装（强烈强调）", "template": "Never / Rarely / Seldom + auxiliary + subject + verb", "triggers": ["never have i", "rarely do i", "rarely does", "seldom do", "seldom have", "rarely have"], "explanation_cn": "把否定副词前置触发主谓倒装，产生强烈的修辞强调效果，是 C1 口语和正式语域的标志性结构。", "example": "Never have I seen such a dramatic shift in public opinion.", "ielts_tip": "Part 3 强调某事的极端程度或特殊性时使用，直接提升 Grammatical Range 评分。" },
+
+  { "id": "not_only_but_also", "name": "双重强调递进", "template": "Not only does/do [X], but (also) [Y]...", "triggers": ["not only does", "not only do", "not only is", "not only are", "not only has", "not only have", "not only"], "explanation_cn": "双层递进强调：先提一个优点/特征，再追加一个更重要或意外的特征，配合倒装结构体现 C1 语法范围。", "example": "Not only does exercise improve physical health, but it also boosts mental wellbeing.", "ielts_tip": "Part 3 列举多重好处或影响时使用，比简单罗列 Firstly/Secondly 更有表达力。" },
+
+  { "id": "it_cleft", "name": "It 强调句（聚焦某成分）", "template": "It is/was [focus] that/who...", "triggers": ["it is ... that", "it was ... that", "it is ... who", "it was ... who"], "explanation_cn": "用 It is/was...that 把焦点集中在句子某个成分上，清晰告诉听者哪个信息是重点或新信息。", "example": "It was the introduction of smartphones that changed social interaction most profoundly.", "ielts_tip": "Part 2/3 强调原因或关键因素时使用，是 Cambridge C1 Advanced 考官明确认可的高分结构。" },
+
+  { "id": "wh_cleft", "name": "Wh 强调句（组织立场）", "template": "What concerns/bothers/surprises me is (that)... / What I mean is...", "triggers": ["what concerns me", "what bothers me", "what surprises me", "what worries me", "what i mean is", "what really matters", "what i find"], "explanation_cn": "用 What... is 结构把重点信息后置，使答案有意图感，是 C1 口语中极自然的思维组织方式。", "example": "What concerns me most is the lack of long-term planning in government policy.", "ielts_tip": "Part 3 表达核心立场或担忧时使用，比 I am most concerned about... 更有口语节奏感。" },
+
+  { "id": "having_past_participle", "name": "完成分词从句（先发经历）", "template": "Having [past participle], [subject] + [verb]...", "triggers": ["having lived", "having studied", "having worked", "having spent", "having experienced", "having grown up", "having been"], "explanation_cn": "把先发经历压缩进分词从句，紧凑地建立说话者的个人权威或背景，是 C1 文体经济性的标志。", "example": "Having lived abroad for several years, she has a very different perspective on work culture.", "ielts_tip": "Part 2 描述个人经历对观点的影响时使用，开头就能建立可信度。" },
+
+  { "id": "should_inversion", "name": "正式倒装条件句", "template": "Should [subject] + [verb], [main clause]...", "triggers": ["should this", "should the", "should you", "should it", "should they", "should there"], "explanation_cn": "省略 if 用 should 倒装取而代之，是英语中最正式的条件句形式之一，在商务和学术语境中自然出现。", "example": "Should the situation deteriorate further, emergency measures will be implemented.", "ielts_tip": "Part 3 讨论政策或假设情景时使用，直接体现 C1 的 Grammatical Range 能力。" },
+
+  { "id": "were_to_inversion", "name": "Were to 假设倒装", "template": "Were [subject] to [verb], [main clause]...", "triggers": ["were it to", "were they to", "were the", "were this to", "were that to"], "explanation_cn": "用 were to 倒装替代 if...were to，是英语假设条件句最高级别的正式表达，体现 C1 语法控制力。", "example": "Were the company to collapse, thousands of jobs would be at risk.", "ielts_tip": "Part 3 讨论极端情况或政策失败后果时使用，配合 catastrophic / significant 等形容词效果更好。" },
+
+  { "id": "which_is_evaluative", "name": "评价性非限定从句", "template": "[clause], which is + [evaluative adjective]...", "triggers": ["which is quite", "which is rather", "which is incredibly", "which is somewhat", "which is fairly", "which is surprisingly", "which is worrying", "which is encouraging"], "explanation_cn": "在陈述事实后附加评价性注释，把立场自然嵌入信息流，避免单独加一句评价显得生硬。", "example": "The cost of living has doubled in ten years, which is quite alarming.", "ielts_tip": "Part 2/3 描述数据或现象后表达态度时使用，让答案有观点而不只是陈述。" },
+
+  { "id": "to_my_mind", "name": "高级立场标记", "template": "To my mind, ... / As far as I'm concerned, ...", "triggers": ["to my mind", "as far as i'm concerned", "as far as i am concerned", "from my perspective", "from my point of view"], "explanation_cn": "比 I think 更正式的立场标记，清晰表明个人视角，避免把个人观点当成普遍事实。", "example": "To my mind, education should always be free at the point of access.", "ielts_tip": "Part 3 被要求给出个人观点时使用，比反复使用 I think 更能体现 Lexical Resource 广度。" },
+
+  { "id": "is_said_to_be", "name": "引用普遍认知（被动归因）", "template": "[Subject] is said / thought / believed / reported to...", "triggers": ["is said to", "are said to", "is thought to", "are thought to", "is believed to", "are believed to", "is known to"], "explanation_cn": "用被动语态把主张归因于模糊的集体认知，既引用了\"证据\"又保持了批判距离，是学术口语中的高频表达。", "example": "Regular meditation is said to reduce stress levels significantly, though individual results vary.", "ielts_tip": "Part 3 讨论健康、科技、教育话题时使用，可以灵活引用观点而不必提供具体来源。" },
+
+  { "id": "mixed_conditional", "name": "混合条件句（过去因，现在果）", "template": "If + [past perfect], [subject] + would/could + [base verb] (now/today)...", "triggers": ["if i had", "if we had", "if they had", "if it had", "if she had", "if he had"], "explanation_cn": "第三条件句（过去原因）+ 第二条件句（现在结果）混搭，表达过去的遗憾如何影响现在，是 Band 7 与 Band 6 的核心分水岭句式。", "example": "If I had studied abroad when I was younger, I would be far more confident in my English now.", "ielts_tip": "Part 2 反思经历、Part 3 分析历史决策时使用，是考官 Grammatical Range 评分时最看重的结构之一。" },
+
+  { "id": "the_fact_that", "name": "事实从句→逻辑结论", "template": "The fact that [clause] means/suggests/implies that [clause]...", "triggers": ["the fact that", "the fact is that"], "explanation_cn": "把证据（事实从句）和结论（主句）清晰分层，创建\"证据→推论\"的逻辑链，体现有据可查的论证能力。", "example": "The fact that youth unemployment has risen sharply means that educational systems need to rethink their priorities.", "ielts_tip": "Part 3 论证社会问题时使用，比 Because... 结构更正式，显示说话者有逻辑组织能力。" },
+
+  { "id": "the_reason_why", "name": "原因解释从句", "template": "The reason why [clause] is that [clause]...", "triggers": ["the reason why", "the reason that", "the main reason why", "the main reason is that"], "explanation_cn": "用名词性从句直接点明原因，比 Because... 开头更正式，是 Part 2/3 解释动机或现象根源的标准结构。注意：用 is that，不用 is because。", "example": "The reason why remote work became so widespread is that technology finally made it practically viable.", "ielts_tip": "Part 2 解释选择原因、Part 3 分析现象成因时使用，注意搭配 is that（不是 is because）。" },
+
+  { "id": "no_less_important", "name": "等量重要性比较", "template": "[X] is no less important than [Y]...", "triggers": ["no less important than", "no less significant than", "no less valuable than", "no less effective than"], "explanation_cn": "用双重否定表达\"同等重要\"，比 just as important as 更正式精炼，在讨论两个并列因素时体现语言精准度。", "example": "Emotional intelligence is no less important than academic ability when it comes to long-term career success.", "ielts_tip": "Part 3 平衡讨论两个因素时使用，避免偏向一方而忽视另一方，体现 Coherence 评分中的平衡性。" }
+]

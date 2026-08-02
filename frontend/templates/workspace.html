@@ -1,0 +1,4124 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Workspace - English Learning Tool</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --surface: #ffffff;
+      --surface-alt: #eef2ed;
+      --ink: #202421;
+      --muted: #687069;
+      --line: #d9ded8;
+      --brand: #2f6f5e;
+      --brand-dark: #245548;
+      --brand-light: #d1fae5;
+      --gold: #b8860b;
+      --danger: #a33b2f;
+      --shadow: 0 10px 28px rgba(31,44,36,.08);
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { border-color: var(--brand); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+
+    .workspace {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 58px minmax(0, 1fr);
+    }
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 2px 10px rgba(31,44,36,.04);
+      min-width: 0;
+    }
+    .home-link {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      text-decoration: none;
+      transition: color .16s ease, border-color .16s ease, background .16s ease, transform .16s ease;
+    }
+    .home-link:hover {
+      color: var(--brand-dark);
+      border-color: var(--brand);
+      background: var(--brand-light);
+      transform: translateX(-1px);
+    }
+    .home-link:focus-visible {
+      outline: 3px solid rgba(44, 123, 99, .2);
+      outline-offset: 2px;
+    }
+    .home-link-arrow {
+      font-size: 18px;
+      font-weight: 500;
+      transform: translateY(-1px);
+    }
+    .top-bar h1 {
+      margin: 0;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .top-bar .mode-control { display: none; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+      border: 1px solid var(--line);
+      background: var(--surface-alt);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .status-badge.ready { background: var(--brand-light); color: var(--brand-dark); border-color: #a7e7cc; }
+    .status-badge.failed { background: #fff2ef; color: var(--danger); border-color: #f1c0b8; }
+    .mode-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .mode-control select {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 6px 10px;
+      outline: none;
+    }
+
+    .main-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(680px, 1fr) 390px;
+      gap: 16px;
+      padding: 16px;
+    }
+    .watch-column,
+    .side-column {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .side-column { gap: 0; }
+    .video-card,
+    .subtitle-card,
+    .timeline-card,
+    .review-card,
+    .chat-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .video-card {
+      flex: 0 0 auto;
+      padding: 10px;
+    }
+    #youtube-player {
+      aspect-ratio: 16 / 9;
+      width: 100%;
+      max-height: calc(100vh - 360px);
+      min-height: 300px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #050505;
+    }
+    #youtube-player iframe { width: 100%; height: 100%; border: 0; display: block; }
+    #youtube-player audio,
+    #youtube-player video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #050505;
+    }
+    #youtube-player audio {
+      height: 96px;
+      margin: auto 0;
+    }
+    #youtube-player.local-audio {
+      display: flex;
+      align-items: center;
+      min-height: 140px;
+      aspect-ratio: auto;
+    }
+
+    .subtitle-card {
+      min-height: 218px;
+      flex: 0 0 auto;
+      padding: 14px 18px 16px;
+      overflow: visible;
+    }
+    .learning-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .control-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .learning-controls select {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 5px 9px;
+      outline: none;
+    }
+    .study-mode-switch {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #f0f3ee;
+    }
+    .study-mode-switch button {
+      min-height: 30px;
+      padding: 5px 14px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .study-mode-switch button.active {
+      background: var(--surface);
+      border-color: var(--line);
+      color: var(--ink);
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .reading-play-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 24px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--brand-dark);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .reading-play-button:hover { border-color: var(--brand); }
+    .subtitle-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .subtitle-label strong { color: var(--brand); font-size: 13px; }
+    .sentence-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .star-save {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      min-height: 34px;
+      padding: 0;
+      border: 1px solid #ead48e;
+      border-radius: 50%;
+      background: #fffaf0;
+      color: var(--gold);
+      box-shadow: 0 3px 10px rgba(184,134,11,.12);
+    }
+    .star-save svg {
+      width: 19px;
+      height: 19px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      pointer-events: none;
+    }
+    .star-save.saved {
+      background: #fff4c2;
+      border-color: var(--gold);
+    }
+    .star-save.saved svg { fill: currentColor; }
+    .star-save:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: var(--gold);
+      background: #fff4c2;
+    }
+    .star-save:disabled {
+      opacity: .45;
+      transform: none;
+    }
+    .star-save::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 20;
+      min-width: 76px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-3px);
+      transition: opacity .12s ease, transform .12s ease;
+      white-space: nowrap;
+    }
+    .star-save:hover::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    #current-subtitle {
+      min-height: 78px;
+      display: block;
+      font-size: 23px;
+      line-height: 1.45;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    #current-subtitle .highlight-word,
+    .outline-preview .highlight-word,
+    .reading-passage .highlight-word {
+      color: var(--gold);
+      font-weight: 750;
+      background: #fff8dc;
+      border-radius: 4px;
+      padding: 0 2px;
+    }
+    #subtitle-translation {
+      min-height: 24px;
+      margin-top: 8px;
+      font-size: 17px;
+      line-height: 1.5;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .subtitle-word {
+      display: inline;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      min-height: 0;
+      padding: 0 3px;
+      margin: 0 1px;
+      font: inherit;
+      line-height: inherit;
+      border-radius: 4px;
+      cursor: pointer;
+      vertical-align: baseline;
+    }
+    .sentence-nav {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      min-height: 30px;
+      padding: 0;
+      border-radius: 50%;
+      color: var(--brand-dark);
+      background: var(--surface);
+    }
+    .subtitle-word:hover {
+      background: var(--brand-light);
+      color: var(--brand-dark);
+    }
+    .subtitle-word.saved-word {
+      color: var(--gold);
+      text-decoration: underline;
+      text-decoration-color: #ead48e;
+      text-underline-offset: 3px;
+    }
+    .word-star {
+      margin-left: 2px;
+      color: var(--gold);
+      font-size: .72em;
+      vertical-align: 16%;
+    }
+    .sentence-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      min-height: 38px;
+    }
+    .vocab-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .vocab-chip {
+      border-radius: 999px;
+      border: 1px solid #ead48e;
+      background: #fff8dc;
+      color: #7a5a00;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .vocab-chip .meaning {
+      color: #5f6670;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+    .word-popover {
+      position: fixed;
+      z-index: 100;
+      max-width: min(260px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: 0 12px 34px rgba(31,44,36,.16);
+      color: var(--ink);
+      display: none;
+    }
+    .word-popover.open { display: block; }
+    .word-popover .word {
+      font-weight: 800;
+      color: var(--brand-dark);
+      margin-bottom: 2px;
+    }
+    .word-popover .phonetic {
+      color: #8fa88f;
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 4px;
+      letter-spacing: .5px;
+    }
+    .word-popover .meaning {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .word-popover .lookup-source {
+      color: #8a958e;
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .word-popover .word-actions {
+      display: flex;
+      justify-content: flex-end;
+      position: sticky;
+      bottom: 0;
+      padding-top: 8px;
+      margin-top: 8px;
+      background: var(--surface);
+    }
+    .word-save-btn {
+      min-height: 28px;
+      border-color: #ead48e;
+      background: #fffaf0;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .word-save-btn.saved {
+      background: #fff4c2;
+      border-color: var(--gold);
+    }
+    .review-card {
+      flex: 0 0 var(--study-collection-height, 26%);
+      height: var(--study-collection-height, auto);
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+    }
+    .review-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 12px 14px 14px;
+    }
+    #study-collection {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .review-counts {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .review-counts span {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-alt);
+    }
+    .review-action-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .review-action-row .review-action {
+      flex: 1 1 108px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 12px;
+      background: var(--brand);
+      color: white;
+      border-color: var(--brand);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .review-action-row .review-action--intensive {
+      border-color: #e5bd55;
+      background: #fff3d2;
+      color: #744b00;
+    }
+    .review-action-row .review-action--intensive:hover:not(:disabled) {
+      border-color: #d2a52e;
+      background: #ffe9ad;
+    }
+    .review-copy-status {
+      flex: 1 0 100%;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .sentence-tag-panel {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .sentence-tag-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-alt);
+      padding: 10px;
+    }
+    .sentence-tag-text {
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .sentence-tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .sentence-tag-chip {
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: white;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .sentence-tag-form {
+      display: grid;
+      grid-template-columns: minmax(82px, 110px) minmax(0, 1fr) auto;
+      gap: 6px;
+    }
+    .sentence-tag-form select,
+    .sentence-tag-form input {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 8px;
+      background: white;
+    }
+    .sentence-tag-form button {
+      min-height: 32px;
+      padding: 0 10px;
+      background: var(--ink);
+      color: white;
+      border-color: var(--ink);
+    }
+    .sentence-tag-name-control {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .sentence-tag-name-control select,
+    .sentence-tag-name-control input {
+      width: 100%;
+      min-width: 0;
+    }
+    .subtitle-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .timeline-card {
+      flex: 0 0 var(--content-outline-height, 32%);
+      height: var(--content-outline-height, auto);
+      min-height: 54px;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-head {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 14px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+    .outline-generate-btn {
+      flex: 0 0 auto;
+      min-height: 30px;
+      margin-left: auto;
+      padding: 5px 9px;
+      border-color: #c9d2c7;
+      background: var(--surface-alt);
+      color: var(--brand-dark);
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .document-summary {
+      flex: 0 1 auto;
+      min-height: 0;
+      max-height: min(58%, 360px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      margin: 10px 10px 4px;
+      padding: 11px 12px;
+      border: 1px solid #ced9cf;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #f1f6f1, #fffaf0);
+    }
+    .document-summary[hidden] { display: none; }
+    .document-summary-type {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+    .document-summary-copy { margin: 5px 0 9px; color: #3f4d44; font-size: 12px; line-height: 1.55; }
+    .document-summary-sections { display: grid; gap: 5px; }
+    .document-summary-link {
+      display: grid;
+      grid-template-columns: minmax(74px, auto) minmax(0, 1fr);
+      gap: 8px;
+      min-height: 0;
+      padding: 6px 7px;
+      border-color: transparent;
+      background: rgba(255, 255, 255, .68);
+      text-align: left;
+    }
+    .document-summary-link strong { color: var(--brand-dark); font-size: 11px; }
+    .document-summary-link span { color: var(--muted); font-size: 11px; }
+    .reading-passage p.outline-target-flash {
+      border-radius: 6px;
+      background: #fff4c9;
+      box-shadow: 0 0 0 5px #fff4c9;
+      transition: background 1.4s ease, box-shadow 1.4s ease;
+    }
+    .study-collection-card { min-height: 168px; }
+    .study-collection-card .reading-saved-list {
+      flex: 0 1 190px;
+      max-height: 190px;
+      border-bottom: 1px solid var(--line);
+    }
+    .study-collection-card .review-body { flex: 1 1 auto; }
+    .panel-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    #subtitle-timeline {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .outline-section {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: text;
+    }
+    .outline-section:hover { background: #f9fbf8; border-color: var(--line); }
+    .outline-section.active {
+      background: var(--brand-light);
+      border-color: #a7e7cc;
+    }
+    .outline-section.selected {
+      background: #fff8dc;
+      border-color: #ead48e;
+    }
+    .outline-time {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      padding-top: 1px;
+    }
+    .outline-body {
+      min-width: 0;
+    }
+    .outline-title {
+      font-size: 14px;
+      line-height: 1.35;
+      color: var(--ink);
+      font-weight: 750;
+    }
+    .outline-preview {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .outline-actions {
+      display: inline-flex;
+      gap: 4px;
+    }
+    .mark-btn {
+      min-width: 28px;
+      min-height: 26px;
+      padding: 2px 7px;
+      border-radius: 7px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--surface);
+    }
+    .mark-btn.active { color: var(--brand-dark); border-color: var(--brand); background: var(--brand-light); }
+
+    .chat-card {
+      flex: 0 0 var(--ai-companion-height, 42%);
+      height: var(--ai-companion-height, auto);
+      min-height: 210px;
+      max-height: 72vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .ai-panel-heading {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .ai-panel-actions {
+      flex: 1 1 100%;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .chat-session-select {
+      flex: 1 1 120px;
+      min-width: 92px;
+      max-width: 180px;
+      min-height: 28px;
+      padding: 4px 24px 4px 8px;
+      border: 1px solid #c9d2c7;
+      border-radius: 7px;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 11px;
+    }
+    .chat-session-select:focus-visible,
+    .chat-session-action:focus-visible {
+      outline: 2px solid rgba(57, 91, 70, .28);
+      outline-offset: 2px;
+    }
+    .chat-session-action {
+      flex: 0 0 auto;
+      min-height: 28px;
+      padding: 4px 8px;
+      border-color: #c9d2c7;
+      background: var(--surface-alt);
+      color: var(--brand-dark);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .ai-focus-toggle {
+      flex: 0 0 auto;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-color: #c9d2c7;
+      background: var(--surface-alt);
+      color: var(--brand-dark);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .ai-focus-toggle[aria-pressed="true"] {
+      border-color: var(--brand);
+      background: var(--brand-light);
+    }
+    .chat-card > .panel-head {
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .panel-resize-handle {
+      position: relative;
+      flex: 0 0 12px;
+      cursor: ns-resize;
+      touch-action: none;
+      outline: none;
+      z-index: 2;
+    }
+    .panel-resize-handle::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      right: 18px;
+      left: 18px;
+      height: 2px;
+      border-radius: 999px;
+      background: #c9d2c7;
+      transition: background .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    .panel-resize-handle:hover::before,
+    .panel-resize-handle:focus-visible::before,
+    .panel-resize-handle.dragging::before {
+      background: var(--brand);
+      box-shadow: 0 0 0 3px rgba(57, 91, 70, .12);
+      transform: scaleX(.96);
+    }
+    body.sidebar-panel-resizing {
+      cursor: ns-resize;
+      user-select: none;
+    }
+    .side-column.ai-focus-mode > .timeline-card,
+    .side-column.ai-focus-mode > .review-card {
+      flex: 0 0 auto;
+      min-height: 0;
+    }
+    .side-column.ai-focus-mode > .timeline-card > :not(.panel-head),
+    .side-column.ai-focus-mode > .review-card > :not(.panel-head),
+    .side-column.ai-focus-mode > .panel-resize-handle {
+      display: none;
+    }
+    .side-column.ai-focus-mode > .timeline-card > .panel-head,
+    .side-column.ai-focus-mode > .review-card > .panel-head {
+      padding-top: 10px;
+      padding-bottom: 10px;
+      border-bottom: 0;
+    }
+    .side-column.ai-focus-mode .chat-card {
+      flex-basis: min(72vh, 760px);
+      height: min(72vh, 760px);
+      max-height: 72vh;
+    }
+    #chat-context-summary {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .chat-context-row {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--line);
+      background: #f6faf6;
+    }
+    .chat-context-clear {
+      min-height: 28px;
+      padding: 4px 8px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    #chat-messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 12px 14px;
+    }
+    .chat-msg {
+      margin-bottom: 10px;
+      padding: 9px 11px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      border: 1px solid var(--line);
+      background: #fafbfa;
+    }
+    .chat-msg.user { background: #f0fdf4; border-color: #bdebd2; }
+    .chat-msg.ai { background: #f8fafc; border-left: 3px solid var(--brand); }
+    .chat-msg .role {
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .chat-message-body {
+      color: var(--ink);
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+    .chat-message-body p {
+      margin: 0 0 10px;
+      white-space: pre-wrap;
+    }
+    .chat-message-body p:last-child { margin-bottom: 0; }
+    .chat-message-body h3 {
+      margin: 14px 0 6px;
+      color: var(--brand-dark);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .chat-message-body h3:first-child { margin-top: 0; }
+    .chat-message-body ul,
+    .chat-message-body ol {
+      margin: 5px 0 11px;
+      padding-left: 21px;
+    }
+    .chat-message-body li { margin: 4px 0; }
+    .chat-message-body blockquote {
+      margin: 8px 0 11px;
+      padding: 7px 10px;
+      border-left: 2px solid #9fbea9;
+      border-radius: 0 6px 6px 0;
+      background: #f0f5f1;
+      color: #34443a;
+    }
+    .chat-message-body code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #e9efea;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: .92em;
+    }
+    .chat-message-body pre {
+      overflow-x: auto;
+      margin: 8px 0 11px;
+      padding: 9px 10px;
+      border-radius: 7px;
+      background: #233128;
+      color: #f4f7f4;
+      white-space: pre-wrap;
+    }
+    .chat-message-body pre code { padding: 0; background: transparent; color: inherit; }
+    .chat-message-body hr {
+      margin: 12px 0;
+      border: 0;
+      border-top: 1px solid var(--line);
+    }
+    .chat-input-row {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .chat-input-field {
+      flex: 1;
+      min-width: 0;
+    }
+    .chat-input-row input {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 11px;
+      background: var(--surface);
+      color: var(--ink);
+      outline: none;
+    }
+    .chat-input-row input:focus { border-color: var(--brand); }
+    .chat-voice-status {
+      display: block;
+      min-height: 0;
+      padding: 0 3px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .chat-voice-status:not(:empty) { padding-top: 5px; }
+    .chat-voice-status.error { color: var(--danger); }
+    .chat-voice-language {
+      min-height: 38px;
+      padding: 7px 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 12px;
+    }
+    .chat-voice-toggle {
+      min-width: 42px;
+      min-height: 38px;
+      padding: 7px 8px;
+      border-color: #c9d2c7;
+      background: var(--surface-alt);
+      color: var(--brand-dark);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .chat-voice-toggle.recording {
+      border-color: var(--brand);
+      background: var(--brand-light);
+      box-shadow: 0 0 0 3px rgba(57, 91, 70, .12);
+    }
+    .chat-input-row button {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #fff;
+      font-weight: 700;
+    }
+    .empty-state {
+      padding: 28px 14px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .reading-mode-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+    .reading-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .reading-passage {
+      max-height: calc(100vh - 190px);
+      overflow: auto;
+      line-height: 1.85;
+      font-size: 17px;
+    }
+    .reading-passage p {
+      margin: 0 0 16px;
+    }
+    .reading-sentence {
+      display: inline;
+      border-radius: 5px;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+    .reading-sentence-bookmark {
+      width: 24px;
+      min-height: 24px;
+      margin: 0 5px 0 2px;
+      padding: 3px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #879389;
+      vertical-align: -.32em;
+      opacity: .66;
+    }
+    .reading-sentence-bookmark svg {
+      display: block;
+      width: 17px;
+      height: 17px;
+      fill: transparent;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      transition: transform .16s ease, fill .16s ease;
+    }
+    .reading-sentence-bookmark:hover,
+    .reading-sentence-bookmark:focus-visible {
+      background: #edf3ea;
+      color: var(--brand-dark);
+      opacity: 1;
+    }
+    .reading-sentence-bookmark:hover svg { transform: translateY(-1px); }
+    .reading-sentence-bookmark.saved {
+      color: #b17d10;
+      opacity: 1;
+    }
+    .reading-sentence-bookmark.saved svg { fill: #f4c44e; }
+    .reading-translation {
+      display: block;
+      margin-top: 5px;
+      color: #66746b;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .reading-selection-popover {
+      position: fixed;
+      z-index: 1200;
+      display: none;
+      width: min(420px, calc(100vw - 24px));
+      padding: 8px;
+      border: 1px solid #c9d2c7;
+      border-radius: 12px;
+      background: #fffdf7;
+      box-shadow: 0 14px 36px rgba(25, 43, 31, .2);
+      color: var(--ink);
+    }
+    .reading-selection-popover.open { display: block; }
+    .reading-selection-kind {
+      margin: 0 2px 7px;
+      color: #617067;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .08em;
+    }
+    .reading-selection-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .reading-selection-actions button {
+      min-height: 32px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border-color: #d7ddd3;
+      background: #f5f1e6;
+      color: #34443a;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .reading-selection-actions button:hover { border-color: var(--brand); color: var(--brand-dark); }
+    .reading-selection-actions .intensive-action {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: white;
+    }
+    .reading-selection-actions .intensive-action:hover { background: var(--brand-dark); color: white; }
+    .reading-selection-result {
+      display: none;
+      max-height: 220px;
+      overflow: auto;
+      margin-top: 8px;
+      padding: 10px 11px;
+      border-radius: 8px;
+      background: #f1f5ef;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .reading-selection-result.open { display: block; }
+    .reading-word {
+      border: 0;
+      padding: 0 2px;
+      min-height: 0;
+      background: transparent;
+      color: inherit;
+      border-radius: 4px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .reading-word:hover {
+      background: var(--brand-light);
+      color: var(--brand-dark);
+    }
+    .reading-word.saved-word {
+      background: #edf8f0;
+      color: #23613c;
+      box-shadow: inset 0 -1px 0 #a8d7b6;
+    }
+    .reading-word-wrap,
+    .lookup-word-wrap {
+      ruby-position: under;
+      margin: 0 2px;
+    }
+    .word-gloss {
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1;
+      color: #829087;
+      letter-spacing: .01em;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .reading-saved-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px;
+      font-size: 13px;
+    }
+    .reading-saved-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      line-height: 1.5;
+      background: var(--surface);
+    }
+    .reading-saved-word {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .review-book-btn {
+      flex: 0 0 auto;
+      border: 1px solid var(--gold);
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: var(--cream);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+      user-select: text;
+    }
+    .review-book-btn:disabled {
+      border-color: var(--line);
+      color: var(--muted);
+      cursor: default;
+    }
+
+    @media (max-width: 1100px) {
+      body { overflow: auto; }
+      .workspace { height: auto; min-height: 100vh; }
+      .main-grid {
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+      #youtube-player { max-height: none; }
+      .side-column { min-height: 0; }
+      .side-column > .timeline-card {
+        flex: 0 0 var(--content-outline-height, 300px);
+        height: var(--content-outline-height, 300px);
+        max-height: none;
+      }
+      .side-column > .review-card {
+        flex: 0 0 var(--study-collection-height, 260px);
+        height: var(--study-collection-height, 260px);
+        max-height: none;
+      }
+      .panel-resize-handle {
+        flex-basis: 16px;
+      }
+      .panel-resize-handle::before { top: 7px; }
+     .side-column.ai-focus-mode { min-height: auto; }
+   }
+    @media (max-width: 520px) {
+      .workspace { grid-template-rows: 54px minmax(0, 1fr); }
+      .top-bar { gap: 8px; padding: 8px 10px; }
+      .home-link { min-width: 36px; padding: 7px 8px; justify-content: center; }
+      .home-link-label { display: none; }
+    }
+    .subtitle-error-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20, 30, 25, 0.4);
+    }
+    .subtitle-error-modal[hidden] { display: none; }
+    .subtitle-error-card {
+      width: min(480px, 92vw);
+      padding: 22px;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.2);
+    }
+    .subtitle-error-card h3 { margin: 0 0 10px; font-size: 17px; color: #9f2f22; }
+    .subtitle-error-detail {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fff7f5;
+      color: #7a2a20;
+      font-size: 13px;
+      line-height: 1.5;
+      word-break: break-all;
+    }
+    .subtitle-error-hint { margin: 0; color: #667085; font-size: 13px; line-height: 1.6; }
+    .subtitle-error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+<div class="workspace">
+  <header class="top-bar">
+    <a class="home-link" href="/" aria-label="返回首页" title="返回首页">
+      <span class="home-link-arrow" aria-hidden="true">←</span>
+      <span class="home-link-label">首页</span>
+    </a>
+    <h1 id="video-title">Loading video...</h1>
+    <span id="status-badge" class="status-badge">subtitles pending</span>
+  </header>
+
+  <main class="main-grid">
+    <section class="watch-column" aria-label="video and current subtitle">
+      <div class="video-card">
+        <div id="youtube-player"></div>
+      </div>
+
+      <div class="learning-controls" aria-label="playback and subtitle controls">
+        <label class="control-group">
+          Subtitles
+          <select id="subtitle-mode" onchange="onSubtitleModeChange()">
+            <option value="lookup" selected>English + lookup</option>
+            <option value="english">English</option>
+            <option value="chinese">中文</option>
+            <option value="bilingual">中英双语</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label class="control-group">
+          Speed
+          <select id="playback-rate" onchange="onPlaybackRateChange()">
+            <option value="0.5">0.5x</option>
+            <option value="0.75">0.75x</option>
+            <option value="1" selected>1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+          </select>
+        </label>
+        <div id="study-mode-switch" class="study-mode-switch" hidden>
+          <button data-study-mode="listening" onclick="switchStudyMode('listening')">Listening</button>
+          <button data-study-mode="reading" onclick="switchStudyMode('reading')">Reading</button>
+        </div>
+      </div>
+
+      <section class="subtitle-card" aria-label="current subtitle">
+        <div class="subtitle-label">
+          <strong>Current sentence</strong>
+          <span class="sentence-actions">
+            <button id="prev-sentence" class="sentence-nav" onclick="jumpSentence(-1)" disabled title="Previous sentence" aria-label="Previous sentence">&#x2039;</button>
+            <span id="subtitle-position">waiting for subtitles</span>
+            <button id="next-sentence" class="sentence-nav" onclick="jumpSentence(1)" disabled title="Next sentence" aria-label="Next sentence">&#x203A;</button>
+            <button id="save-sentence" class="star-save" onclick="saveCurrentSentence()" disabled
+                    title="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" data-tooltip="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" aria-label="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2.8l2.86 5.8 6.4.93-4.63 4.51 1.09 6.37L12 17.4l-5.72 3.01 1.09-6.37-4.63-4.51 6.4-.93L12 2.8z"></path>
+              </svg>
+            </button>
+          </span>
+        </div>
+        <div id="current-subtitle">Subtitles are loading in the background.</div>
+        <div id="subtitle-translation"></div>
+        <div class="subtitle-meta" id="subtitle-meta">Video playback is available before subtitles are ready.</div>
+        <div class="sentence-tools">
+          <div id="vocab-chips" class="vocab-chips"></div>
+        </div>
+      </section>
+
+      <section id="reading-phase-a" class="reading-mode-panel" aria-label="reading passage" hidden>
+        <div class="reading-toolbar">
+          <strong>Reading Phase A</strong>
+          <span>点句末书签收藏整句 · 拖选收藏词或短语</span>
+        </div>
+        <article id="reading-passage" class="reading-passage" data-segment-index="" data-start-seconds="" data-end-seconds=""></article>
+      </section>
+    </section>
+
+    <aside class="side-column" aria-label="timeline and chat">
+      <section id="content-outline-panel" class="timeline-card" data-resize-panel="content-outline">
+        <div class="panel-head">
+          <h2>Content outline</h2>
+          <span class="panel-note">Jump by topic. Use A/B to select a discussion range.</span>
+          <button id="generate-outline-summary" class="outline-generate-btn" type="button" onclick="requestDocumentOutline()">AI 总结结构</button>
+        </div>
+        <div id="document-summary" class="document-summary" hidden></div>
+        <div id="subtitle-timeline">
+          <div class="empty-state">Building content outline...</div>
+        </div>
+      </section>
+
+      <div id="outline-resize-handle" class="panel-resize-handle" role="separator"
+           aria-orientation="horizontal" aria-label="Resize Content outline and Study collection"
+           aria-controls="content-outline-panel reading-phase-b" aria-valuemin="140"
+           aria-valuemax="720" aria-valuenow="320" tabindex="0"
+           data-resize-before="content-outline-panel" data-resize-after="reading-phase-b"></div>
+
+      <section id="reading-phase-b" class="review-card study-collection-card" data-resize-panel="study-collection-panel">
+        <div class="panel-head">
+          <h2>Study collection</h2>
+          <span class="panel-note">Phase B · words, sentences and tags.</span>
+        </div>
+        <div id="study-collection">
+          <div id="reading-saved-items" class="reading-saved-list">
+            <div class="empty-state">Save words or sentences from Phase A.</div>
+          </div>
+          <div class="review-body">
+            <div class="review-counts">
+              <span id="review-word-count">0 words</span>
+              <span id="review-sentence-count">0 sentences</span>
+            </div>
+            <div class="review-action-row">
+              <button class="review-action" type="button" onclick="copyReviewMarkdown()">Copy Markdown</button>
+              <button class="review-action" type="button" onclick="exportReviewHtml()">Export HTML</button>
+              <button class="review-action review-action--intensive" type="button" onclick="openIntensiveExport(this)">进入精读</button>
+              <span id="review-copy-status" class="review-copy-status"></span>
+            </div>
+            <div id="sentence-tag-panel" class="sentence-tag-panel"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="collection-resize-handle" class="panel-resize-handle" role="separator"
+           aria-orientation="horizontal" aria-label="Resize Study collection and AI companion"
+           aria-controls="reading-phase-b ai-companion-panel" aria-valuemin="168"
+           aria-valuemax="720" aria-valuenow="240" tabindex="0"
+           data-resize-before="reading-phase-b" data-resize-after="ai-companion-panel"></div>
+
+      <section id="ai-companion-panel" class="chat-card chat-panel">
+        <div class="panel-head">
+          <div class="ai-panel-heading">
+            <h2>AI companion</h2>
+            <span class="panel-note">Uses current sentence or selected outline range.</span>
+          </div>
+          <div class="ai-panel-actions">
+            <select id="chat-session-select" class="chat-session-select" aria-label="Chat conversation"
+                    onchange="selectChatSession(this.value)"></select>
+            <button id="chat-new-session" class="chat-session-action" type="button"
+                    onclick="newChatSession()" title="Start a new conversation">New</button>
+            <button id="chat-export-session" class="chat-session-action" type="button"
+                    onclick="exportChatSession()" title="Export current conversation as Markdown">Export</button>
+            <button id="ai-focus-toggle" class="ai-focus-toggle" type="button"
+                    aria-controls="ai-companion-panel" aria-pressed="false">Focus AI</button>
+          </div>
+        </div>
+        <div id="chat-messages"></div>
+        <div class="chat-context-row">
+          <div id="chat-context-summary">Context: current playback point.</div>
+          <button id="reading-context-clear" class="chat-context-clear" type="button" onclick="clearReadingChatSelection()" hidden>清除选区</button>
+        </div>
+        <div class="chat-input-row">
+          <select id="chat-voice-language" class="chat-voice-language" aria-label="Voice input language">
+            <option value="en-US" selected>EN</option>
+            <option value="zh-CN">中</option>
+          </select>
+          <button id="chat-voice-toggle" class="chat-voice-toggle" type="button"
+                  aria-pressed="false" onclick="toggleChatVoice()" title="Voice input">Mic</button>
+          <div class="chat-input-field">
+            <input id="chat-input" type="text" placeholder="Ask about this part..."
+                   onkeydown="if(event.key==='Enter') sendMessage()">
+            <span id="chat-voice-status" class="chat-voice-status" aria-live="polite"></span>
+          </div>
+          <button id="chat-send" onclick="sendMessage()">Send</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+</div>
+<div id="word-popover" class="word-popover" role="tooltip"></div>
+<div id="reading-selection-popover" class="reading-selection-popover" role="dialog" aria-label="Selected text actions">
+  <div id="reading-selection-kind" class="reading-selection-kind">已选择短语</div>
+  <div class="reading-selection-actions">
+    <button class="intensive-action" type="button" data-action="intensive" onclick="runReadingSelectionAction('intensive')">跳转精学</button>
+    <button type="button" data-action="save-target" onclick="runReadingSelectionAction('save-target')">收藏短语</button>
+    <button type="button" data-action="translate" onclick="runReadingSelectionAction('translate')">翻译</button>
+    <button type="button" data-action="analyze" onclick="runReadingSelectionAction('analyze')">AI 解析</button>
+    <button type="button" data-action="ask" onclick="runReadingSelectionAction('ask')">提问</button>
+    <button type="button" data-action="play-sentence" onclick="runReadingSelectionAction('play-sentence')">播放</button>
+  </div>
+  <div id="reading-selection-result" class="reading-selection-result" aria-live="polite"></div>
+</div>
+<audio id="offscreen-playback-engine" hidden></audio>
+
+<div class="subtitle-error-modal" id="subtitle-error-modal" hidden>
+  <div class="subtitle-error-card" role="alertdialog" aria-labelledby="subtitle-error-title">
+    <h3 id="subtitle-error-title">字幕生成失败</h3>
+    <p class="subtitle-error-detail" id="subtitle-error-detail"></p>
+    <p class="subtitle-error-hint">常见原因：转录服务网络不可用（如 Groq 直连受限）、平台限流或链接失效。可以改用本地模型重试，或稍后再回来。</p>
+    <div class="subtitle-error-actions">
+      <button id="subtitle-error-dismiss" type="button">知道了</button>
+      <button id="subtitle-error-home" type="button">返回首页</button>
+      <button id="subtitle-error-retry" class="primary" type="button">用本地模型重试</button>
+    </div>
+  </div>
+</div>
+<script src="/static/voice-input.js?v=20260715-1"></script>
+<script>
+const LESSON_ID = {{ lesson_id }};
+let lessonData = null;
+let segments = [];
+let sentenceUnits = [];
+let outlineSections = [];
+let currentTime = 0;
+let activeSentenceIdx = -1;
+let activeSectionIdx = -1;
+let contextMode = 'auto';
+let selectedStart = null;
+let selectedEnd = null;
+let selectedIds = [];
+let rangeStartIdx = null;
+let rangeEndIdx = null;
+let subtitlePoll = null;
+let timePoll = null;
+let ytPlayer = null;
+let localMedia = null;
+let ytApiLoaded = false;
+let ytApiReady = false;
+let suppressTimeSyncUntil = 0;
+let readingBlocks = [];
+let readingLoadPromise = null;
+let highlightedWordsSyncStarted = false;
+const READING_RENDER_BATCH_SIZE = 80;
+let readingRenderVersion = 0;
+let readingSelectionText = '';
+let readingSelectionSentenceKey = null;
+let readingSelectionRange = null;
+let readingSelectionTargetType = 'phrase';
+let readingSelectionMode = 'reading';
+let readingChatSelection = '';
+let readingSelectionRequestToken = 0;
+let chatSessions = [];
+let activeChatSessionId = null;
+let chatVoiceInput = null;
+let availableStudyModes = [];
+let activeStudyMode = 'listening';
+let readingPlaybackEnd = null;
+let readingPlaybackTimeHandler = null;
+let readingPlaybackTimer = null;
+let pendingReadingPlaybackRange = null;
+const sentenceTranslations = {};
+let subtitleModeInitialized = false;
+const SIDEBAR_PANEL_HEIGHTS_KEY = 'english-tool:sidebar-panel-heights';
+const SIDEBAR_PANEL_CONFIG = [
+  {id: 'content-outline-panel', key: 'outline', css: '--content-outline-height', min: 140, weight: .34},
+  {id: 'reading-phase-b', key: 'collection', css: '--study-collection-height', min: 168, weight: .26},
+  {id: 'ai-companion-panel', key: 'ai', css: '--ai-companion-height', min: 210, weight: .40},
+];
+let sidebarPanelHeights = {};
+let sidebarPreferredPanelHeights = {};
+let activeSidebarResize = null;
+const wordMeaningCache = {};
+const savedSentenceKeys = new Set();
+const savedWordSet = new Set();
+const reviewBookWordSet = new Set();
+const readingHiddenWordSet = new Set();
+let savedSentences = [];
+let sentenceTagCatalog = {
+  categories: [
+    {id: 'vocabulary', label: '词汇'},
+    {id: 'pronunciation', label: '发音'},
+    {id: 'structure', label: '句式'},
+    {id: 'expression', label: '表达'},
+    {id: 'practice', label: '练习'}
+  ],
+  tags: []
+};
+const CUSTOM_SENTENCE_TAG_VALUE = '__custom__';
+
+function sidebarResizeHandles() {
+  return [...document.querySelectorAll('.panel-resize-handle[data-resize-before][data-resize-after]')];
+}
+
+function getSidebarAvailableHeight() {
+  const sideColumn = document.querySelector('.side-column');
+  const minimum = SIDEBAR_PANEL_CONFIG.reduce((sum, panel) => sum + panel.min, 0);
+  const handleHeight = sidebarResizeHandles().reduce((sum, handle) => (
+    sum + Math.max(12, Math.round(handle.getBoundingClientRect().height || 0))
+  ), 0);
+  const measured = window.innerWidth <= 1100
+    ? Math.max(minimum + handleHeight, window.innerHeight - 48)
+    : (sideColumn?.getBoundingClientRect().height || Math.max(620, window.innerHeight - 90));
+  return Math.max(minimum, Math.floor(measured - handleHeight));
+}
+
+function normalizeSidebarPanelHeights(requested = {}) {
+  const available = getSidebarAvailableHeight();
+  const minimum = SIDEBAR_PANEL_CONFIG.reduce((sum, panel) => sum + panel.min, 0);
+  const extraAvailable = Math.max(0, available - minimum);
+  const extras = SIDEBAR_PANEL_CONFIG.map(panel => {
+    const requestedHeight = Number(requested[panel.key]);
+    return Number.isFinite(requestedHeight) ? Math.max(0, requestedHeight - panel.min) : 0;
+  });
+  const requestedExtra = extras.reduce((sum, value) => sum + value, 0);
+  return Object.fromEntries(SIDEBAR_PANEL_CONFIG.map((panel, index) => {
+    const share = requestedExtra > 0 ? extras[index] / requestedExtra : panel.weight;
+    return [panel.key, Math.round(panel.min + extraAvailable * share)];
+  }));
+}
+
+function applySidebarPanelHeights(heights, persist = false, remember = true) {
+  const sideColumn = document.querySelector('.side-column');
+  if (!sideColumn) return;
+  sidebarPanelHeights = normalizeSidebarPanelHeights(heights);
+  if (remember) sidebarPreferredPanelHeights = {...sidebarPanelHeights};
+  for (const panel of SIDEBAR_PANEL_CONFIG) {
+    sideColumn.style.setProperty(panel.css, `${sidebarPanelHeights[panel.key]}px`);
+  }
+  for (const handle of sidebarResizeHandles()) {
+    const before = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeBefore);
+    const after = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeAfter);
+    if (!before || !after) continue;
+    const pairHeight = sidebarPanelHeights[before.key] + sidebarPanelHeights[after.key];
+    handle.setAttribute('aria-valuemin', String(before.min));
+    handle.setAttribute('aria-valuemax', String(pairHeight - after.min));
+    handle.setAttribute('aria-valuenow', String(sidebarPanelHeights[before.key]));
+  }
+  if (persist) {
+    try {
+      localStorage.setItem(SIDEBAR_PANEL_HEIGHTS_KEY, JSON.stringify(sidebarPreferredPanelHeights));
+    } catch (_) {}
+  }
+}
+
+function resizeSidebarPanelPair(handle, requestedDelta, persist = false) {
+  const before = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeBefore);
+  const after = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeAfter);
+  if (!before || !after) return;
+  const startBefore = activeSidebarResize?.beforeHeight ?? sidebarPanelHeights[before.key];
+  const startAfter = activeSidebarResize?.afterHeight ?? sidebarPanelHeights[after.key];
+  const delta = Math.max(before.min - startBefore, Math.min(startAfter - after.min, requestedDelta));
+  const next = {
+    ...sidebarPanelHeights,
+    [before.key]: Math.round(startBefore + delta),
+    [after.key]: Math.round(startAfter - delta),
+  };
+  sidebarPanelHeights = next;
+  sidebarPreferredPanelHeights = {...next};
+  const sideColumn = document.querySelector('.side-column');
+  if (!sideColumn) return;
+  sideColumn.style.setProperty(before.css, `${next[before.key]}px`);
+  sideColumn.style.setProperty(after.css, `${next[after.key]}px`);
+  const pairHeight = next[before.key] + next[after.key];
+  handle.setAttribute('aria-valuemin', String(before.min));
+  handle.setAttribute('aria-valuemax', String(pairHeight - after.min));
+  handle.setAttribute('aria-valuenow', String(next[before.key]));
+  if (persist) {
+    try {
+      localStorage.setItem(SIDEBAR_PANEL_HEIGHTS_KEY, JSON.stringify(sidebarPreferredPanelHeights));
+    } catch (_) {}
+  }
+}
+
+function toggleAiFocusMode(force) {
+  const sideColumn = document.querySelector('.side-column');
+  const button = document.getElementById('ai-focus-toggle');
+  if (!sideColumn || !button) return;
+  const focused = typeof force === 'boolean'
+    ? force
+    : !sideColumn.classList.contains('ai-focus-mode');
+  sideColumn.classList.toggle('ai-focus-mode', focused);
+  button.setAttribute('aria-pressed', String(focused));
+  button.textContent = focused ? 'Restore' : 'Focus AI';
+  if (!focused) applySidebarPanelHeights(sidebarPreferredPanelHeights, false, false);
+}
+
+function initSidebarPanelResizers() {
+  const handles = sidebarResizeHandles();
+  const focusToggle = document.getElementById('ai-focus-toggle');
+  if (!handles.length || !focusToggle) return;
+  let storedHeights = {};
+  try {
+    storedHeights = JSON.parse(localStorage.getItem(SIDEBAR_PANEL_HEIGHTS_KEY) || '{}');
+  } catch (_) {}
+  applySidebarPanelHeights(storedHeights);
+
+  for (const handle of handles) {
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || document.querySelector('.side-column')?.classList.contains('ai-focus-mode')) return;
+      const before = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeBefore);
+      const after = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeAfter);
+      if (!before || !after) return;
+      activeSidebarResize = {
+        pointerId: event.pointerId,
+        handle,
+        startY: event.clientY,
+        beforeHeight: sidebarPanelHeights[before.key],
+        afterHeight: sidebarPanelHeights[after.key],
+      };
+      handle.setPointerCapture(event.pointerId);
+      handle.classList.add('dragging');
+      document.body.classList.add('sidebar-panel-resizing');
+      event.preventDefault();
+    });
+    handle.addEventListener('keydown', event => {
+      const before = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeBefore);
+      const after = SIDEBAR_PANEL_CONFIG.find(panel => panel.id === handle.dataset.resizeAfter);
+      if (!before || !after) return;
+      const step = event.shiftKey ? 48 : 24;
+      let delta = null;
+      if (event.key === 'ArrowUp') delta = -step;
+      if (event.key === 'ArrowDown') delta = step;
+      if (event.key === 'Home') delta = before.min - sidebarPanelHeights[before.key];
+      if (event.key === 'End') delta = sidebarPanelHeights[after.key] - after.min;
+      if (delta === null) return;
+      event.preventDefault();
+      resizeSidebarPanelPair(handle, delta, true);
+    });
+  }
+  window.addEventListener('pointermove', event => {
+    if (!activeSidebarResize || activeSidebarResize.pointerId !== event.pointerId) return;
+    resizeSidebarPanelPair(activeSidebarResize.handle, event.clientY - activeSidebarResize.startY);
+  });
+  const finishResize = event => {
+    if (!activeSidebarResize || (event.pointerId !== undefined && event.pointerId !== activeSidebarResize.pointerId)) return;
+    const {handle, pointerId} = activeSidebarResize;
+    activeSidebarResize = null;
+    if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+    handle.classList.remove('dragging');
+    document.body.classList.remove('sidebar-panel-resizing');
+    applySidebarPanelHeights(sidebarPanelHeights, true);
+  };
+  window.addEventListener('pointerup', finishResize);
+  window.addEventListener('pointercancel', finishResize);
+  for (const handle of handles) handle.addEventListener('lostpointercapture', finishResize);
+  focusToggle.addEventListener('click', () => toggleAiFocusMode());
+  window.addEventListener('resize', () => applySidebarPanelHeights(sidebarPreferredPanelHeights, false, false));
+}
+
+function setChatVoiceStatus(message = '', isError = false) {
+  const status = document.getElementById('chat-voice-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('error', isError);
+}
+
+function appendChatVoiceTranscript(transcript) {
+  const input = document.getElementById('chat-input');
+  const text = String(transcript || '').trim();
+  if (!input || !text) return;
+  const separator = input.value && !input.value.endsWith(' ') ? ' ' : '';
+  input.value += `${separator}${text}`;
+  input.focus();
+}
+
+function updateChatVoiceState(state) {
+  const button = document.getElementById('chat-voice-toggle');
+  const language = document.getElementById('chat-voice-language');
+  const listening = state === 'listening';
+  if (button) {
+    button.classList.toggle('recording', listening);
+    button.setAttribute('aria-pressed', String(listening));
+    button.textContent = listening ? 'Stop' : 'Mic';
+    button.title = listening ? 'Stop voice input' : 'Voice input';
+  }
+  if (language) language.disabled = listening;
+  const status = document.getElementById('chat-voice-status');
+  if (state === 'idle' && !status?.classList.contains('error')) setChatVoiceStatus('');
+  if (listening) setChatVoiceStatus('Listening…');
+}
+
+function initChatVoiceInput() {
+  const button = document.getElementById('chat-voice-toggle');
+  if (!button || typeof window.createVoiceInput !== 'function') {
+    if (button) {
+      button.disabled = true;
+      button.title = 'Voice input is unavailable.';
+    }
+    return;
+  }
+  chatVoiceInput = window.createVoiceInput({
+    onInterim: transcript => setChatVoiceStatus(transcript ? `“${transcript}”` : 'Listening…'),
+    onFinal: appendChatVoiceTranscript,
+    onStateChange: updateChatVoiceState,
+    onError: error => {
+      setChatVoiceStatus(error?.message || 'Voice input failed.', true);
+      button.title = error?.message || 'Voice input failed.';
+    },
+  });
+  if (!chatVoiceInput.isSupported()) {
+    button.disabled = true;
+    button.title = '请使用支持语音识别的 Chrome / Edge。';
+    setChatVoiceStatus('当前浏览器不支持语音输入。', true);
+  }
+}
+
+function toggleChatVoice() {
+  if (!chatVoiceInput) return;
+  const language = document.getElementById('chat-voice-language')?.value || 'en-US';
+  chatVoiceInput.toggle(language);
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  initSidebarPanelResizers();
+  initChatVoiceInput();
+  loadCachedDocumentOutline();
+  await refreshLesson();
+  await loadChatSessions();
+  if (activeStudyMode !== 'reading' || lessonData?.video_id) {
+    initPlayer({allowReading: true});
+  }
+  if (activeStudyMode !== 'reading' || lessonData?.subtitle_status === 'pending') {
+    startPolling();
+  }
+});
+window.addEventListener('beforeunload', () => chatVoiceInput?.destroy());
+
+async function refreshLesson() {
+  await loadStatus();
+  const readingPromise = loadReadingLesson({render: activeStudyMode === 'reading'});
+  const listeningPromise = loadSubtitles({render: activeStudyMode !== 'reading'});
+  await (activeStudyMode === 'reading' ? readingPromise : listeningPromise);
+  await loadSentenceTagCatalog();
+  await loadSavedSentences();
+  await loadSavedWords();
+  await loadSentenceTranslations();
+}
+
+function isMediaLesson() {
+  return availableStudyModes.includes('listening');
+}
+
+function applyStudyMode() {
+  const isReading = activeStudyMode === 'reading';
+  document.body.dataset.lessonMode = isReading ? 'reading' : 'listening';
+  document.querySelector('.video-card').hidden = isReading;
+  document.querySelector('.learning-controls').hidden = isReading;
+  document.querySelector('.subtitle-card').hidden = isReading;
+  document.getElementById('reading-phase-a').hidden = !isReading;
+  document.getElementById('reading-phase-b').hidden = !isReading;
+  const switchEl = document.getElementById('study-mode-switch');
+  if (switchEl) {
+    switchEl.hidden = availableStudyModes.length < 2;
+    switchEl.querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.studyMode === activeStudyMode);
+    });
+  }
+}
+
+async function switchStudyMode(mode) {
+  if (mode === activeStudyMode) return;
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/mode`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({mode})
+  });
+  if (!resp.ok) return;
+  const data = await resp.json();
+  activeStudyMode = data.lesson_mode;
+  applyStudyMode();
+  if (activeStudyMode === 'reading') {
+    await loadReadingLesson({render: true});
+  } else {
+    if (!localMedia && !ytPlayer) initPlayer();
+    await loadSubtitles({render: true});
+  }
+  await loadSavedSentences();
+  await loadSavedWords();
+}
+
+function playReadingRange(startSeconds, endSeconds) {
+  if (!lessonData) return;
+  const start = Number(startSeconds);
+  const end = Number(endSeconds);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+  stopReadingRange();
+  if (lessonData.video_id) {
+    pendingReadingPlaybackRange = {start, end};
+    if (!ytPlayer) initPlayer({allowReading: true});
+    startPendingYouTubeReadingRange();
+    return;
+  }
+  if (!lessonData.media_url) return;
+  const audio = document.getElementById('offscreen-playback-engine');
+  if (!audio) return;
+  const src = `${lessonData.media_url}#t=${startSeconds},${endSeconds}`;
+  readingPlaybackEnd = () => { stopReadingRange(); };
+  readingPlaybackTimeHandler = function checkEnd() {
+    if (audio.currentTime >= end) {
+      audio.pause();
+      if (readingPlaybackEnd) readingPlaybackEnd();
+    }
+  };
+  audio.addEventListener('timeupdate', readingPlaybackTimeHandler);
+  audio.src = src;
+  audio.currentTime = start;
+  audio.play().catch(() => {});
+}
+
+function startPendingYouTubeReadingRange() {
+  if (
+    !pendingReadingPlaybackRange
+    || !ytPlayer
+    || typeof ytPlayer.seekTo !== 'function'
+    || typeof ytPlayer.playVideo !== 'function'
+  ) return;
+  const {start, end} = pendingReadingPlaybackRange;
+  try {
+    ytPlayer.seekTo(start, true);
+    ytPlayer.playVideo();
+  } catch (_) {
+    return;
+  }
+  if (readingPlaybackTimer) clearInterval(readingPlaybackTimer);
+  readingPlaybackTimer = window.setInterval(() => {
+    const time = readPlayerTime();
+    if (time !== null && time >= end) stopReadingRange();
+  }, 200);
+}
+
+function stopReadingRange() {
+  const audio = document.getElementById('offscreen-playback-engine');
+  if (audio) audio.pause();
+  if (audio && readingPlaybackTimeHandler) {
+    audio.removeEventListener('timeupdate', readingPlaybackTimeHandler);
+  }
+  if (audio) audio.removeAttribute('src');
+  readingPlaybackTimeHandler = null;
+  if (readingPlaybackTimer) {
+    clearInterval(readingPlaybackTimer);
+    readingPlaybackTimer = null;
+  }
+  if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+    try {
+      ytPlayer.pauseVideo();
+    } catch (_) {}
+  }
+  pendingReadingPlaybackRange = null;
+  readingPlaybackEnd = null;
+}
+
+let _subtitleErrorShownFor = '';
+
+function updateSubtitleErrorDialog() {
+  const modal = document.getElementById('subtitle-error-modal');
+  if (!modal || !lessonData) return;
+  if (lessonData.subtitle_status !== 'failed') {
+    modal.hidden = true;
+    _subtitleErrorShownFor = '';
+    return;
+  }
+  const errorText = lessonData.subtitle_error || '未知错误';
+  if (_subtitleErrorShownFor === errorText && !modal.hidden) return;
+  _subtitleErrorShownFor = errorText;
+  document.getElementById('subtitle-error-detail').textContent = errorText;
+  modal.hidden = false;
+}
+
+document.getElementById('subtitle-error-dismiss')?.addEventListener('click', () => {
+  document.getElementById('subtitle-error-modal').hidden = true;
+});
+
+document.getElementById('subtitle-error-home')?.addEventListener('click', () => {
+  window.location.assign('/');
+});
+
+document.getElementById('subtitle-error-retry')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = '重试中…';
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/retry-subtitles`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({whisper_model: 'large-v3'}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '重试失败');
+    document.getElementById('subtitle-error-modal').hidden = true;
+    await refreshLesson();
+    startPolling();
+  } catch (error) {
+    alert(error.message || '重试失败');
+  } finally {
+    button.disabled = false;
+    button.textContent = '用本地模型重试';
+  }
+});
+
+async function loadStatus() {
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/status`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  const hadLesson = Boolean(lessonData);
+  const hadMedia = lessonData && lessonData.media_url;
+  lessonData = data.lesson;
+  availableStudyModes = data.available_modes || [];
+  if (!hadLesson && availableStudyModes.includes(lessonData.lesson_mode)) {
+    activeStudyMode = lessonData.lesson_mode;
+  } else if (availableStudyModes.length && !availableStudyModes.includes(activeStudyMode)) {
+    activeStudyMode = availableStudyModes[0];
+  }
+  document.getElementById('video-title').textContent = lessonData.title || 'Untitled Video';
+  applyTranslationSubtitleAvailability();
+  updateStatusBadge(activeStudyMode === 'reading' ? 'reading' : lessonData.subtitle_status);
+  applyStudyMode();
+  updateSubtitleErrorDialog();
+  if (activeStudyMode !== 'reading' && !hadMedia && lessonData.media_url && !localMedia && !ytPlayer) {
+    initPlayer();
+  }
+}
+
+async function loadSubtitles({render = activeStudyMode !== 'reading'} = {}) {
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/subtitles`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  segments = data.segments || [];
+  sentenceUnits = data.sentence_units || buildSentenceUnits(segments);
+  outlineSections = buildOutlineSections(sentenceUnits);
+  renderOutline();
+  if (render && activeStudyMode !== 'reading') {
+    updateStatusBadge(data.subtitle_status);
+    updateCurrentSubtitle();
+    if (segments.length) syncHighlightedWordsAfterRender();
+  }
+}
+
+async function loadSavedSentences() {
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b`);
+  if (!resp.ok) return;
+  const data = await resp.json().catch(() => ({}));
+  savedSentenceKeys.clear();
+  savedSentences = data.sentences || [];
+  for (const item of data.sentences || []) {
+    savedSentenceKeys.add(String(item.segment_index));
+  }
+  updateReviewSummary();
+  renderSentenceTagPanel();
+  renderReadingSavedItems();
+  updateSaveState();
+  refreshReadingSentenceSaveStates();
+}
+
+async function loadSentenceTagCatalog() {
+  const resp = await fetch('/api/v2/lessons/sentence-tags');
+  if (!resp.ok) return;
+  const data = await resp.json().catch(() => ({}));
+  if (Array.isArray(data.categories)) sentenceTagCatalog.categories = data.categories;
+  if (Array.isArray(data.tags)) sentenceTagCatalog.tags = data.tags;
+}
+
+async function loadSavedWords() {
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/words`);
+  if (!resp.ok) return;
+  const data = await resp.json().catch(() => ({}));
+  savedWordSet.clear();
+  reviewBookWordSet.clear();
+  readingHiddenWordSet.clear();
+  for (const word of data.words || []) {
+    const normalized = normalizeWord(word);
+    if (normalized) savedWordSet.add(normalized);
+  }
+  for (const word of data.review_words || []) {
+    const normalized = normalizeWord(word);
+    if (normalized) reviewBookWordSet.add(normalized);
+  }
+  for (const word of data.hidden_words || []) {
+    const normalized = normalizeWord(word);
+    if (normalized) readingHiddenWordSet.add(normalized);
+  }
+  for (const [word, meaning] of Object.entries(data.meanings || {})) {
+    const normalized = normalizeWord(word);
+    if (normalized && meaning) wordMeaningCache[normalized] = meaning;
+  }
+  updateReviewSummary();
+  updateCurrentSubtitle();
+  if (activeStudyMode === 'reading') {
+    refreshReadingWordStates();
+  }
+  renderReadingSavedItems();
+}
+
+function refreshReadingWordStates() {
+  document.querySelectorAll('#reading-passage .reading-word').forEach(button => {
+    const normalized = normalizeWord(button.dataset.word);
+    button.classList.toggle('saved-word', savedWordSet.has(normalized));
+    if (readingHiddenWordSet.has(normalized)) button.classList.remove('highlight-word');
+  });
+}
+
+function refreshReadingSentenceSaveStates() {
+  document.querySelectorAll('#reading-passage .reading-sentence-bookmark').forEach(button => {
+    const saved = savedSentenceKeys.has(String(button.dataset.sentenceKey || ''));
+    button.classList.toggle('saved', saved);
+    button.setAttribute('aria-pressed', String(saved));
+    button.setAttribute('aria-label', saved ? '取消收藏整句' : '收藏整句');
+    button.title = saved ? '取消收藏整句' : '收藏整句';
+  });
+}
+
+async function syncHighlightedWordsAfterRender() {
+  if (highlightedWordsSyncStarted) return;
+  highlightedWordsSyncStarted = true;
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync`, {method: 'POST'});
+    if (!resp.ok) return;
+    await loadSavedWords();
+  } catch (_) {}
+}
+
+async function loadReadingLesson({render = activeStudyMode === 'reading'} = {}) {
+  const root = document.getElementById('reading-passage');
+  const shouldRender = () => render && activeStudyMode === 'reading';
+  if (root && !readingBlocks.length && shouldRender()) {
+    root.innerHTML = '<div class="empty-state">Loading reading passage...</div>';
+  }
+  try {
+    if (!readingBlocks.length) {
+      if (!readingLoadPromise) {
+        readingLoadPromise = (async () => {
+          const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/reading`);
+          if (!resp.ok) throw new Error(`Reading request failed: ${resp.status}`);
+          const data = await resp.json();
+          readingBlocks = data.blocks || [];
+        })().finally(() => {
+          readingLoadPromise = null;
+        });
+      }
+      await readingLoadPromise;
+    }
+    if (!shouldRender()) return;
+    updateStatusBadge('reading');
+    renderReadingPassage();
+    renderReadingSavedItems();
+  } catch (err) {
+    if (root && shouldRender()) {
+      root.innerHTML = '<div class="empty-state">Reading passage failed to load. Please retry after checking the server log.</div>';
+    }
+  }
+}
+
+function startPolling() {
+  if (subtitlePoll) clearInterval(subtitlePoll);
+  subtitlePoll = setInterval(async () => {
+    const oldCount = segments.length;
+    await refreshLesson();
+    if (segments.length && oldCount !== segments.length) updateCurrentSubtitle();
+    const translationPending = lessonData
+      && Number(lessonData.translation_requested || 0) === 1
+      && ['pending', 'translating'].includes(lessonData.translation_status);
+    if (lessonData && lessonData.subtitle_status !== 'pending' && !translationPending) {
+      clearInterval(subtitlePoll);
+      subtitlePoll = null;
+    }
+  }, 2500);
+
+  if (timePoll) clearInterval(timePoll);
+  timePoll = setInterval(() => {
+    if (Date.now() < suppressTimeSyncUntil) return;
+    const time = readPlayerTime();
+    if (time !== null) updateActiveByTime(time);
+  }, 500);
+}
+
+function updateStatusBadge(status) {
+  const badge = document.getElementById('status-badge');
+  const value = status || 'pending';
+  badge.textContent = value === 'reading' ? 'reading mode' : `subtitles ${value}`;
+  badge.className = `status-badge ${value === 'ready' || value === 'reading' ? 'ready' : value === 'failed' ? 'failed' : ''}`;
+}
+
+function initPlayer({allowReading = false} = {}) {
+  if (activeStudyMode === 'reading' && !allowReading) return;
+  if (!lessonData) return;
+  if (lessonData.media_url) {
+    initLocalMedia();
+    return;
+  }
+  initYouTube();
+}
+
+function initLocalMedia() {
+  const container = document.getElementById('youtube-player');
+  const kind = lessonData.media_kind || lessonData.source_type || '';
+  const isAudio = kind === 'local_audio' || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(lessonData.media_url || '');
+  container.classList.toggle('local-audio', isAudio);
+  container.innerHTML = isAudio
+    ? `<audio id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls preload="metadata"></audio>`
+    : `<video id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls playsinline preload="metadata"></video>`;
+  localMedia = document.getElementById('local-media-player');
+  localMedia.addEventListener('timeupdate', () => updateActiveByTime(localMedia.currentTime || 0));
+  localMedia.addEventListener('loadedmetadata', () => {
+    if (Number.isFinite(localMedia.duration) && localMedia.duration > 0) {
+      currentTime = localMedia.currentTime || 0;
+      updateActiveByTime(currentTime);
+    }
+    onPlaybackRateChange();
+  });
+}
+
+function initYouTube() {
+  if (!lessonData || !lessonData.video_id) return;
+  const container = document.getElementById('youtube-player');
+  container.classList.remove('local-audio');
+  container.innerHTML = '<div id="youtube-iframe"></div>';
+  loadYouTubeApi(() => createYouTubePlayer(lessonData.video_id));
+}
+
+function loadYouTubeApi(callback) {
+  if (window.YT && window.YT.Player) {
+    ytApiReady = true;
+    callback();
+    return;
+  }
+  const previousReady = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = () => {
+    ytApiReady = true;
+    if (typeof previousReady === 'function') previousReady();
+    callback();
+  };
+  if (ytApiLoaded) return;
+  ytApiLoaded = true;
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+}
+
+function createYouTubePlayer(videoId) {
+  if (!ytApiReady || !window.YT || !window.YT.Player) return;
+  ytPlayer = new YT.Player('youtube-iframe', {
+    videoId,
+    playerVars: { playsinline: 1, rel: 0 },
+    events: {
+      onReady: () => {
+        onPlaybackRateChange();
+        const time = readPlayerTime();
+        if (time !== null) updateActiveByTime(time);
+        startPendingYouTubeReadingRange();
+      },
+      onStateChange: () => {
+        const time = readPlayerTime();
+        if (time !== null) updateActiveByTime(time);
+      },
+    },
+  });
+}
+
+function readPlayerTime() {
+  if (localMedia) {
+    const value = Number(localMedia.currentTime || 0);
+    if (!Number.isFinite(value)) return null;
+    currentTime = value;
+    return value;
+  }
+  if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return null;
+  try {
+    const value = Number(ytPlayer.getCurrentTime());
+    if (!Number.isFinite(value)) return null;
+    currentTime = value;
+    return value;
+  } catch (_) {
+    return null;
+  }
+}
+
+function seekTo(seconds) {
+  suppressTimeSyncUntil = Date.now() + 1200;
+  if (localMedia) {
+    localMedia.currentTime = seconds || 0;
+  }
+  if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+    ytPlayer.seekTo(seconds || 0, true);
+  }
+  updateActiveByTime(seconds || 0);
+}
+
+function onPlaybackRateChange() {
+  const select = document.getElementById('playback-rate');
+  const rate = Number(select ? select.value : 1) || 1;
+  if (localMedia) {
+    localMedia.playbackRate = rate;
+    return;
+  }
+  if (!ytPlayer || typeof ytPlayer.setPlaybackRate !== 'function') return;
+  try {
+    ytPlayer.setPlaybackRate(rate);
+  } catch (_) {}
+}
+
+function buildSentenceUnits(rawSegments) {
+  const units = [];
+  let parts = [];
+  let words = [];
+  let highlighted = new Set();
+  let wordMeanings = {};
+  let segmentIds = [];
+  let start = null;
+  let end = null;
+
+  function flush() {
+    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    units.push({
+      index: units.length,
+      start,
+      end,
+      text,
+      highlighted_words: Array.from(highlighted),
+      word_meanings: {...wordMeanings},
+      segment_ids: segmentIds.slice(),
+    });
+    parts = [];
+    words = [];
+    highlighted = new Set();
+    wordMeanings = {};
+    segmentIds = [];
+    start = null;
+    end = null;
+  }
+
+  rawSegments.forEach((segment, idx) => {
+    const text = String(segment.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    if (start === null) start = Number(segment.start || 0);
+    end = Number(segment.end || segment.start || start);
+    parts.push(text);
+    words.push(...text.match(/[a-zA-Z]+(?:'[a-zA-Z]+)?/g) || []);
+    segmentIds.push(segment.index);
+    (segment.highlighted_words || []).forEach(word => {
+      const normalized = normalizeWord(word);
+      if (normalized && !readingHiddenWordSet.has(normalized)) highlighted.add(normalized);
+    });
+    for (const [word, meaning] of Object.entries(segment.word_meanings || {})) {
+      if (meaning && !wordMeanings[word.toLowerCase()]) wordMeanings[word.toLowerCase()] = meaning;
+    }
+
+    const next = rawSegments[idx + 1];
+    const gap = next ? Number(next.start || 0) - end : 0;
+    const endsSentence = /[.!?]["')\]]?$/.test(text);
+    const longEnough = words.length >= 28;
+    const longPause = gap > 1.4 && words.length >= 8;
+    if (endsSentence || longEnough || longPause || idx === rawSegments.length - 1) flush();
+  });
+
+  return units;
+}
+
+function buildOutlineSections(units) {
+  const sections = [];
+  let bucket = [];
+  const maxDuration = 150;
+  const maxUnits = 10;
+
+  function flush() {
+    if (!bucket.length) return;
+    const first = bucket[0];
+    const last = bucket[bucket.length - 1];
+    const index = sections.length;
+    sections.push({
+      index,
+      title: makeSectionTitle(index, bucket),
+      start: first.start,
+      end: last.end,
+      sentence_indexes: bucket.map(item => item.index),
+      segment_ids: bucket.flatMap(item => item.segment_ids || []),
+      preview: clipText(bucket.map(item => item.text).join(' '), 150),
+    });
+    bucket = [];
+  }
+
+  units.forEach(unit => {
+    if (!bucket.length) {
+      bucket.push(unit);
+      return;
+    }
+    const duration = Number(unit.end || 0) - Number(bucket[0].start || 0);
+    if (duration >= maxDuration || bucket.length >= maxUnits) flush();
+    bucket.push(unit);
+  });
+  flush();
+  return sections;
+}
+
+function makeSectionTitle(index, bucket) {
+  if (index === 0) return 'Opening';
+  const firstText = bucket[0] ? bucket[0].text : '';
+  const cue = clipText(firstText.replace(/^[,.\s]+/, ''), 58);
+  return cue ? `Section ${index}: ${cue}` : `Section ${index}`;
+}
+
+function renderOutline() {
+  const container = document.getElementById('subtitle-timeline');
+  if (!outlineSections.length) {
+    const message = lessonData && lessonData.subtitle_status === 'failed'
+      ? 'No subtitles were found. Upload fallback is not implemented in this P0 screen yet.'
+      : 'Building a content outline after subtitles are ready. You can keep watching the video.';
+    container.innerHTML = `<div class="empty-state">${message}</div>`;
+    return;
+  }
+
+  container.innerHTML = outlineSections.map((section, idx) => {
+    const selected = isInSelectedRange(idx) ? ' selected' : '';
+    const active = idx === activeSectionIdx ? ' active' : '';
+    return `<div class="outline-section${active}${selected}" data-idx="${idx}" onclick="onOutlineJump(${idx})">
+      <span class="outline-time">${formatTime(section.start)}<br>${formatTime(section.end)}</span>
+      <span class="outline-body">
+        <span class="outline-title">${escapeHtml(section.title)}</span>
+        <span class="outline-preview">${escapeHtml(section.preview)}</span>
+      </span>
+      <span class="outline-actions">
+        <button class="mark-btn ${rangeStartIdx === idx ? 'active' : ''}" onclick="setRangeStart(event, ${idx})" title="Set range start">A</button>
+        <button class="mark-btn ${rangeEndIdx === idx ? 'active' : ''}" onclick="setRangeEnd(event, ${idx})" title="Set range end">B</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function renderDocumentOutline(outline, cached = false) {
+  const root = document.getElementById('document-summary');
+  if (!root || !outline) return;
+  const sections = Array.isArray(outline.sections) ? outline.sections : [];
+  root.hidden = false;
+  root.innerHTML = `<div class="document-summary-type">${escapeHtml(outline.document_type || 'document')}${cached ? ' · cached' : ''}</div>
+    <div class="document-summary-copy">${escapeHtml(outline.summary || '')}</div>
+    <div class="document-summary-sections">${sections.map(section => (
+      `<button class="document-summary-link" type="button" onclick="jumpToDocumentAnchor('${escapeHtml(section.anchor_type || '')}', '${escapeHtml(section.anchor_id)}')">
+        <strong>${escapeHtml(section.title || '')}</strong><span>${escapeHtml(section.description || '')}</span>
+      </button>`
+    )).join('')}</div>`;
+}
+
+async function loadCachedDocumentOutline() {
+  const button = document.getElementById('generate-outline-summary');
+  const root = document.getElementById('document-summary');
+  try {
+    const response = await fetch(`/api/v2/lessons/${LESSON_ID}/outline-summary`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return;
+    if (data.status === 'ready' && data.outline) {
+      renderDocumentOutline(data.outline, true);
+      return;
+    }
+    if (data.status !== 'pending') return;
+    if (button) {
+      button.disabled = true;
+      button.textContent = '总结中…';
+    }
+    if (root) {
+      root.hidden = false;
+      root.innerHTML = '<div class="document-summary-copy">AI 正在后台生成章节导航，可继续观看视频…</div>';
+    }
+    await pollDocumentOutline();
+  } catch (_) {
+    // Cached outline restoration must not block the rest of the workspace.
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'AI 总结结构';
+    }
+  }
+}
+
+async function requestDocumentOutline(force = false) {
+  const button = document.getElementById('generate-outline-summary');
+  const root = document.getElementById('document-summary');
+  if (button) {
+    button.disabled = true;
+    button.textContent = '总结中…';
+  }
+  if (root) {
+    root.hidden = false;
+    root.innerHTML = '<div class="document-summary-copy">AI 正在梳理文档信息和结构…</div>';
+  }
+  try {
+    const response = await fetch(`/api/v2/lessons/${LESSON_ID}/outline-summary`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({force}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || '文档总结失败');
+    if (data.status === 'pending') {
+      await pollDocumentOutline();
+    } else {
+      renderDocumentOutline(data.outline, data.cached);
+    }
+  } catch (error) {
+    if (root) root.innerHTML = `<div class="document-summary-copy" style="color:var(--danger)">${escapeHtml(error.message)}</div>`;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'AI 总结结构';
+    }
+  }
+}
+
+async function pollDocumentOutline() {
+  const root = document.getElementById('document-summary');
+  for (let attempt = 0; attempt < 160; attempt += 1) {
+    if (root) {
+      root.innerHTML = '<div class="document-summary-copy">AI 正在后台生成章节导航，可继续观看视频…</div>';
+    }
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const response = await fetch(`/api/v2/lessons/${LESSON_ID}/outline-summary`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || '文档总结状态查询失败');
+    if (data.status === 'ready') {
+      renderDocumentOutline(data.outline, data.cached);
+      return;
+    }
+    if (data.status === 'error') {
+      throw new Error(data.error || 'AI 大纲生成失败');
+    }
+  }
+  if (root) {
+    root.innerHTML = '<div class="document-summary-copy">AI 仍在后台生成，请稍后再次点击查看结果。</div>';
+  }
+}
+
+function jumpToDocumentAnchor(anchorType, anchorId) {
+  if (anchorType === 'time') {
+    const seconds = Number(anchorId) || 0;
+    currentTime = seconds;
+    seekTo(seconds);
+    updateCurrentSubtitle();
+    return;
+  }
+  if (anchorType !== 'block') return;
+  let attempts = 0;
+  const locate = () => {
+    const target = document.querySelector(`#reading-passage [data-block-index="${cssEscape(String(anchorId))}"]`);
+    if (!target && attempts < 8) {
+      attempts += 1;
+      requestAnimationFrame(locate);
+      return;
+    }
+    if (!target) return;
+    target.scrollIntoView({behavior: 'smooth', block: 'center'});
+    target.classList.add('outline-target-flash');
+    setTimeout(() => target.classList.remove('outline-target-flash'), 1600);
+  };
+  locate();
+}
+
+function renderSubtitleText(segment) {
+  const mode = document.getElementById('subtitle-mode').value;
+  if (mode === 'none') return '';
+  const highlighted = new Set(
+    (segment.highlighted_words || [])
+      .map(word => normalizeWord(word))
+      .filter(word => word && !readingHiddenWordSet.has(word))
+  );
+  const meanings = segment.word_meanings || {};
+  const tokens = String(segment.text || '').match(/[A-Za-z]+(?:'[A-Za-z]+)?|[^A-Za-z]+/g) || [];
+  return tokens.map(token => {
+    if (!/^[A-Za-z]+(?:'[A-Za-z]+)?$/.test(token)) return escapeHtml(token);
+    const lower = token.toLowerCase();
+    const isHighlight = mode === 'lookup' && highlighted.has(lower) && !readingHiddenWordSet.has(lower);
+    const isSaved = savedWordSet.has(lower);
+    const classes = ['subtitle-word'];
+    if (isHighlight) classes.push('highlight-word');
+    if (isSaved) classes.push('saved-word');
+    const cachedMeaning = wordMeaningCache[lower];
+    const savedMeaning = typeof cachedMeaning === 'string' ? cachedMeaning : (cachedMeaning?.meaning || '');
+    const meaning = meanings[lower] || savedMeaning || '';
+    const star = isSaved ? '<span class="word-star">★</span>' : '';
+    const buttonHtml = `<button type="button" class="${classes.join(' ')}" data-word="${escapeHtml(lower)}" data-meaning="${escapeHtml(meaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}${star}</button>`;
+    const gloss = mode === 'lookup' && (isHighlight || isSaved) ? String(meaning || '').trim() : '';
+    const displayGloss = formatReadingGloss(gloss);
+    return gloss
+      ? `<ruby class="lookup-word-wrap">${buttonHtml}<rt class="word-gloss" title="${escapeHtml(gloss)}">${escapeHtml(displayGloss)}</rt></ruby>`
+      : buttonHtml;
+  }).join('');
+}
+
+function renderReadingPassage() {
+  const root = document.getElementById('reading-passage');
+  if (!root) return;
+  const renderVersion = ++readingRenderVersion;
+  if (!readingBlocks.length) {
+    root.innerHTML = '<p data-segment-index="" data-start-seconds="" data-end-seconds="" hidden></p><div class="empty-state">No reading passage blocks found.</div>';
+    return;
+  }
+  root.innerHTML = '';
+  let cursor = 0;
+  const renderBatch = () => {
+    if (renderVersion !== readingRenderVersion) return;
+    const fragment = document.createDocumentFragment();
+    const end = Math.min(cursor + READING_RENDER_BATCH_SIZE, readingBlocks.length);
+    for (; cursor < end; cursor += 1) {
+      const block = readingBlocks[cursor];
+      const paragraph = document.createElement('p');
+      paragraph.dataset.blockIndex = block.index;
+      paragraph.setAttribute('data-segment-index', block.sentences?.[0]?.index ?? block.index ?? '');
+      paragraph.setAttribute('data-start-seconds', block.start_seconds ?? '');
+      paragraph.setAttribute('data-end-seconds', block.end_seconds ?? '');
+      const subtitleMode = document.getElementById('subtitle-mode')?.value || 'lookup';
+      let innerHtml = subtitleMode === 'chinese' ? '' : renderReadingSentences(block);
+      innerHtml += ` <button class="reading-play-button" type="button" data-start="${block.start_seconds ?? ''}" data-end="${block.end_seconds ?? ''}" onclick="event.stopPropagation();playReadingRange(${block.start_seconds ?? 0},${block.end_seconds ?? 0})" title="Play this paragraph">▶</button>`;
+      innerHtml += renderReadingBlockTranslation(block);
+      paragraph.innerHTML = innerHtml;
+      fragment.appendChild(paragraph);
+    }
+    root.appendChild(fragment);
+    if (cursor < readingBlocks.length) {
+      requestAnimationFrame(renderBatch);
+    } else {
+      syncHighlightedWordsAfterRender();
+    }
+  };
+  requestAnimationFrame(renderBatch);
+}
+
+function readingSentenceKey(block, sentence, sentenceIndex) {
+  const explicit = Number(sentence?.sentence_key);
+  if (Number.isFinite(explicit)) return String(explicit);
+  const blockIndex = Number(block?.index);
+  const stableBlockIndex = Number.isFinite(blockIndex) ? blockIndex : 0;
+  return String(-(((stableBlockIndex + 1) * 10000) + sentenceIndex + 1));
+}
+
+function renderReadingSentences(block) {
+  const blockText = String(block.text || '');
+  const sentenceItems = Array.isArray(block.sentences) && block.sentences.length
+    ? block.sentences
+    : blockText
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(/(?<=[.!?])\s+/)
+      .filter(Boolean)
+      .map(text => ({text}));
+  if (!sentenceItems.length) return renderReadingBlockText(block);
+
+  const pieces = [];
+  let cursor = 0;
+  for (const [sentenceIndex, sentence] of sentenceItems.entries()) {
+    const sentenceText = String(sentence.text || '');
+    let start = blockText.indexOf(sentenceText, cursor);
+    if (start < 0) start = cursor;
+    const end = Math.min(blockText.length, start + sentenceText.length);
+    if (start > cursor) pieces.push(escapeHtml(blockText.slice(cursor, start)));
+    const key = readingSentenceKey(block, sentence, sentenceIndex);
+    const saved = savedSentenceKeys.has(key);
+    const startSeconds = Number(sentence.start_seconds ?? block.start_seconds);
+    const endSeconds = Number(sentence.end_seconds ?? block.end_seconds);
+    const label = saved ? '取消收藏整句' : '收藏整句';
+    pieces.push(`<span class="reading-sentence" data-sentence-key="${escapeHtml(key)}" data-mode="reading" data-source="lesson:${LESSON_ID}">
+      ${renderReadingTextRange(block, start, end)}
+      <button class="reading-sentence-bookmark${saved ? ' saved' : ''}" type="button"
+              data-sentence-key="${escapeHtml(key)}" data-sentence-text="${escapeHtml(sentenceText)}"
+              data-block-index="${escapeHtml(block.index ?? '')}" data-start-seconds="${Number.isFinite(startSeconds) ? startSeconds : ''}"
+              data-end-seconds="${Number.isFinite(endSeconds) ? endSeconds : ''}"
+              aria-pressed="${saved ? 'true' : 'false'}" aria-label="${saved ? '取消收藏整句' : '收藏整句'}"
+              title="${label}" onclick="event.stopPropagation();toggleReadingSentenceSave(this)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-5.5-3.4-5.5 3.4z"></path></svg>
+      </button>
+    </span>`);
+    cursor = end;
+  }
+  if (cursor < blockText.length) pieces.push(escapeHtml(blockText.slice(cursor)));
+  return pieces.join('');
+}
+
+function renderReadingBlockText(block) {
+  return renderReadingTextRange(block, 0, String(block.text || '').length);
+}
+
+function renderReadingTextRange(block, startOffset, endOffset) {
+  const text = String(block.text || '');
+  const rangeStart = Math.max(0, Number(startOffset) || 0);
+  const rangeEnd = Math.max(rangeStart, Math.min(text.length, Number(endOffset)));
+  const visibleText = text.slice(rangeStart, rangeEnd);
+  const mode = document.getElementById('subtitle-mode')?.value || 'lookup';
+  const highlights = new Map();
+  for (const item of block.highlights || []) {
+    const start = Number(item.start);
+    const end = Number(item.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      highlights.set(`${start}:${end}`, item);
+    }
+  }
+  let cursor = 0;
+  const pieces = [];
+  const wordPattern = /[A-Za-z][A-Za-z'-]*/g;
+  for (const match of visibleText.matchAll(wordPattern)) {
+    const token = match[0];
+    const localStart = match.index || 0;
+    const start = rangeStart + localStart;
+    const end = start + token.length;
+    if (localStart < cursor) continue;
+    if (localStart > cursor) pieces.push(escapeHtml(visibleText.slice(cursor, localStart)));
+    const highlight = highlights.get(`${start}:${end}`);
+    const normalized = normalizeWord(highlight?.normalized || token);
+    const classes = ['reading-word'];
+    if (highlight && !readingHiddenWordSet.has(normalized)) classes.push('highlight-word');
+    if (savedWordSet.has(normalized)) classes.push('saved-word');
+    const gloss = mode === 'lookup' && highlight && !readingHiddenWordSet.has(normalized)
+      ? String(highlight.meaning || '').trim()
+      : '';
+    const buttonHtml = `<button type="button" class="${classes.join(' ')}" data-word="${escapeHtml(normalized)}" data-query="${escapeHtml(token)}" onclick="showWordMeaning(event)">${escapeHtml(token)}</button>`;
+    const displayGloss = formatReadingGloss(gloss);
+    pieces.push(gloss
+      ? `<ruby class="reading-word-wrap">${buttonHtml}<rt class="word-gloss" title="${escapeHtml(gloss)}">${escapeHtml(displayGloss)}</rt></ruby>`
+      : buttonHtml);
+    cursor = localStart + token.length;
+  }
+  pieces.push(escapeHtml(visibleText.slice(cursor)));
+  return pieces.join('');
+}
+
+async function toggleReadingSentenceSave(button) {
+  const key = String(button?.dataset.sentenceKey || '');
+  const text = String(button?.dataset.sentenceText || '').trim();
+  if (!key || !text || !button) return;
+  const alreadySaved = savedSentenceKeys.has(key);
+  button.disabled = true;
+  try {
+    const startSeconds = Number(button.dataset.startSeconds);
+    const endSeconds = Number(button.dataset.endSeconds);
+    const blockIndex = Number(button.dataset.blockIndex);
+    const resp = alreadySaved
+      ? await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b/${encodeURIComponent(key)}`, {method: 'DELETE'})
+      : await fetch(`/api/v2/lessons/${LESSON_ID}/reading/saved-sentences`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            block_index: Number(key),
+            text,
+            start_seconds: Number.isFinite(startSeconds) ? startSeconds : 0,
+            end_seconds: Number.isFinite(endSeconds) ? endSeconds : 0,
+            lesson_id: LESSON_ID,
+            mode: 'reading',
+            sentence_key: key,
+            source: {
+              lesson_id: LESSON_ID,
+              mode: 'reading',
+              block_index: Number.isFinite(blockIndex) ? blockIndex : null,
+              start_seconds: Number.isFinite(startSeconds) ? startSeconds : null,
+              end_seconds: Number.isFinite(endSeconds) ? endSeconds : null,
+            },
+          }),
+        });
+    if (!resp.ok) throw new Error('sentence save failed');
+    const data = await resp.json().catch(() => ({}));
+    if (alreadySaved) {
+      savedSentenceKeys.delete(key);
+      savedSentences = savedSentences.filter(item => String(item.segment_index) !== key);
+    } else {
+      savedSentenceKeys.add(key);
+      if (data.sentence) {
+        savedSentences = savedSentences.filter(item => String(item.segment_index) !== key);
+        savedSentences.push(data.sentence);
+      }
+    }
+    button.classList.toggle('saved', !alreadySaved);
+    button.setAttribute('aria-pressed', String(!alreadySaved));
+    button.setAttribute('aria-label', alreadySaved ? '收藏整句' : '取消收藏整句');
+    button.title = alreadySaved ? '收藏整句' : '取消收藏整句';
+    updateReviewSummary();
+    renderReadingSavedItems();
+    renderSentenceTagPanel();
+  } catch (_) {
+    button.title = '操作失败，请重试';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function formatReadingGloss(gloss) {
+  const senses = String(gloss || '')
+    .split(/[；;，,、]/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  const compact = (senses.length ? senses.slice(0, 2).join('；') : String(gloss || '')).trim();
+  return compact.length > 10 ? `${compact.slice(0, 9)}…` : compact;
+}
+
+function renderReadingBlockTranslation(block) {
+  const mode = document.getElementById('subtitle-mode')?.value || 'lookup';
+  if (mode !== 'chinese' && mode !== 'bilingual') return '';
+  const sentences = Array.isArray(block.sentences) && block.sentences.length
+    ? block.sentences.map(sentence => String(sentence.text || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+    : String(block.text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(/(?<=[.!?])\s+/)
+      .filter(Boolean);
+  const translated = sentences
+    .map(sentence => sentenceTranslations[normalizeSentenceText(sentence)] || '')
+    .filter(Boolean);
+  const text = translated.join(' ');
+  if (!text) return `<span class="reading-translation">${escapeHtml(subtitleTranslationFallback())}</span>`;
+  return `<span class="reading-translation">${escapeHtml(text)}</span>`;
+}
+
+function matchSelectedReadingSentence(range, selectedText) {
+  const startElement = range.startContainer.nodeType === Node.TEXT_NODE
+    ? range.startContainer.parentElement
+    : range.startContainer;
+  const endElement = range.endContainer.nodeType === Node.TEXT_NODE
+    ? range.endContainer.parentElement
+    : range.endContainer;
+  const startParagraph = startElement?.closest?.('[data-block-index]');
+  const endParagraph = endElement?.closest?.('[data-block-index]');
+  if (!startParagraph || startParagraph !== endParagraph) return null;
+
+  const blockIndex = Number(startParagraph.dataset.blockIndex);
+  const block = readingBlocks.find(item => Number(item.index) === blockIndex);
+  if (!block) return null;
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+  const normalizedBlock = normalize(block.text);
+  const normalizedSelection = normalize(selectedText);
+  const selectionStart = normalizedBlock.indexOf(normalizedSelection);
+  if (selectionStart < 0) return null;
+  const selectionEnd = selectionStart + normalizedSelection.length;
+  const sentenceItems = Array.isArray(block.sentences) && block.sentences.length
+    ? block.sentences
+    : String(block.text || '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/)
+      .filter(Boolean)
+      .map(text => ({text}));
+  let sentenceCursor = 0;
+  const positioned = sentenceItems.map((sentence, sentenceIndex) => {
+    const normalizedSentence = normalize(sentence.text);
+    const start = normalizedBlock.indexOf(normalizedSentence, sentenceCursor);
+    const end = start < 0 ? start : start + normalizedSentence.length;
+    if (end >= 0) sentenceCursor = end;
+    return {sentence, sentenceIndex, normalizedSentence, start, end};
+  });
+  const matched = positioned.filter(item => (
+    item.start >= 0 && item.start < selectionEnd && item.end > selectionStart
+  ));
+  if (!matched.length) return null;
+  const first = matched[0];
+  const last = matched[matched.length - 1];
+  const explicitSentenceKey = Number(first.sentence.sentence_key);
+  const key = Number.isFinite(explicitSentenceKey)
+    ? explicitSentenceKey
+    : -(((blockIndex + 1) * 10000) + first.sentenceIndex + 1);
+  return {
+    key,
+    text: String(first.sentence.text || ''),
+    start_seconds: Number(first.sentence.start_seconds ?? block.start_seconds),
+    end_seconds: Number(last.sentence.end_seconds ?? block.end_seconds),
+  };
+}
+
+function captureReadingSelection() {
+  captureStudySelection('reading');
+}
+
+function captureListeningSelection() {
+  captureStudySelection('listening');
+}
+
+function captureStudySelection(mode) {
+  if (activeStudyMode !== mode) return;
+  const root = document.getElementById(mode === 'reading' ? 'reading-passage' : 'current-subtitle');
+  const selection = window.getSelection();
+  if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    closeReadingSelectionPopover();
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  const ancestor = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+    ? range.commonAncestorContainer.parentElement
+    : range.commonAncestorContainer;
+  if (!ancestor || !root.contains(ancestor)) {
+    closeReadingSelectionPopover();
+    return;
+  }
+  const text = selection.toString().replace(/\s+/g, ' ').trim();
+  if (!text) {
+    closeReadingSelectionPopover();
+    return;
+  }
+  readingSelectionRequestToken += 1;
+  readingSelectionText = text;
+  readingSelectionMode = mode;
+  readingSelectionTargetType = (text.match(/[A-Za-z]+(?:['-][A-Za-z]+)*/g) || []).length > 1
+    ? 'phrase'
+    : 'word';
+  if (mode === 'reading') {
+    readingSelectionRange = matchSelectedReadingSentence(range, text);
+  } else {
+    const sentence = sentenceUnits[activeSentenceIdx >= 0 ? activeSentenceIdx : 0];
+    readingSelectionRange = sentence
+      ? {
+          key: currentSentenceKey(),
+          text: String(sentence.text || ''),
+          start_seconds: Number(sentence.start),
+          end_seconds: Number(sentence.end),
+        }
+      : null;
+  }
+  readingSelectionSentenceKey = readingSelectionRange?.key ?? null;
+  const popover = document.getElementById('reading-selection-popover');
+  const result = document.getElementById('reading-selection-result');
+  const kind = document.getElementById('reading-selection-kind');
+  const saveButton = popover?.querySelector('[data-action="save-target"]');
+  const rect = range.getBoundingClientRect();
+  if (!popover) return;
+  const targetLabel = readingSelectionTargetType === 'phrase' ? '短语' : '单词';
+  if (kind) kind.textContent = `已选择${targetLabel} · ${text}`;
+  if (saveButton) saveButton.textContent = `收藏${targetLabel}`;
+  if (result) {
+    result.textContent = '';
+    result.classList.remove('open');
+  }
+  popover.classList.add('open');
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(420, window.innerWidth - 24) - 12));
+  const preferredTop = rect.bottom + 10;
+  const top = preferredTop + 180 < window.innerHeight ? preferredTop : Math.max(12, rect.top - 58);
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
+async function saveSelectedStudyTarget() {
+  const text = String(readingSelectionText || '').trim();
+  if (!text) return false;
+  const startSeconds = Number(readingSelectionRange?.start_seconds);
+  const endSeconds = Number(readingSelectionRange?.end_seconds);
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/word`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      word: text,
+      target_type: readingSelectionTargetType,
+      meaning: '',
+      sentence: String(readingSelectionRange?.text || ''),
+      lesson_id: LESSON_ID,
+      mode: readingSelectionMode,
+      sentence_key: readingSelectionSentenceKey,
+      source: {
+        lesson_id: LESSON_ID,
+        mode: readingSelectionMode,
+        sentence_key: readingSelectionSentenceKey,
+        start_seconds: Number.isFinite(startSeconds) ? startSeconds : null,
+        end_seconds: Number.isFinite(endSeconds) ? endSeconds : null,
+      },
+    }),
+  });
+  if (resp.ok) await loadSavedWords();
+  return resp.ok;
+}
+
+function closeReadingSelectionPopover(clearSelection = false) {
+  document.getElementById('reading-selection-popover')?.classList.remove('open');
+  if (clearSelection) {
+    readingSelectionText = '';
+    readingSelectionSentenceKey = null;
+    readingSelectionRange = null;
+    readingSelectionTargetType = 'phrase';
+    readingSelectionMode = activeStudyMode === 'listening' ? 'listening' : 'reading';
+  }
+}
+
+async function requestReadingSelectionAI(action) {
+  const prompts = {
+    analyze: '请解析选中的英文：先给出主干结构，再解释关键语法、搭配和作者表达意图，面向英语学习者，避免空泛。',
+  };
+  const result = document.getElementById('reading-selection-result');
+  if (!result || !prompts[action]) return;
+  if (readingSelectionText.length > 4000) {
+    result.textContent = '选区超过 4000 字符，请缩短后重试。';
+    result.classList.add('open');
+    return;
+  }
+  result.textContent = '正在分析选区…';
+  result.classList.add('open');
+  const requestToken = ++readingSelectionRequestToken;
+  const selectedText = readingSelectionText;
+  const actionButtons = document.querySelectorAll('#reading-selection-popover [data-action="translate"], #reading-selection-popover [data-action="analyze"]');
+  actionButtons.forEach(button => { button.disabled = true; });
+  try {
+    const sessionId = await ensureActiveChatSession();
+    if (!sessionId) throw new Error('无法创建聊天会话');
+    const resp = await fetch('/api/v2/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        lesson_id: LESSON_ID,
+        session_id: sessionId,
+        message: prompts[action],
+        timestamp_seconds: 0,
+        context_mode: 'reading_selection',
+        selected_text: selectedText,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || data.error || 'request failed');
+    if (requestToken === readingSelectionRequestToken && selectedText === readingSelectionText) {
+      result.textContent = data.message?.ai_response || 'AI 未返回内容。';
+    }
+  } catch (error) {
+    if (requestToken === readingSelectionRequestToken) result.textContent = `处理失败：${error.message}`;
+  } finally {
+    if (requestToken === readingSelectionRequestToken) {
+      actionButtons.forEach(button => { button.disabled = false; });
+    }
+  }
+}
+
+async function requestReadingSelectionTranslation() {
+  const result = document.getElementById('reading-selection-result');
+  if (!result) return;
+  if (readingSelectionText.length > 4000) {
+    result.textContent = '选区超过 4000 字符，请缩短后重试。';
+    result.classList.add('open');
+    return;
+  }
+  result.textContent = '正在使用混元翻译…';
+  result.classList.add('open');
+  const requestToken = ++readingSelectionRequestToken;
+  const selectedText = readingSelectionText;
+  const actionButtons = document.querySelectorAll('#reading-selection-popover [data-action="translate"], #reading-selection-popover [data-action="analyze"]');
+  actionButtons.forEach(button => { button.disabled = true; });
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/translate-selection`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: selectedText}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '混元翻译请求失败');
+    if (requestToken === readingSelectionRequestToken && selectedText === readingSelectionText) {
+      result.textContent = data.translation || '混元翻译未返回内容。';
+    }
+  } catch (error) {
+    if (requestToken === readingSelectionRequestToken) result.textContent = `处理失败：${error.message}`;
+  } finally {
+    if (requestToken === readingSelectionRequestToken) {
+      actionButtons.forEach(button => { button.disabled = false; });
+    }
+  }
+}
+
+async function runReadingSelectionAction(action) {
+  if (!readingSelectionText) return;
+  if (action === 'intensive') {
+    const query = readingSelectionSentenceKey === null
+      ? ''
+      : `?sentence_key=${encodeURIComponent(readingSelectionSentenceKey)}`;
+    window.location.assign(`/workspace/${LESSON_ID}/intensive${query}`);
+    return;
+  }
+  if (action === 'save-target') {
+    const ok = await saveSelectedStudyTarget();
+    const result = document.getElementById('reading-selection-result');
+    if (result) {
+      const targetLabel = readingSelectionTargetType === 'phrase' ? '短语' : '单词';
+      result.textContent = ok ? `${targetLabel}已收藏，可稍后前往词汇工坊练习。` : '收藏失败，请稍后重试。';
+      result.classList.add('open');
+    }
+    if (ok) {
+      readingSelectionText = '';
+      window.getSelection()?.removeAllRanges();
+    }
+    return;
+  }
+  if (action === 'translate') {
+    await requestReadingSelectionTranslation();
+    return;
+  }
+  if (action === 'analyze') {
+    await requestReadingSelectionAI(action);
+    return;
+  }
+  if (action === 'ask') {
+    readingChatSelection = readingSelectionText;
+    contextMode = 'reading_selection';
+    updateContextSummary();
+    closeReadingSelectionPopover();
+    const input = document.getElementById('chat-input');
+    if (input) {
+      input.placeholder = 'Ask a follow-up about the selected text…';
+      input.focus();
+    }
+  }
+  if (action === 'play-sentence') {
+    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    const block = readingBlocks.find(b => normalize(b.text).includes(normalize(readingSelectionText)));
+    const selectedStart = Number(readingSelectionRange?.start_seconds);
+    const selectedEnd = Number(readingSelectionRange?.end_seconds);
+    const start = Number.isFinite(selectedStart) ? selectedStart : Number(block?.start_seconds);
+    const end = Number.isFinite(selectedEnd) ? selectedEnd : Number(block?.end_seconds);
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      playReadingRange(start, end);
+    }
+    closeReadingSelectionPopover();
+  }
+}
+
+function clearReadingChatSelection() {
+  readingChatSelection = '';
+  if (contextMode === 'reading_selection') contextMode = 'auto';
+  const input = document.getElementById('chat-input');
+  if (input) input.placeholder = 'Ask about this part...';
+  updateContextSummary();
+}
+
+function renderReadingSavedItems() {
+  const root = document.getElementById('reading-saved-items');
+  if (!root) return;
+  const savedWords = [...savedWordSet].sort();
+  const sentenceItems = savedSentences || [];
+  if (!savedWords.length && !sentenceItems.length) {
+    root.innerHTML = '<div class="empty-state">Save words or sentences from Phase A.</div>';
+    return;
+  }
+  const wordHtml = savedWords.map(word => {
+    const cached = wordMeaningCache[word];
+    const meaning = typeof cached === 'string' ? cached : (cached?.meaning || '');
+    const inReviewBook = reviewBookWordSet.has(word);
+    return `<div class="reading-saved-item reading-saved-word">
+      <span><strong>${escapeHtml(word)}</strong>${meaning ? ` · ${escapeHtml(meaning)}` : ''}</span>
+      <button class="review-book-btn" ${inReviewBook ? 'disabled' : ''} onclick="addSavedWordToReview(event, '${escapeJsAttr(word)}', '${escapeJsAttr(meaning)}')">${inReviewBook ? '已在复习本' : '加入复习本'}</button>
+    </div>`;
+  }).join('');
+  const sentenceHtml = sentenceItems.map(item => {
+    return `<div class="reading-saved-item">${escapeHtml(item.text || '')}</div>`;
+  }).join('');
+  root.innerHTML = wordHtml + sentenceHtml;
+}
+
+async function activateWordReview(word, source = 'manual', meaning = '') {
+  const normalized = normalizeWord(word);
+  if (!normalized) return false;
+  const resp = await fetch('/api/vocab-review/activate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({word: normalized, source, lesson_id: LESSON_ID, meaning}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data.error) throw new Error(data.error || '加入复习本失败');
+  reviewBookWordSet.add(normalizeWord(data.word || normalized));
+  renderReadingSavedItems();
+  return true;
+}
+
+async function addSavedWordToReview(event, word, meaning = '') {
+  event.stopPropagation();
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = '加入中…';
+  try {
+    await activateWordReview(word, 'manual', meaning);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = '重试加入';
+  }
+}
+
+function sentenceTagsForCategory(category) {
+  return (sentenceTagCatalog.tags || [])
+    .filter(tag => tag.category === category)
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'));
+}
+
+function renderSentenceTagNameOptions(category) {
+  const options = sentenceTagsForCategory(category).map(tag => (
+    `<option value="${escapeHtml(tag.name || '')}">${escapeHtml(tag.name || '')}</option>`
+  ));
+  options.unshift('<option value="">选择二级标签</option>');
+  options.push(`<option value="${CUSTOM_SENTENCE_TAG_VALUE}">＋ 自定义标签…</option>`);
+  return options.join('');
+}
+
+function updateSentenceTagNameOptions(categorySelect) {
+  const row = categorySelect.closest('.sentence-tag-item');
+  const nameSelect = row?.querySelector('[data-tag-name]');
+  const customInput = row?.querySelector('[data-tag-custom]');
+  if (!nameSelect || !customInput) return;
+  nameSelect.innerHTML = renderSentenceTagNameOptions(categorySelect.value);
+  customInput.hidden = true;
+  customInput.value = '';
+}
+
+function updateSentenceCustomTagVisibility(nameSelect) {
+  const row = nameSelect.closest('.sentence-tag-item');
+  const customInput = row?.querySelector('[data-tag-custom]');
+  if (!customInput) return;
+  customInput.hidden = nameSelect.value !== CUSTOM_SENTENCE_TAG_VALUE;
+  if (!customInput.hidden) customInput.focus();
+}
+
+function renderSentenceTagPanel() {
+  const root = document.getElementById('sentence-tag-panel');
+  if (!root) return;
+  if (!savedSentences.length) {
+    root.innerHTML = '';
+    return;
+  }
+  const categoryIds = new Set(sentenceTagCatalog.categories.map(item => item.id));
+  const fallbackCategory = sentenceTagCatalog.categories[0]?.id || 'practice';
+  root.innerHTML = savedSentences.map(item => {
+    const key = String(item.segment_index);
+    const tags = Array.isArray(item.tags) ? item.tags : [];
+    const selectedCategory = tags.find(tag => categoryIds.has(tag.category))?.category || fallbackCategory;
+    const categoryOptions = sentenceTagCatalog.categories.map(category => (
+      `<option value="${escapeHtml(category.id)}"${category.id === selectedCategory ? ' selected' : ''}>${escapeHtml(category.label)}</option>`
+    )).join('');
+    const tagHtml = tags.length
+      ? tags.map(tag => `<span class="sentence-tag-chip">${escapeHtml(tag.name || '')}</span>`).join('')
+      : '<span class="sentence-tag-chip">未打标签</span>';
+    return `<div class="sentence-tag-item" data-segment-index="${escapeHtml(key)}">
+      <div class="sentence-tag-text">${escapeHtml(item.text || '')}</div>
+      <div class="sentence-tag-list">${tagHtml}</div>
+      <div class="sentence-tag-form">
+        <select data-tag-category onchange="updateSentenceTagNameOptions(this)">${categoryOptions}</select>
+        <div class="sentence-tag-name-control">
+          <select data-tag-name onchange="updateSentenceCustomTagVisibility(this)">${renderSentenceTagNameOptions(selectedCategory)}</select>
+          <input data-tag-custom type="text" placeholder="输入自定义标签" hidden>
+        </div>
+        <button type="button" onclick="addSentenceTag('${escapeHtml(key)}')">Add</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addSentenceTag(segmentIndex) {
+  const row = [...document.querySelectorAll('.sentence-tag-item')]
+    .find(node => node.dataset.segmentIndex === String(segmentIndex));
+  const item = savedSentences.find(sentence => String(sentence.segment_index) === String(segmentIndex));
+  if (!row || !item) return;
+  const category = row.querySelector('[data-tag-category]')?.value || 'practice';
+  const nameSelect = row.querySelector('[data-tag-name]');
+  const customInput = row.querySelector('[data-tag-custom]');
+  const selectedName = nameSelect?.value || '';
+  const customName = customInput?.value.trim() || '';
+  const name = selectedName === CUSTOM_SENTENCE_TAG_VALUE ? customName : selectedName;
+  if (!name) return;
+  const existing = Array.isArray(item.tags) ? item.tags : [];
+  const tags = existing
+    .map(tag => ({category: tag.category, name: tag.name}))
+    .filter(tag => tag.category && tag.name);
+  if (!tags.some(tag => tag.category === category && tag.name === name)) {
+    tags.push({category, name});
+  }
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b/${encodeURIComponent(segmentIndex)}/tags`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tags})
+  });
+  if (!resp.ok) return;
+  const data = await resp.json().catch(() => ({}));
+  item.tags = data.tags || tags;
+  await loadSentenceTagCatalog();
+  renderSentenceTagPanel();
+}
+
+function onOutlineJump(idx) {
+  const section = outlineSections[idx];
+  if (!section) return;
+  activeSectionIdx = idx;
+  currentTime = section.start || 0;
+  contextMode = 'auto';
+  selectedStart = section.start;
+  selectedEnd = section.end;
+  selectedIds = section.segment_ids || [];
+  seekTo(section.start || 0);
+  updateCurrentSubtitle();
+  updateContextSummary();
+  renderOutline();
+}
+
+function setRangeStart(event, idx) {
+  event.stopPropagation();
+  rangeStartIdx = idx;
+  if (rangeEndIdx !== null && rangeEndIdx < rangeStartIdx) rangeEndIdx = rangeStartIdx;
+  applyRangeSelection();
+}
+
+function setRangeEnd(event, idx) {
+  event.stopPropagation();
+  rangeEndIdx = idx;
+  if (rangeStartIdx === null) rangeStartIdx = idx;
+  if (rangeEndIdx < rangeStartIdx) [rangeStartIdx, rangeEndIdx] = [rangeEndIdx, rangeStartIdx];
+  applyRangeSelection();
+}
+
+function applyRangeSelection() {
+  if (rangeStartIdx === null || rangeEndIdx === null || !outlineSections.length) {
+    renderOutline();
+    return;
+  }
+  const start = Math.min(rangeStartIdx, rangeEndIdx);
+  const end = Math.max(rangeStartIdx, rangeEndIdx);
+  const selected = outlineSections.slice(start, end + 1);
+  contextMode = 'selected_range';
+  selectedStart = selected[0].start;
+  selectedEnd = selected[selected.length - 1].end;
+  selectedIds = selected.flatMap(item => item.segment_ids || []);
+  updateContextSummary();
+  renderOutline();
+  document.getElementById('chat-input').focus();
+}
+
+function isInSelectedRange(idx) {
+  if (rangeStartIdx === null || rangeEndIdx === null) return false;
+  const start = Math.min(rangeStartIdx, rangeEndIdx);
+  const end = Math.max(rangeStartIdx, rangeEndIdx);
+  return idx >= start && idx <= end;
+}
+
+function updateActiveByTime(time) {
+  const sentenceIdx = findUnitByTime(sentenceUnits, time);
+  const sectionIdx = findUnitByTime(outlineSections, time);
+  if (sentenceIdx === activeSentenceIdx && sectionIdx === activeSectionIdx) return;
+
+  activeSentenceIdx = sentenceIdx;
+  activeSectionIdx = sectionIdx;
+  if (contextMode === 'auto' && sentenceIdx >= 0) {
+    const sentence = sentenceUnits[sentenceIdx];
+    selectedStart = sentence.start;
+    selectedEnd = sentence.end;
+    selectedIds = sentence.segment_ids || [];
+    updateContextSummary();
+  }
+  updateCurrentSubtitle();
+  renderOutline();
+  scrollActiveOutlineIntoView();
+}
+
+function findUnitByTime(items, time) {
+  if (!items.length) return -1;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (Number(items[i].start || 0) <= time) return i;
+  }
+  return -1;
+}
+
+function updateCurrentSubtitle() {
+  closeWordPopover();
+  const textEl = document.getElementById('current-subtitle');
+  const posEl = document.getElementById('subtitle-position');
+  const metaEl = document.getElementById('subtitle-meta');
+  const chipsEl = document.getElementById('vocab-chips');
+  const saveBtn = document.getElementById('save-sentence');
+  const prevBtn = document.getElementById('prev-sentence');
+  const nextBtn = document.getElementById('next-sentence');
+  const mode = document.getElementById('subtitle-mode').value;
+
+  if (mode === 'none') {
+    textEl.textContent = 'Subtitles hidden.';
+    posEl.textContent = 'no subtitles mode';
+    metaEl.textContent = 'Switch back to English or English + lookup when you want support.';
+    chipsEl.innerHTML = '';
+    document.getElementById('subtitle-translation').textContent = '';
+    saveBtn.disabled = true;
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    saveBtn.classList.remove('saved');
+    return;
+  }
+  if (!sentenceUnits.length) {
+    textEl.textContent = lessonData && lessonData.subtitle_status === 'failed'
+      ? 'No subtitles are available for this video.'
+      : 'Subtitles are loading in the background.';
+    posEl.textContent = lessonData ? `subtitles ${lessonData.subtitle_status}` : 'waiting';
+    metaEl.textContent = 'Video playback stays available while learning data loads.';
+    chipsEl.innerHTML = '';
+    saveBtn.disabled = true;
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    saveBtn.classList.remove('saved');
+    return;
+  }
+
+  const idx = activeSentenceIdx >= 0 ? activeSentenceIdx : 0;
+  const sentence = sentenceUnits[idx];
+  const translationKey = normalizeSentenceText(sentence.text);
+  const translation = sentenceTranslations[translationKey] || '';
+  if (mode === 'chinese') {
+    textEl.textContent = translation || subtitleTranslationFallback();
+  } else {
+    textEl.innerHTML = renderSubtitleText(sentence);
+  }
+  posEl.textContent = `${idx + 1} / ${sentenceUnits.length}`;
+  metaEl.textContent = `${formatTime(sentence.start)} - ${formatTime(sentence.end)} | ${sentence.segment_ids.length} subtitle line${sentence.segment_ids.length > 1 ? 's' : ''}`;
+  chipsEl.innerHTML = '';
+  const transEl = document.getElementById('subtitle-translation');
+  if (transEl) {
+    transEl.textContent = mode === 'bilingual'
+      ? (translation || subtitleTranslationFallback())
+      : '';
+    transEl.hidden = mode !== 'bilingual';
+  }
+  saveBtn.disabled = false;
+  prevBtn.disabled = idx <= 0;
+  nextBtn.disabled = idx >= sentenceUnits.length - 1;
+  updateSaveState();
+}
+
+function currentSentenceKey() {
+  const idx = activeSentenceIdx >= 0 ? activeSentenceIdx : 0;
+  const sentence = sentenceUnits[idx];
+  if (!sentence) return '';
+  return String(sentence.segment_ids[0] || 0);
+}
+
+function updateSaveState() {
+  const button = document.getElementById('save-sentence');
+  if (!button) return;
+  const saved = savedSentenceKeys.has(currentSentenceKey());
+  button.classList.toggle('saved', saved);
+  button.dataset.tooltip = saved ? '\u5df2\u52a0\u5165\u7cbe\u8bfb' : '\u52a0\u5165\u7cbe\u8bfb';
+}
+
+function jumpSentence(delta) {
+  if (!sentenceUnits.length) return;
+  const current = activeSentenceIdx >= 0 ? activeSentenceIdx : 0;
+  const next = Math.max(0, Math.min(sentenceUnits.length - 1, current + delta));
+  const sentence = sentenceUnits[next];
+  if (!sentence) return;
+  activeSentenceIdx = next;
+  activeSectionIdx = findUnitByTime(outlineSections, sentence.start || 0);
+  contextMode = 'auto';
+  selectedStart = sentence.start;
+  selectedEnd = sentence.end;
+  selectedIds = sentence.segment_ids || [];
+  currentTime = sentence.start || 0;
+  seekTo(sentence.start || 0);
+  updateCurrentSubtitle();
+  updateContextSummary();
+  renderOutline();
+  scrollActiveOutlineIntoView();
+}
+
+function updateContextSummary() {
+  const el = document.getElementById('chat-context-summary');
+  const clearButton = document.getElementById('reading-context-clear');
+  if (contextMode === 'reading_selection' && readingChatSelection) {
+    const preview = readingChatSelection.length > 110 ? `${readingChatSelection.slice(0, 110)}…` : readingChatSelection;
+    el.textContent = `Context: selected Reading text — ${preview}`;
+    if (clearButton) clearButton.hidden = false;
+    return;
+  }
+  if (clearButton) clearButton.hidden = true;
+  if (contextMode === 'selected_range' && selectedIds.length) {
+    el.textContent = `Context: selected range ${formatTime(selectedStart)} - ${formatTime(selectedEnd)} (${selectedIds.length} subtitle lines)`;
+    return;
+  }
+  if (activeSentenceIdx >= 0 && sentenceUnits[activeSentenceIdx]) {
+    const sentence = sentenceUnits[activeSentenceIdx];
+    el.textContent = `Context: current sentence ${formatTime(sentence.start)} - ${sentence.text}`;
+    return;
+  }
+  el.textContent = 'Context: current playback point.';
+}
+
+function scrollActiveOutlineIntoView() {
+  const active = document.querySelector('.outline-section.active');
+  if (active) active.scrollIntoView({block: 'nearest'});
+}
+
+function onSubtitleModeChange() {
+  renderOutline();
+  updateCurrentSubtitle();
+  if (activeStudyMode === 'reading') renderReadingPassage();
+}
+
+async function saveCurrentSentence() {
+  const idx = activeSentenceIdx >= 0 ? activeSentenceIdx : 0;
+  const sentence = sentenceUnits[idx];
+  if (!sentence) return;
+  const button = document.getElementById('save-sentence');
+  const oldTooltip = button.dataset.tooltip || '\u52a0\u5165\u7cbe\u8bfb';
+  const key = currentSentenceKey();
+  const alreadySaved = savedSentenceKeys.has(key);
+  button.disabled = true;
+  button.dataset.tooltip = alreadySaved ? '\u53d6\u6d88\u4e2d' : '\u4fdd\u5b58\u4e2d';
+  try {
+    let resp;
+    if (alreadySaved) {
+      resp = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b/${encodeURIComponent(key)}`, {method: 'DELETE'});
+      if (resp.ok) {
+        savedSentenceKeys.delete(key);
+        savedSentences = savedSentences.filter(item => String(item.segment_index) !== key);
+        button.classList.remove('saved');
+      }
+    } else {
+      resp = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          segment_index: sentence.segment_ids[0] || 0,
+          start_seconds: sentence.start,
+          end_seconds: sentence.end,
+          text: sentence.text,
+        }),
+      });
+      if (resp.ok) {
+        savedSentenceKeys.add(key);
+        const data = await resp.json().catch(() => ({}));
+        if (data.sentence) {
+          savedSentences = savedSentences.filter(item => String(item.segment_index) !== key);
+          savedSentences.push(data.sentence);
+        }
+        button.classList.add('saved');
+      }
+    }
+    updateReviewSummary();
+    button.dataset.tooltip = resp.ok
+      ? (alreadySaved ? '\u5df2\u53d6\u6d88' : '\u5df2\u52a0\u5165\u7cbe\u8bfb')
+      : '\u64cd\u4f5c\u5931\u8d25';
+  } catch (_) {
+    button.dataset.tooltip = '\u64cd\u4f5c\u5931\u8d25';
+  } finally {
+    setTimeout(() => {
+      updateSaveState();
+      button.disabled = false;
+    }, 1200);
+  }
+}
+
+function normalizeSentenceText(text) {
+  return (text || '').replace(/\s+/g, ' ').trim();
+}
+
+async function loadSentenceTranslations() {
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/sentence-translations`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    for (const [text, translation] of Object.entries(data.translations || {})) {
+      sentenceTranslations[normalizeSentenceText(text)] = translation;
+    }
+    if (lessonData && data.cached && data.translation_status === 'ready') {
+      lessonData.translation_status = 'ready';
+      lessonData.translation_ready = 1;
+      lessonData.translation_done = sentenceUnits.length;
+      lessonData.translation_total = sentenceUnits.length;
+    }
+    applyTranslationSubtitleAvailability();
+    updateCurrentSubtitle();
+    if (activeStudyMode === 'reading') renderReadingPassage();
+  } catch (_) {}
+}
+
+function subtitleTranslationFallback() {
+  const status = lessonData?.translation_status || 'disabled';
+  if (status === 'pending' || status === 'translating') return '中文字幕生成中…';
+  if (status === 'failed') return '中文字幕生成失败';
+  return '暂无中文字幕';
+}
+
+function applyTranslationSubtitleAvailability() {
+  const select = document.getElementById('subtitle-mode');
+  if (!select) return;
+  const requested = Number(lessonData?.translation_requested || 0) === 1;
+  const hasTranslations = Object.keys(sentenceTranslations).length > 0;
+  for (const value of ['chinese', 'bilingual']) {
+    const option = select.querySelector(`option[value="${value}"]`);
+    if (option) option.disabled = !requested && !hasTranslations;
+  }
+  if (!subtitleModeInitialized) {
+    if (requested) select.value = 'bilingual';
+    subtitleModeInitialized = true;
+  }
+  if (!requested && !hasTranslations && ['chinese', 'bilingual'].includes(select.value)) {
+    select.value = 'lookup';
+  }
+}
+
+async function showWordMeaning(event) {
+  event.stopPropagation();
+  if (String(window.getSelection()?.toString() || '').trim()) return;
+  const target = event.currentTarget;
+  const query = String(target.dataset.query || target.dataset.word || target.textContent || '').trim();
+  const word = normalizeWord(target.dataset.word || query);
+  const cached = wordMeaningCache[word];
+  if (cached) {
+    const cachedMeaning = typeof cached === 'string' ? cached : (cached.meaning || '');
+    const cachedPhonetic = typeof cached === 'string' ? '' : (cached.phonetic || '');
+    const cachedSource = typeof cached === 'string' ? '' : (cached.source || '');
+    openWordPopover(target, query || word, cachedMeaning, cachedPhonetic, cachedSource);
+    return;
+  }
+  openWordPopover(target, query || word, '\u67e5\u8be2\u4e2d...');
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/word-meaning/${encodeURIComponent(query || word)}`);
+    const data = await resp.json().catch(() => ({}));
+    const normalized = normalizeWord(data.word || word);
+    const meaning = data.meaning || '\u672c\u5730\u4e0e\u5728\u7ebf\u67e5\u8be2\u5747\u672a\u547d\u4e2d';
+    const phonetic = data.phonetic || '';
+    const source = data.source || '';
+    if (normalized) wordMeaningCache[normalized] = { meaning: data.meaning || '', phonetic, source };
+    if (normalized && data.in_review_book) {
+      reviewBookWordSet.add(normalized);
+      renderReadingSavedItems();
+    }
+    target.dataset.meaning = data.meaning || '';
+    target.dataset.phonetic = phonetic;
+    if (!target.isConnected) return;
+    openWordPopover(target, query || word, meaning, phonetic, source);
+  } catch (_) {
+    if (!target.isConnected) return;
+    openWordPopover(target, query || word, '\u67e5\u8be2\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5');
+  }
+}
+
+function closeWordPopover() {
+  const pop = document.getElementById('word-popover');
+  if (!pop) return;
+  pop.classList.remove('open');
+  pop.style.removeProperty('top');
+  pop.style.removeProperty('left');
+}
+
+function openWordPopover(anchor, word, meaning, phonetic = '', source = '') {
+  if (!anchor?.isConnected) {
+    closeWordPopover();
+    return;
+  }
+  const pop = document.getElementById('word-popover');
+  const rect = anchor.getBoundingClientRect();
+  const normalized = normalizeWord(word);
+  const saved = savedWordSet.has(normalized);
+  const phoneticHtml = phonetic ? `<div class="phonetic">/${escapeHtml(phonetic)}/</div>` : '';
+  const sourceHtml = source === 'external' ? '<div class="lookup-source">AI \u5728\u7ebf\u8865\u5145\u91ca\u4e49</div>' : '';
+  pop.innerHTML = `<div class="word">${escapeHtml(word)}</div>
+    ${phoneticHtml}
+    <div class="meaning">${escapeHtml(meaning || '\u6682\u65e0\u91ca\u4e49')}</div>
+    ${sourceHtml}
+    <div class="word-actions">
+      <button class="word-save-btn ${saved ? 'saved' : ''}" onclick="toggleWordSave(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${saved ? '★ 已收藏' : '☆ 加入生词'}</button>
+    </div>`;
+  pop.classList.add('open');
+  const gap = 8;
+  const viewportPadding = 12;
+  const popRect = pop.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPadding;
+  const spaceAbove = rect.top - gap - viewportPadding;
+  let top;
+  if (popRect.height <= spaceBelow) {
+    top = rect.bottom + gap;
+  } else if (popRect.height <= spaceAbove) {
+    top = rect.top - gap - popRect.height;
+  } else {
+    top = viewportPadding;
+  }
+  const maxLeft = window.innerWidth - popRect.width - viewportPadding;
+  const left = Math.min(Math.max(viewportPadding, rect.left), Math.max(viewportPadding, maxLeft));
+  pop.style.top = `${top}px`;
+  pop.style.left = `${left}px`;
+}
+
+async function toggleWordSave(event, word, meaning) {
+  event.stopPropagation();
+  const normalized = normalizeWord(word);
+  if (!normalized) return;
+  const currentSentence = sentenceUnits[activeSentenceIdx >= 0 ? activeSentenceIdx : 0];
+  const saved = savedWordSet.has(normalized);
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    let resp;
+    if (saved) {
+      resp = await fetch(`/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}`, {method: 'DELETE'});
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        const returned = normalizeWord(data.word || normalized);
+        savedWordSet.delete(returned);
+        savedWordSet.delete(normalized);
+        if (returned) readingHiddenWordSet.add(returned);
+        readingHiddenWordSet.add(normalized);
+        delete wordMeaningCache[returned];
+        delete wordMeaningCache[normalized];
+      }
+    } else {
+      resp = await fetch(`/api/v2/lessons/${LESSON_ID}/word`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          word: normalized,
+          meaning,
+          sentence: currentSentence ? currentSentence.text : '',
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        const returned = normalizeWord(data.word || normalized);
+        savedWordSet.add(returned);
+        readingHiddenWordSet.delete(returned);
+        readingHiddenWordSet.delete(normalized);
+        if (data.meaning) wordMeaningCache[returned] = data.meaning;
+      }
+    }
+    updateCurrentSubtitle();
+    updateReviewSummary();
+    if (activeStudyMode === 'reading') {
+      refreshReadingWordStates();
+      renderReadingSavedItems();
+    }
+    openWordPopover(findWordButton(normalized) || button, normalized, wordMeaningCache[normalized] || meaning);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function updateReviewSummary() {
+  const wordCount = document.getElementById('review-word-count');
+  const sentenceCount = document.getElementById('review-sentence-count');
+  if (wordCount) wordCount.textContent = `${savedWordSet.size} word${savedWordSet.size === 1 ? '' : 's'}`;
+  if (sentenceCount) sentenceCount.textContent = `${savedSentences.length} sentence${savedSentences.length === 1 ? '' : 's'}`;
+}
+
+function buildReviewMarkdown() {
+  const title = lessonData?.title || 'English listening review';
+  const wordRows = [...savedWordSet].sort().map(word => {
+    const meaning = wordMeaningCache[word] || '';
+    return `| ${word} | ${meaning} | |`;
+  });
+  const sentenceRows = savedSentences
+    .slice()
+    .sort((a, b) => Number(a.start_seconds || 0) - Number(b.start_seconds || 0))
+    .map(item => `| ${item.text || ''} | | ${formatTime(item.start_seconds)} |`);
+  return [
+    `# ${title}`,
+    '',
+    '## 生词 / 不理解的表达',
+    '',
+    '| 词/短语 | 中文含义 | 用法语境 |',
+    '|---|---|---|',
+    ...(wordRows.length ? wordRows : ['| | | |']),
+    '',
+    '## 听不懂句子收藏',
+    '',
+    '| 句子内容 | 卡点 | 处理 |',
+    '|---|---|---|',
+    ...(sentenceRows.length ? sentenceRows : ['| | | |']),
+    '',
+  ].join('\n');
+}
+
+async function copyReviewMarkdown() {
+  const status = document.getElementById('review-copy-status');
+  const markdown = buildReviewMarkdown();
+  try {
+    await navigator.clipboard.writeText(markdown);
+    if (status) status.textContent = 'Copied';
+  } catch (_) {
+    if (status) status.textContent = 'Copy failed';
+  }
+  if (status) setTimeout(() => { status.textContent = ''; }, 1600);
+}
+
+async function exportReviewHtml() {
+  const status = document.getElementById('review-copy-status');
+  if (status) status.textContent = 'Exporting...';
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/review-export`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Export failed');
+    if (status) status.textContent = `Exported ${data.sentence_count || 0} sentences`;
+    window.open(data.export_url, '_blank');
+  } catch (e) {
+    if (status) status.textContent = e.message || 'Export failed';
+  }
+  if (status) setTimeout(() => { status.textContent = ''; }, 2200);
+}
+
+async function openIntensiveExport(button) {
+  if (button) {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = '打开中…';
+  }
+  window.location.assign(`/workspace/${LESSON_ID}/intensive`);
+}
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('.subtitle-word') && !event.target.closest('#word-popover')) {
+    closeWordPopover();
+  }
+  if (!event.target.closest('#reading-selection-popover')
+      && !event.target.closest('#reading-passage')
+      && !event.target.closest('#current-subtitle')) {
+    closeReadingSelectionPopover(true);
+  }
+});
+
+const readingPassageRoot = document.getElementById('reading-passage');
+readingPassageRoot?.addEventListener('mouseup', () => setTimeout(captureReadingSelection, 0));
+readingPassageRoot?.addEventListener('keyup', () => setTimeout(captureReadingSelection, 0));
+readingPassageRoot?.addEventListener('scroll', () => closeReadingSelectionPopover());
+const listeningSentenceRoot = document.getElementById('current-subtitle');
+listeningSentenceRoot?.addEventListener('mouseup', () => setTimeout(captureListeningSelection, 0));
+listeningSentenceRoot?.addEventListener('keyup', () => setTimeout(captureListeningSelection, 0));
+window.addEventListener('scroll', closeWordPopover, true);
+window.addEventListener('resize', closeWordPopover);
+document.getElementById('reading-selection-popover')?.addEventListener('mousedown', event => event.preventDefault());
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    closeWordPopover();
+    closeReadingSelectionPopover(true);
+  }
+});
+
+function formatChatSessionLabel(session, index) {
+  if (session.title) return session.title;
+  const created = session.created_at ? new Date(session.created_at) : null;
+  if (created && !Number.isNaN(created.getTime())) {
+    return `Conversation · ${created.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}`;
+  }
+  return `Conversation ${chatSessions.length - index}`;
+}
+
+function renderChatSessionOptions() {
+  const select = document.getElementById('chat-session-select');
+  const exportButton = document.getElementById('chat-export-session');
+  if (!select) return;
+  select.innerHTML = chatSessions.map((session, index) => (
+    `<option value="${session.id}"${Number(session.id) === Number(activeChatSessionId) ? ' selected' : ''}>${escapeHtml(formatChatSessionLabel(session, index))}</option>`
+  )).join('');
+  select.disabled = !chatSessions.length;
+  if (exportButton) exportButton.disabled = !activeChatSessionId;
+}
+
+async function loadChatSessions() {
+  try {
+    const resp = await fetch(`/api/v2/chat/sessions/${LESSON_ID}`);
+    if (!resp.ok) throw new Error('无法加载聊天会话');
+    const data = await resp.json().catch(() => ({}));
+    chatSessions = data.sessions || [];
+    if (!chatSessions.length) {
+      await newChatSession({focusInput: false});
+      return;
+    }
+    activeChatSessionId = Number(chatSessions[0].id);
+    renderChatSessionOptions();
+    await loadChatHistory(activeChatSessionId);
+  } catch (error) {
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function ensureActiveChatSession() {
+  if (activeChatSessionId) return activeChatSessionId;
+  await newChatSession({focusInput: false});
+  return activeChatSessionId;
+}
+
+async function newChatSession({focusInput = true} = {}) {
+  chatVoiceInput?.stop();
+  const button = document.getElementById('chat-new-session');
+  if (button) button.disabled = true;
+  try {
+    const resp = await fetch(`/api/v2/chat/sessions/${LESSON_ID}`, {method: 'POST'});
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '无法开始新对话');
+    const session = data.session;
+    chatSessions = [session, ...chatSessions.filter(item => Number(item.id) !== Number(session.id))];
+    activeChatSessionId = Number(session.id);
+    renderChatSessionOptions();
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = '<div class="empty-state">New conversation. Ask about the lesson when you are ready.</div>';
+    if (focusInput) document.getElementById('chat-input')?.focus();
+  } catch (error) {
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function selectChatSession(value) {
+  chatVoiceInput?.stop();
+  const sessionId = Number(value);
+  if (!sessionId || sessionId === Number(activeChatSessionId)) return;
+  activeChatSessionId = sessionId;
+  renderChatSessionOptions();
+  await loadChatHistory(sessionId);
+}
+
+function exportChatSession() {
+  if (!activeChatSessionId) return;
+  window.location.assign(`/api/v2/chat/sessions/${LESSON_ID}/${activeChatSessionId}/export`);
+}
+
+async function loadChatHistory(sessionId = activeChatSessionId) {
+  const container = document.getElementById('chat-messages');
+  if (!container || !sessionId) return;
+  container.innerHTML = '<div class="empty-state">Loading conversation…</div>';
+  try {
+    const resp = await fetch(`/api/v2/chat/history/${LESSON_ID}?session_id=${encodeURIComponent(sessionId)}`);
+    if (!resp.ok) throw new Error('无法加载聊天记录');
+    const data = await resp.json().catch(() => ({}));
+    if (Number(sessionId) !== Number(activeChatSessionId)) return;
+    container.innerHTML = '';
+    for (const item of data.messages || []) {
+      addChatMessage('user', item.user_message || '');
+      addChatMessage('ai', item.ai_response || '');
+    }
+    if (!(data.messages || []).length) {
+      container.innerHTML = '<div class="empty-state">No messages in this conversation yet.</div>';
+    }
+  } catch (error) {
+    if (Number(sessionId) === Number(activeChatSessionId)) {
+      container.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    }
+  }
+}
+
+async function sendMessage() {
+  chatVoiceInput?.stop();
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+  const sessionId = await ensureActiveChatSession();
+  if (!sessionId) return;
+  input.value = '';
+  const button = document.getElementById('chat-send');
+  button.disabled = true;
+  addChatMessage('user', message);
+  const pendingMessage = addChatMessage('ai', 'AI 正在思考…');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 50000);
+
+  try {
+    const resp = await fetch('/api/v2/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      signal: controller.signal,
+      body: JSON.stringify({
+        lesson_id: LESSON_ID,
+        session_id: sessionId,
+        message,
+        timestamp_seconds: currentTime,
+        context_mode: contextMode,
+        selected_start_seconds: selectedStart,
+        selected_end_seconds: selectedEnd,
+        selected_segment_ids: selectedIds,
+        selected_text: contextMode === 'reading_selection' ? readingChatSelection : null,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      setChatMessageContent(pendingMessage, 'Error: ' + (data.detail || data.error || 'request failed'));
+    } else {
+      setChatMessageContent(pendingMessage, data.message.ai_response || 'AI 未返回内容。');
+    }
+  } catch (error) {
+    const message = error.name === 'AbortError'
+      ? 'AI 请求超过 50 秒，已停止等待。请重试或缩短选区。'
+      : 'Network error: ' + error.message;
+    setChatMessageContent(pendingMessage, message);
+  } finally {
+    clearTimeout(timeoutId);
+    button.disabled = false;
+  }
+}
+
+function formatChatInline(content) {
+  return escapeHtml(String(content || ''))
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+}
+
+function formatChatMessageContent(content, role = 'ai') {
+  const text = String(content || '').replace(/\r\n?/g, '\n');
+  if (role !== 'ai') return formatChatInline(text).replace(/\n/g, '<br>');
+
+  const html = [];
+  let paragraph = [];
+  let listType = null;
+  let codeLines = null;
+  const closeList = () => {
+    if (!listType) return;
+    html.push(`</${listType}>`);
+    listType = null;
+  };
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    closeList();
+    html.push(`<p>${paragraph.map(formatChatInline).join('<br>')}</p>`);
+    paragraph = [];
+  };
+  const openList = type => {
+    flushParagraph();
+    if (listType === type) return;
+    closeList();
+    listType = type;
+    html.push(`<${type}>`);
+  };
+
+  for (const rawLine of text.split('\n')) {
+    const trimmed = rawLine.trim();
+    if (trimmed.startsWith('```')) {
+      if (codeLines) {
+        html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+        codeLines = null;
+      } else {
+        flushParagraph();
+        closeList();
+        codeLines = [];
+      }
+      continue;
+    }
+    if (codeLines) {
+      codeLines.push(rawLine);
+      continue;
+    }
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^#{1,4}\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      closeList();
+      html.push(`<h3>${formatChatInline(heading[1])}</h3>`);
+      continue;
+    }
+    if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      closeList();
+      html.push('<hr>');
+      continue;
+    }
+    const quote = trimmed.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushParagraph();
+      closeList();
+      html.push(`<blockquote>${formatChatInline(quote[1])}</blockquote>`);
+      continue;
+    }
+    const unordered = trimmed.match(/^[-*+]\s+(.+)$/);
+    if (unordered) {
+      openList('ul');
+      html.push(`<li>${formatChatInline(unordered[1])}</li>`);
+      continue;
+    }
+    const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      openList('ol');
+      html.push(`<li>${formatChatInline(ordered[1])}</li>`);
+      continue;
+    }
+    closeList();
+    paragraph.push(trimmed);
+  }
+
+  if (codeLines) html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+  flushParagraph();
+  closeList();
+  return html.join('');
+}
+
+function addChatMessage(role, content) {
+  const container = document.getElementById('chat-messages');
+  container.querySelector('.empty-state')?.remove();
+  const item = document.createElement('div');
+  item.className = 'chat-msg ' + role;
+  item.innerHTML = `<div class="role">${role === 'user' ? 'You' : 'AI'}</div><div class="chat-message-body"></div>`;
+  setChatMessageContent(item, content);
+  container.appendChild(item);
+  container.scrollTop = container.scrollHeight;
+  return item;
+}
+
+function setChatMessageContent(item, content) {
+  const body = item?.querySelector('.chat-message-body');
+  if (body) body.innerHTML = formatChatMessageContent(content, item.classList.contains('ai') ? 'ai' : 'user');
+}
+
+function formatTime(seconds) {
+  const value = Number(seconds || 0);
+  const minutes = Math.floor(value / 60);
+  const secs = Math.floor(value % 60);
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function clipText(text, limit) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (value.length <= limit) return value;
+  return value.slice(0, Math.max(0, limit - 1)).trim() + '...';
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value == null ? '' : String(value);
+  return div.innerHTML;
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeJsAttr(value) {
+  return String(value == null ? '' : value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+}
+
+function cssEscape(value) {
+  if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
+  return String(value).replace(/"/g, '\\"');
+}
+
+function normalizeWord(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z']/g, '').replace(/^'+|'+$/g, '');
+}
+
+function findWordButton(word) {
+  const normalized = normalizeWord(word);
+  return [...document.querySelectorAll('.subtitle-word, .reading-word')].find(el => normalizeWord(el.dataset.word) === normalized) || null;
+}
+</script>
+</body>
+</html>

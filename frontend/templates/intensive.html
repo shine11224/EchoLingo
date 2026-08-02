@@ -1,0 +1,1971 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>逐句精读 - English Learning Tool</title>
+  <style>
+    :root {
+      --paper: #f4f1e8;
+      --surface: #fffdf7;
+      --surface-soft: #edf3ed;
+      --ink: #243129;
+      --muted: #68736c;
+      --line: #d8ddd5;
+      --brand: #356149;
+      --brand-dark: #234735;
+      --accent: #b9893d;
+      --danger: #a8483f;
+      --shadow: 0 16px 38px rgba(36, 49, 41, .10);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 10%, rgba(185, 137, 61, .08), transparent 28%),
+        linear-gradient(180deg, #f7f5ee 0, var(--paper) 100%);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button, .button-link {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    button:hover, .button-link:hover { border-color: var(--brand); }
+    button:focus-visible, input:focus-visible, select:focus-visible, .button-link:focus-visible {
+      outline: 3px solid rgba(53, 97, 73, .18);
+      outline-offset: 2px;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      padding: 14px clamp(18px, 4vw, 54px);
+      border-bottom: 1px solid rgba(53, 97, 73, .18);
+      background: rgba(255, 253, 247, .94);
+      backdrop-filter: blur(14px);
+    }
+    .back-link, .button-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      color: var(--brand-dark);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .title-block { min-width: 0; }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      overflow: hidden;
+      margin: 2px 0 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(22px, 3vw, 34px);
+      line-height: 1.15;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .study-progress {
+      min-width: 120px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 860px);
+      justify-content: center;
+      gap: 24px;
+      width: min(1220px, calc(100% - 32px));
+      margin: 26px auto 64px;
+    }
+    .filter-panel {
+      position: sticky;
+      top: 92px;
+      align-self: start;
+      max-height: calc(100vh - 112px);
+      overflow-y: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 253, 247, .86);
+      box-shadow: var(--shadow);
+    }
+    .filter-panel h2 {
+      margin: 0 0 5px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 18px;
+    }
+    .filter-note { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .mode-filters { display: grid; gap: 7px; }
+    .mode-filter {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .mode-filter.active { border-color: var(--brand); background: var(--surface-soft); color: var(--brand-dark); font-weight: 750; }
+    .filter-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .filter-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    #tag-filter-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .tag-filter {
+      min-height: 30px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .tag-filter.active { border-color: var(--accent); background: #fbf2df; color: #72511f; }
+    #sentence-search {
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    .sentence-column { min-width: 0; }
+    .column-intro {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 0 0 14px;
+      padding: 0 3px;
+    }
+    .column-intro h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 24px; }
+    .column-intro p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .column-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+    .view-switch {
+      display: inline-flex;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 253, 247, .72);
+    }
+    .view-switch button { min-height: 30px; padding: 4px 10px; border: 0; background: transparent; font-size: 12px; }
+    .view-switch button.active { background: var(--brand); color: white; box-shadow: 0 3px 8px rgba(35, 71, 53, .18); }
+    .card-navigator {
+      display: grid;
+      grid-template-columns: 42px minmax(90px, auto) 42px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    .card-navigator[hidden] { display: none; }
+    .card-nav-button { min-height: 40px; border-color: #b7c8bb; color: var(--brand-dark); font-size: 20px; }
+    .card-nav-position { color: var(--muted); font-family: Georgia, "Times New Roman", serif; font-size: 14px; text-align: center; }
+    .sentence-list { display: grid; gap: 12px; }
+    .sentence-list.card-mode .sentence-card { min-height: min(720px, calc(100vh - 180px)); }
+    .sentence-card {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 5px 18px rgba(36, 49, 41, .06);
+      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+    .sentence-card:hover { border-color: #becbbf; transform: translateY(-1px); }
+    .sentence-card.open { border-color: #97b19f; box-shadow: 0 12px 28px rgba(35, 71, 53, .11); }
+    .sentence-card.targeted {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(218, 164, 61, .2), 0 12px 28px rgba(35, 71, 53, .11);
+      animation: target-sentence-arrival .55s ease-out;
+    }
+    @keyframes target-sentence-arrival {
+      from { transform: translateY(10px); opacity: .72; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .sentence-card-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding-right: 14px;
+    }
+    .sentence-head {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 12px;
+      width: 100%;
+      min-height: 0;
+      padding: 15px 16px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      text-align: left;
+    }
+    .sentence-quick-actions { display: flex; align-items: center; gap: 7px; }
+    .sentence-quick-actions button { min-height: 32px; padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+    .sentence-header-play { border-color: var(--brand); background: var(--brand); color: white; font-weight: 750; }
+    .sentence-header-speed {
+      min-height: 32px;
+      padding: 4px 24px 4px 7px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 12px;
+    }
+    .sentence-save-button.saved { border-color: var(--brand); background: #e7f1e9; color: var(--brand-dark); font-weight: 800; }
+    .sentence-tag-editor {
+      display: none;
+      margin: 0 18px 12px 70px;
+      padding: 10px 12px 12px;
+      border: 1px solid #d7ddd5;
+      border-radius: 9px;
+      background: #f7f8f3;
+    }
+    .sentence-tag-editor.open { display: block; }
+    .sentence-number {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--surface-soft);
+      color: var(--brand-dark);
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 700;
+    }
+    .sentence-card.saved .sentence-number { background: var(--brand); color: white; }
+    .sentence-copy { font-family: Georgia, "Times New Roman", serif; font-size: 17px; line-height: 1.65; }
+    .sentence-copy mark {
+      padding: 1px 3px;
+      border-radius: 4px;
+      background: #f7df8d;
+      color: #6d5215;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+    .sentence-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .alignment-badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #9fc8b1;
+      border-radius: 999px;
+      padding: 2px 7px;
+      color: #245c42;
+      background: #edf8f1;
+      font: 700 11px/1.3 Arial, sans-serif;
+    }
+    .tag-chip, .saved-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #eef2ed;
+      color: #4b5b50;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 11px;
+    }
+    .saved-chip { background: #e4f0e8; color: var(--brand-dark); font-weight: 700; }
+    .expand-mark { padding-top: 6px; color: var(--muted); font-size: 18px; }
+    .sentence-detail { display: none; padding: 0 18px 18px 70px; }
+    .sentence-card.open .sentence-detail { display: block; animation: reveal .18s ease-out; }
+    @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .v1-study-stack { display: grid; gap: 12px; }
+    .sentence-text-stack { display: grid; }
+    .sentence-text-stack .inline-sentence { border-radius: 0 9px 0 0; }
+    .sentence-text-stack .inline-sentence:last-child { border-radius: 0 9px 9px 0; }
+    .inline-sentence {
+      padding: 13px 15px;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 9px 9px 0;
+      background: #faf7ef;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 17px;
+      line-height: 2;
+    }
+    .inline-translation {
+      padding: 10px 15px 12px;
+      border-top: 1px dashed #d9ddd5;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 0 9px 0;
+      background: #f3f6f2;
+      color: #66736b;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .v1-module {
+      overflow: hidden;
+      border: 1px solid #d7ddd5;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .78);
+    }
+    .v1-module-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e6df;
+      background: #f4f6f1;
+    }
+    .v1-module-head h3 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 16px; }
+    .v1-module-kicker { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+    .v1-module-body { padding: 12px; }
+    .pronunciation-controls, .speed-controls, .module-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .sentence-play { border-color: var(--brand); background: var(--brand); color: white; }
+    #intensive-youtube-host {
+      position: fixed;
+      left: -10000px;
+      bottom: 0;
+      width: 240px;
+      height: 135px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .speed-button { min-height: 30px; padding: 4px 8px; font-size: 11px; }
+    .speed-button.active { border-color: var(--accent); background: #fff5dc; color: #72511f; font-weight: 800; }
+    .pronunciation-output {
+      margin-top: 10px;
+      overflow: hidden;
+      border: 1px solid #dde2dc;
+      border-radius: 10px;
+      background: #f3f3f1;
+      color: #31483b;
+    }
+    .aligned-pronunciation {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 0;
+      padding: 0 12px 10px;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    .pron-pair {
+      position: relative;
+      z-index: 0;
+      display: inline-grid;
+      grid-template-rows: auto auto;
+      justify-items: stretch;
+      gap: 0;
+      min-width: max-content;
+      padding: 0 0 9px;
+    }
+    .pron-pair.linked-out::after {
+      position: absolute;
+      z-index: -1;
+      bottom: 2px;
+      left: 54%;
+      width: calc(100% + 10px);
+      height: 9px;
+      border-bottom: 2px solid #2b6f8d;
+      border-radius: 0 0 50% 50%;
+      content: "";
+    }
+    .pron-word, .pron-ipa {
+      min-height: 38px;
+      padding: 7px 5px;
+      text-align: center;
+      line-height: 1.25;
+    }
+    .pron-word { background: #faf7ed; color: var(--ink); font-size: 18px; }
+    .pron-ipa { background: #ededed; color: #456052; font-size: 17px; }
+    .pron-pair.stressed .pron-word, .pron-pair.stressed .pron-ipa { color: #1d3829; font-weight: 850; }
+    .pron-pair.weak .pron-word, .pron-pair.weak .pron-ipa { color: #8b958e; font-size: .88em; }
+    .pron-pair.linked-in .pron-ipa, .pron-pair.linked-out .pron-ipa { color: #1f607d; }
+    .pron-group-break { align-self: stretch; padding: 45px 7px 0; background: linear-gradient(#faf7ed 0 38px, #ededed 38px); color: var(--accent); font-weight: 800; }
+    .pron-group-break.strong { color: #9a5d00; letter-spacing: -2px; }
+    .pron-tone { margin-left: 2px; color: #8a5a13; font-weight: 800; }
+    .pronunciation-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 9px 14px 11px;
+      border-top: 1px solid rgba(53, 97, 73, .12);
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .pronunciation-legend b { color: var(--ink); }
+    .legend-link {
+      display: inline-block;
+      min-width: 30px;
+      height: 10px;
+      border-bottom: 2px solid #2b6f8d;
+      border-radius: 0 0 50% 50%;
+    }
+    .word-line { padding: 12px 14px; border-radius: 9px; background: #f3f6f2; line-height: 2; }
+    .word-token { min-height: 28px; padding: 2px 3px; border: 0; background: transparent; color: var(--ink); font-family: Georgia, "Times New Roman", serif; font-size: 16px; }
+    .word-token:hover { color: var(--brand); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+    .word-token.focus { padding-inline: 5px; border-radius: 5px; background: #f7df8d; color: #654a12; font-weight: 750; }
+    .focus-word-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .focus-word-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 4px 9px; border-color: #d5c385; background: #fff9e8; color: #6d5215; font-family: Georgia, "Times New Roman", serif; }
+    .familiarity-badge { padding: 2px 6px; border-radius: 999px; background: rgba(109, 82, 21, .1); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 750; }
+    .word-card {
+      position: fixed;
+      z-index: 60;
+      display: none;
+      width: min(340px, calc(100vw - 24px));
+      padding: 18px;
+      border: 1px solid #c7cfc5;
+      border-radius: 16px;
+      background: rgba(255, 253, 247, .98);
+      box-shadow: 0 24px 70px rgba(35, 71, 53, .24);
+      backdrop-filter: blur(16px);
+    }
+    .word-card.open { display: block; animation: reveal .16s ease-out; }
+    .word-card-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+    .word-card-title { margin: 0; color: var(--brand-dark); font-family: Georgia, "Times New Roman", serif; font-size: 25px; }
+    .word-card-phonetic { margin-top: 3px; color: var(--muted); font-family: Georgia, "Times New Roman", serif; }
+    .word-card-close { min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; }
+    .word-card-meaning { margin-top: 13px; padding: 11px 12px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: #faf7ef; line-height: 1.6; }
+    .word-card-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 13px; color: var(--muted); font-size: 12px; }
+    .word-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .word-save-button.saved { border-color: var(--brand); background: #e7f1e9; color: var(--brand-dark); font-weight: 800; }
+    .word-analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    .word-analysis-head h4 { margin: 0; }
+    .word-analysis-actions { display: flex; align-items: center; gap: 6px; }
+    .word-analysis-actions button { min-width: 32px; min-height: 30px; padding: 4px 8px; }
+    .oral-modules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+    .oral-module { padding: 10px 11px; border-radius: 8px; background: #f2f5f0; line-height: 1.6; }
+    .oral-module-label { display: block; margin-bottom: 4px; color: var(--brand-dark); font-size: 11px; font-weight: 850; letter-spacing: .04em; }
+    .oral-template { display: block; margin-top: 5px; padding: 6px 8px; border-radius: 6px; background: white; color: #6b4f18; }
+    .practice-hint { display: none; margin-bottom: 10px; padding: 9px 11px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: #fff9e9; line-height: 1.6; }
+    .practice-hint.open { display: block; }
+    .practice-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: stretch; gap: 8px; margin-top: 9px; }
+    .practice-input-row textarea { min-height: 78px; resize: vertical; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; line-height: 1.5; }
+    .practice-mic { min-width: 46px; padding: 6px 10px; font-size: 18px; }
+    .practice-mic.recording { border-color: var(--danger); background: #fbe8e5; animation: mic-pulse 1s ease-in-out infinite; }
+    @keyframes mic-pulse { 50% { box-shadow: 0 0 0 5px rgba(168, 72, 63, .12); } }
+    .mic-status { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .mic-status.error { color: var(--danger); }
+    .mic-status[hidden] { display: none; }
+    .practice-result { display: none; margin-top: 10px; padding: 11px 12px; border-radius: 8px; background: #eef4ef; line-height: 1.65; }
+    .practice-result.open { display: block; }
+    .practice-result ul { margin: 5px 0 0; padding-left: 20px; }
+    .collection-module { border-style: dashed; }
+    .study-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .study-actions button { padding: 7px 11px; }
+    .primary-action { border-color: var(--brand); background: var(--brand); color: white; }
+    .tag-editor { display: grid; grid-template-columns: 130px minmax(180px, 1fr) auto; gap: 8px; margin-top: 12px; }
+    .tag-editor select, .tag-editor input { width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); }
+    .tag-editor > button { align-self: end; }
+    .tag-field { display: grid; align-content: start; gap: 5px; }
+    .tag-field-label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+    .tag-name-control { display: grid; gap: 6px; }
+    .result-panel { display: none; margin-top: 12px; padding: 14px; border: 1px solid #d5ddd5; border-radius: 9px; background: #f6f8f5; line-height: 1.7; }
+    .result-panel.open { display: block; }
+    .word-analysis h4 { margin: 0 0 8px; color: var(--brand-dark); font-family: Georgia, "Times New Roman", serif; font-size: 18px; }
+    .word-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .word-block { padding: 8px 9px; border-radius: 7px; background: white; }
+    .word-block.full { grid-column: 1 / -1; }
+    .word-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .empty-state { padding: 44px 20px; border: 1px dashed #bdc8bd; border-radius: 12px; color: var(--muted); text-align: center; }
+    @media (max-width: 820px) {
+      .topbar { grid-template-columns: auto minmax(0, 1fr); }
+      .study-progress { display: none; }
+      .layout { grid-template-columns: 1fr; }
+      .filter-panel { position: static; max-height: none; }
+      .mode-filters { grid-template-columns: repeat(2, 1fr); }
+      .sentence-detail { padding-left: 16px; }
+      .sentence-card-header { grid-template-columns: 1fr; padding-right: 0; }
+      .sentence-quick-actions { padding: 0 14px 12px 62px; }
+      .sentence-tag-editor { margin-left: 16px; }
+    }
+    @media (max-width: 560px) {
+      .topbar { padding: 10px 12px; gap: 10px; }
+      .back-link { padding: 7px 9px; font-size: 12px; }
+      .layout { width: min(100% - 20px, 1220px); margin-top: 14px; }
+      .mode-filters { grid-template-columns: 1fr; }
+      .column-intro { align-items: start; flex-direction: column; }
+      .column-actions { width: 100%; justify-content: flex-start; }
+      .sentence-head { grid-template-columns: 36px minmax(0, 1fr); padding: 13px 12px; }
+      .sentence-quick-actions { padding-left: 12px; }
+      .expand-mark { display: none; }
+      .sentence-copy { font-size: 16px; }
+      .tag-editor { grid-template-columns: 1fr; }
+      .word-grid { grid-template-columns: 1fr; }
+      .oral-modules { grid-template-columns: 1fr; }
+      .practice-input-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="back-link" href="/workspace/{{ lesson_id }}">← 返回课程</a>
+    <div class="title-block">
+      <div class="eyebrow">Phase B · Intensive study</div>
+      <h1 id="lesson-title">逐句精读</h1>
+    </div>
+    <div id="study-progress" class="study-progress">正在载入文档…</div>
+  </header>
+
+  <main id="intensive-app" class="layout" data-lesson-id="{{ lesson_id }}">
+    <aside class="filter-panel" aria-label="精读筛选">
+      <h2>学习视图</h2>
+      <p class="filter-note">整篇逐句浏览；收藏与标签继续写回当前 v2 课程。</p>
+      <div class="mode-filters">
+        <button class="mode-filter active" type="button" data-filter="all">全部 <span id="count-all">0</span></button>
+        <button class="mode-filter" type="button" data-filter="vocabulary">重点词汇 <span id="count-vocabulary">0</span></button>
+        <button class="mode-filter" type="button" data-filter="saved">已收藏 <span id="count-saved">0</span></button>
+        <button class="mode-filter" type="button" data-filter="untagged">未标记 <span id="count-untagged">0</span></button>
+      </div>
+      <div class="filter-section">
+        <label class="filter-label" for="sentence-search">搜索句子</label>
+        <input id="sentence-search" type="search" placeholder="输入英文关键词">
+      </div>
+      <div class="filter-section">
+        <span class="filter-label">按标签筛选（任一匹配）</span>
+        <div id="tag-filter-list"></div>
+      </div>
+    </aside>
+
+    <section class="sentence-column" aria-label="逐句精学">
+      <div class="column-intro">
+        <div>
+          <h2>Sentence workshop</h2>
+          <p>展开句子进入 v1 精学结构：音标、重点词汇、口语表达与情景造句。</p>
+        </div>
+        <div class="column-actions">
+          <div class="view-switch" aria-label="句子视图">
+            <button class="active" type="button" data-view-mode="list">列表</button>
+            <button type="button" data-view-mode="card">卡片</button>
+          </div>
+          <button id="expand-visible" type="button">展开当前结果</button>
+        </div>
+      </div>
+      <nav id="card-navigator" class="card-navigator" aria-label="卡片句子导航" hidden>
+        <button class="card-nav-button" type="button" data-card-nav="-1" aria-label="上一句">←</button>
+        <span id="card-nav-position" class="card-nav-position">1 / 1</span>
+        <button class="card-nav-button" type="button" data-card-nav="1" aria-label="下一句">→</button>
+      </nav>
+      <div id="intensive-sentence-list" class="sentence-list">
+        <div class="empty-state">Loading intensive study…</div>
+      </div>
+    </section>
+  </main>
+
+  <audio id="intensive-audio" preload="metadata" hidden></audio>
+  <div id="intensive-youtube-host" aria-hidden="true"></div>
+  <aside id="intensive-word-card" class="word-card" role="dialog" aria-label="重点词汇卡片" aria-live="polite" tabindex="-1"></aside>
+
+  <script src="/static/natural-tts.js?v=20260801-1"></script>
+  <script>
+    const LESSON_ID = {{ lesson_id }};
+    const targetSentenceParam = new URLSearchParams(window.location.search).get('sentence_key');
+    const targetSentenceKey = targetSentenceParam === null ? null : Number(targetSentenceParam);
+    let intensiveDocument = {lesson: {}, sentences: []};
+    let tagCatalog = {categories: [], tags: []};
+    let activeMode = 'all';
+    let searchQuery = '';
+    const selectedTags = new Set();
+    const openSentenceKeys = new Set();
+    const openTagEditorKeys = new Set();
+    const pronunciationCache = new Map();
+    const oralAnalysisCache = new Map();
+    const practiceHintCache = new Map();
+    const sentenceSpeed = new Map();
+    const knownWords = new Set();
+    const savedLessonWords = new Set();
+    const vocabLog = {};
+    const wordAnalysisCache = new Map();
+    let activeWordCard = null;
+    let activePracticeRecorder = null;
+    let activePracticeMicKey = null;
+    let activeSpeechTimer = null;
+    let activeWordSpeechTimer = null;
+    let activeWordUtterance = null;
+    let intensiveViewMode = 'list';
+    let cardSentenceKey = Number.isFinite(targetSentenceKey) ? targetSentenceKey : null;
+    let intensiveYouTubePlayer = null;
+    let intensiveYouTubeReady = false;
+    let intensiveYouTubeApiLoading = false;
+    let pendingYouTubeRange = null;
+    const CUSTOM_TAG_VALUE = '__custom__';
+    const FOCUS_WORD_STOPWORDS = new Set([
+      'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'than', 'to', 'of', 'in', 'on', 'at', 'for',
+      'from', 'with', 'by', 'as', 'is', 'am', 'are', 'was', 'were', 'be', 'been', 'being', 'do', 'does',
+      'did', 'have', 'has', 'had', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'these',
+      'those', 'my', 'your', 'his', 'her', 'our', 'their', 'not', 'so', 'can', 'could', 'will', 'would',
+    ]);
+    const PRON_WEAK_FORMS = new Set([
+      'a', 'an', 'the', 'at', 'for', 'from', 'in', 'of', 'on', 'to', 'with', 'by', 'as', 'and', 'or',
+      'but', 'that', 'than', 'he', 'him', 'his', 'her', 'it', 'its', 'them', 'us', 'we', 'you', 'they',
+      'am', 'are', 'be', 'been', 'can', 'could', 'do', 'does', 'had', 'has', 'have', 'is', 'shall',
+      'should', 'was', 'were', 'will', 'would',
+    ]);
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+    }
+
+    function sentenceByKey(key) {
+      return intensiveDocument.sentences.find(item => Number(item.key) === Number(key));
+    }
+
+    function sentenceTags(sentence) {
+      return Array.isArray(sentence.tags) ? sentence.tags : [];
+    }
+
+    function sentenceFocusWords(sentence) {
+      return (Array.isArray(sentence.highlighted_words) ? sentence.highlighted_words : [])
+        .map(word => String(word).toLowerCase())
+        .filter((word, index, words) => word && !knownWords.has(word) && words.indexOf(word) === index);
+    }
+
+    function visibleSentences() {
+      const query = searchQuery.trim().toLowerCase();
+      return intensiveDocument.sentences.filter(sentence => {
+        if (activeMode === 'saved' && !sentence.saved) return false;
+        if (activeMode === 'untagged' && sentenceTags(sentence).length) return false;
+        if (activeMode === 'vocabulary' && !sentenceFocusWords(sentence).length) return false;
+        if (query && !sentence.text.toLowerCase().includes(query)) return false;
+        if (selectedTags.size) {
+          const names = new Set(sentenceTags(sentence).map(tag => tag.name));
+          if (![...selectedTags].some(name => names.has(name))) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderWords(text, key) {
+      const highlighted = new Set(sentenceFocusWords(sentenceByKey(key) || {}));
+      const tokens = String(text || '').match(/[A-Za-z]+(?:'[A-Za-z]+)?|[^A-Za-z]+/g) || [];
+      return tokens.map(token => {
+        if (!/^[A-Za-z]/.test(token)) return escapeHtml(token);
+        const normalized = token.toLowerCase();
+        return `<button class="word-token${highlighted.has(normalized) ? ' focus' : ''}" type="button" data-word="${escapeHtml(normalized)}" data-key="${key}">${escapeHtml(token)}</button>`;
+      }).join('');
+    }
+
+    function renderSentenceSummary(sentence) {
+      const highlighted = new Set(sentenceFocusWords(sentence));
+      const tokens = String(sentence.text || '').match(/[A-Za-z]+(?:'[A-Za-z]+)?|[^A-Za-z]+/g) || [];
+      return tokens.map(token => {
+        if (!/^[A-Za-z]/.test(token) || !highlighted.has(token.toLowerCase())) return escapeHtml(token);
+        return `<mark>${escapeHtml(token)}</mark>`;
+      }).join('');
+    }
+
+    function focusWords(text) {
+      const words = String(text || '').match(/[A-Za-z]+(?:'[A-Za-z]+)?/g) || [];
+      const unique = [];
+      const seen = new Set();
+      for (const word of words) {
+        const normalized = word.toLowerCase();
+        if (FOCUS_WORD_STOPWORDS.has(normalized) || seen.has(normalized) || normalized.length < 3) continue;
+        seen.add(normalized);
+        unique.push(word);
+        if (unique.length >= 12) break;
+      }
+      return unique.length ? unique : words.slice(0, 8);
+    }
+
+    function practiceWords(sentence) {
+      const highlighted = sentenceFocusWords(sentence);
+      return highlighted.length ? highlighted : focusWords(sentence.text);
+    }
+
+    function renderFocusWordChips(sentence) {
+      return sentenceFocusWords(sentence).map(word => (
+        `<button class="focus-word-chip" type="button" data-word="${escapeHtml(word)}" data-key="${sentence.key}"><strong>${escapeHtml(word)}</strong><span class="familiarity-badge">${vocabLog[word]?.count ? `已学 ${vocabLog[word].count} 次` : '新词'}</span></button>`
+      )).join('') || '<span class="filter-note">这句话没有可提取的重点词。</span>';
+    }
+
+    function tagsForCategory(category) {
+      return (tagCatalog.tags || [])
+        .filter(tag => tag.category === category)
+        .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    }
+
+    function renderTagNameOptions(category) {
+      const options = tagsForCategory(category).map(tag => (
+        `<option value="${escapeHtml(tag.name)}">${escapeHtml(tag.name)}</option>`
+      ));
+      options.push(`<option value="${CUSTOM_TAG_VALUE}">＋ 自定义标签…</option>`);
+      return options.join('');
+    }
+
+    function updateTagNameOptions(key, category) {
+      const select = document.querySelector(`[data-tag-name="${key}"]`);
+      const custom = document.querySelector(`[data-tag-custom="${key}"]`);
+      if (!select || !custom) return;
+      select.innerHTML = renderTagNameOptions(category);
+      custom.hidden = true;
+      custom.value = '';
+    }
+
+    function updateCustomTagVisibility(key) {
+      const select = document.querySelector(`[data-tag-name="${key}"]`);
+      const custom = document.querySelector(`[data-tag-custom="${key}"]`);
+      if (!select || !custom) return;
+      custom.hidden = select.value !== CUSTOM_TAG_VALUE;
+      if (!custom.hidden) custom.focus();
+    }
+
+    function renderSentenceCard(sentence, documentIndex) {
+      const tags = sentenceTags(sentence);
+      const tagHtml = tags.map(tag => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('');
+      const alignmentHtml = sentence.timing_source === 'mfa'
+        ? `<span class="alignment-badge" title="逐词覆盖率 ${Math.round(Number(sentence.alignment_coverage || 0) * 100)}%">原声对齐</span>`
+        : '';
+      const open = openSentenceKeys.has(Number(sentence.key));
+      const categories = tagCatalog.categories.map(category => (
+        `<option value="${escapeHtml(category.id)}">${escapeHtml(category.label)}</option>`
+      )).join('');
+      const defaultCategory = tagCatalog.categories[0]?.id || '';
+      const speed = sentenceSpeed.get(Number(sentence.key)) || 1;
+      const pronunciation = pronunciationCache.get(Number(sentence.key));
+      const oral = oralAnalysisCache.get(Number(sentence.key));
+      const hint = practiceHintCache.get(Number(sentence.key));
+      const targeted = Number(sentence.key) === targetSentenceKey;
+      const tagEditorOpen = openTagEditorKeys.has(Number(sentence.key));
+      return `<article class="sentence-card${sentence.saved ? ' saved' : ''}${open ? ' open' : ''}${targeted ? ' targeted' : ''}" data-key="${sentence.key}" tabindex="-1">
+        <div class="sentence-card-header">
+          <button class="sentence-head" type="button" data-toggle-key="${sentence.key}">
+            <span class="sentence-number">${documentIndex + 1}</span>
+            <span class="sentence-copy">${renderSentenceSummary(sentence)}
+              <span class="sentence-meta">${alignmentHtml}${tagHtml}</span>
+            </span>
+            <span class="expand-mark">${open ? '−' : '+'}</span>
+          </button>
+          <div class="sentence-quick-actions">
+            <button class="sentence-header-play" type="button" data-play-sentence="${sentence.key}">${hasOriginalMedia() ? '▶ 原声整句' : '▶ 播放'}</button>
+            <select class="sentence-header-speed" data-sentence-speed-select="${sentence.key}" aria-label="句子播放速度">
+              ${[0.75, 1, 1.25, 2].map(value => `<option value="${value}"${speed === value ? ' selected' : ''}>${value}×</option>`).join('')}
+            </select>
+            <button class="sentence-save-button${sentence.saved ? ' saved' : ''}" type="button" data-toggle-save="${sentence.key}">${sentence.saved ? '★ 已收藏' : '☆ 收藏'}</button>
+            <button type="button" data-toggle-tag-editor="${sentence.key}">🏷 标签</button>
+          </div>
+        </div>
+        <div class="sentence-tag-editor${tagEditorOpen ? ' open' : ''}">
+          <div class="tag-editor">
+            <label class="tag-field"><span class="tag-field-label">分类</span><select data-tag-category="${sentence.key}">${categories}</select></label>
+            <div class="tag-field">
+              <span class="tag-field-label">细标签</span>
+              <div class="tag-name-control">
+                <select data-tag-name="${sentence.key}">${renderTagNameOptions(defaultCategory)}</select>
+                <input data-tag-custom="${sentence.key}" type="text" placeholder="输入自定义标签" hidden>
+              </div>
+            </div>
+            <button type="button" data-save-tags="${sentence.key}">添加标签</button>
+          </div>
+        </div>
+        <div class="sentence-detail">
+          <div class="v1-study-stack">
+            <div class="sentence-text-stack">
+              <div class="inline-sentence">${renderWords(sentence.text, sentence.key)}</div>
+              ${sentence.translation ? `<div class="inline-translation">${escapeHtml(sentence.translation)}</div>` : ''}
+            </div>
+
+            <section class="v1-module" data-v1-module="pronunciation">
+              <div class="v1-module-head"><h3>① 音标行</h3><span class="v1-module-kicker">Pronunciation</span></div>
+              <div class="v1-module-body">
+                <div class="pronunciation-controls">
+                  <button class="sentence-play" type="button" data-play-sentence="${sentence.key}">${hasOriginalMedia() ? '▶ 播放原声' : '▶ 播放本句'}</button>
+                  <div class="speed-controls" aria-label="播放速度">
+                    ${[0.75, 1, 1.25, 2].map(value => `<button class="speed-button${speed === value ? ' active' : ''}" type="button" data-sentence-speed="${value}" data-key="${sentence.key}">${value}×</button>`).join('')}
+                  </div>
+                </div>
+                <div class="pronunciation-output" data-pronunciation-output="${sentence.key}">${pronunciation ? renderPronunciationGuideData(pronunciation, sentence.text) : '正在载入基础规则音标…'}</div>
+              </div>
+            </section>
+
+            <section class="v1-module" data-v1-module="vocabulary">
+              <div class="v1-module-head"><h3>② 重点词汇</h3><span class="v1-module-kicker">Vocabulary</span></div>
+              <div class="v1-module-body">
+                <div class="focus-word-list">${renderFocusWordChips(sentence)}</div>
+                <div class="result-panel" data-word-result="${sentence.key}"></div>
+              </div>
+            </section>
+
+            <section class="v1-module" data-v1-module="oral-expression">
+              <div class="v1-module-head"><h3>③ 口语表达解析</h3><span class="v1-module-kicker">IELTS reuse</span></div>
+              <div class="v1-module-body">
+                <div class="module-actions"><button class="primary-action" type="button" data-generate-oral="${sentence.key}" data-force="${oral ? 'true' : 'false'}">${oral ? '重新解析' : 'AI 深度解析'}</button></div>
+                <div data-oral-result="${sentence.key}">${oral ? renderOralAnalysis(oral) : '<div class="filter-note">识别句式、表达功能、雅思复用场景和迁移模板。</div>'}</div>
+              </div>
+            </section>
+
+            <section class="v1-module" data-v1-module="practice">
+              <div class="v1-module-head"><h3>④ 情景造句</h3><span class="v1-module-kicker">Output practice</span></div>
+              <div class="v1-module-body">
+                <div class="practice-hint${hint ? ' open' : ''}" data-practice-hint="${sentence.key}">${hint ? escapeHtml(hint) : ''}</div>
+                <div class="module-actions"><button type="button" data-generate-hint="${sentence.key}">💡 ${hint ? '换一个提示' : '生成中文提示'}</button></div>
+                <div class="practice-input-row">
+                  <textarea data-practice-input="${sentence.key}" placeholder="参考中文提示，尝试用英文表达；留空可直接生成范例。"></textarea>
+                  <button class="practice-mic" type="button" data-practice-mic="${sentence.key}" title="语音输入" aria-label="语音输入">🎤</button>
+                  <button class="primary-action" type="button" data-submit-practice="${sentence.key}">批改 / 生成范例</button>
+                </div>
+                <div class="mic-status" data-mic-status="${sentence.key}" hidden></div>
+                <div class="practice-result" data-practice-result="${sentence.key}"></div>
+              </div>
+            </section>
+
+          </div>
+        </div>
+      </article>`;
+    }
+
+    function renderTagFilters() {
+      const filterTags = new Map();
+      for (const sentence of intensiveDocument.sentences) {
+        for (const tag of sentenceTags(sentence)) filterTags.set(tag.name, tag);
+      }
+      const root = document.getElementById('tag-filter-list');
+      root.innerHTML = [...filterTags.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')).map(tag => (
+        `<button class="tag-filter${selectedTags.has(tag.name) ? ' active' : ''}" type="button" data-tag-filter="${escapeHtml(tag.name)}">${escapeHtml(tag.name)}</button>`
+      )).join('') || '<span class="filter-note">打标签后可在这里筛选。</span>';
+    }
+
+    function renderSentenceList() {
+      const visible = visibleSentences();
+      const root = document.getElementById('intensive-sentence-list');
+      let rendered = visible;
+      if (intensiveViewMode === 'card' && visible.length) {
+        if (!visible.some(sentence => Number(sentence.key) === Number(cardSentenceKey))) {
+          cardSentenceKey = Number(visible[0].key);
+        }
+        openSentenceKeys.add(Number(cardSentenceKey));
+        rendered = visible.filter(sentence => Number(sentence.key) === Number(cardSentenceKey));
+      }
+      root.classList.toggle('card-mode', intensiveViewMode === 'card');
+      root.innerHTML = rendered.length
+        ? rendered.map(sentence => renderSentenceCard(sentence, intensiveDocument.sentences.indexOf(sentence))).join('')
+        : '<div class="empty-state">当前筛选没有匹配句子。</div>';
+      const cardPosition = Math.max(0, visible.findIndex(sentence => Number(sentence.key) === Number(cardSentenceKey)));
+      const navigator = document.getElementById('card-navigator');
+      navigator.hidden = intensiveViewMode !== 'card' || !visible.length;
+      document.getElementById('card-nav-position').textContent = visible.length
+        ? `${cardPosition + 1} / ${visible.length}`
+        : '0 / 0';
+      navigator.querySelector('[data-card-nav="-1"]').disabled = cardPosition <= 0;
+      navigator.querySelector('[data-card-nav="1"]').disabled = cardPosition >= visible.length - 1;
+      document.getElementById('expand-visible').hidden = intensiveViewMode === 'card';
+      document.querySelectorAll('[data-view-mode]').forEach(button => {
+        button.classList.toggle('active', button.dataset.viewMode === intensiveViewMode);
+      });
+      document.getElementById('count-all').textContent = intensiveDocument.sentences.length;
+      document.getElementById('count-vocabulary').textContent = intensiveDocument.sentences.filter(item => sentenceFocusWords(item).length).length;
+      document.getElementById('count-saved').textContent = intensiveDocument.sentences.filter(item => item.saved).length;
+      document.getElementById('count-untagged').textContent = intensiveDocument.sentences.filter(item => !sentenceTags(item).length).length;
+      document.getElementById('study-progress').textContent = intensiveViewMode === 'card' && visible.length
+        ? `卡片 ${cardPosition + 1} / ${visible.length}`
+        : `显示 ${visible.length} / ${intensiveDocument.sentences.length} 句`;
+    }
+
+    function setIntensiveViewMode(mode) {
+      if (!['list', 'card'].includes(mode)) return;
+      intensiveViewMode = mode;
+      if (mode === 'card') {
+        const visible = visibleSentences();
+        if (!visible.some(sentence => Number(sentence.key) === Number(cardSentenceKey))) {
+          cardSentenceKey = visible.length ? Number(visible[0].key) : null;
+        }
+      }
+      stopIntensivePlayback();
+      renderSentenceList();
+      if (mode === 'card' && Number.isFinite(cardSentenceKey) && !pronunciationCache.has(cardSentenceKey)) {
+        loadPronunciationGuide(cardSentenceKey);
+      }
+    }
+
+    function navigateSentenceCard(direction) {
+      const visible = visibleSentences();
+      if (!visible.length) return;
+      let position = visible.findIndex(sentence => Number(sentence.key) === Number(cardSentenceKey));
+      if (position < 0) position = 0;
+      const next = visible[position + Number(direction)];
+      if (!next) return;
+      stopIntensivePlayback();
+      cardSentenceKey = Number(next.key);
+      openSentenceKeys.add(cardSentenceKey);
+      closeIntensiveWordCard();
+      renderSentenceList();
+      document.querySelector(`.sentence-card[data-key="${cardSentenceKey}"]`)?.focus({preventScroll: true});
+      if (!pronunciationCache.has(cardSentenceKey)) loadPronunciationGuide(cardSentenceKey);
+    }
+
+    function renderAll() {
+      renderTagFilters();
+      renderSentenceList();
+      document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === activeMode));
+    }
+
+    function focusTargetSentence() {
+      if (!Number.isFinite(targetSentenceKey) || !sentenceByKey(targetSentenceKey)) return;
+      activeMode = 'all';
+      searchQuery = '';
+      selectedTags.clear();
+      openSentenceKeys.add(targetSentenceKey);
+      cardSentenceKey = targetSentenceKey;
+      document.getElementById('sentence-search').value = '';
+      renderAll();
+      requestAnimationFrame(() => {
+        const card = document.querySelector(`.sentence-card[data-key="${targetSentenceKey}"]`);
+        card?.scrollIntoView({behavior: 'smooth', block: 'center'});
+        card?.focus({preventScroll: true});
+      });
+      if (!pronunciationCache.has(targetSentenceKey)) loadPronunciationGuide(targetSentenceKey);
+    }
+
+    function pronunciationWordParts(token) {
+      const match = String(token || '').match(/^([^A-Za-z0-9']*)([A-Za-z0-9']+)([^A-Za-z0-9']*)$/);
+      return match
+        ? {prefix: match[1], word: match[2], suffix: match[3]}
+        : {prefix: '', word: String(token || ''), suffix: ''};
+    }
+
+    function isPronunciationMarker(token) {
+      return ['/', '|', '↗', '↘', '→', '↗|', '↘|'].includes(token);
+    }
+
+    function renderPronunciationGuideData(data = {}, sentenceText = '') {
+      const wordAnnotations = Array.isArray(data.word_annotations) ? data.word_annotations : [];
+      const alignedWords = Array.isArray(data.aligned_words) ? data.aligned_words : [];
+      const normalizedWord = value => String(value || '').toLowerCase().replace(/[^a-z0-9']/g, '');
+      const alignedByAnnotation = new Map();
+      let alignedCursor = 0;
+      for (let annotationIndex = 0; annotationIndex < wordAnnotations.length; annotationIndex += 1) {
+        const target = normalizedWord(wordAnnotations[annotationIndex]?.word);
+        if (!target) continue;
+        const searchEnd = Math.min(alignedWords.length, alignedCursor + 5);
+        let matchedIndex = -1;
+        for (let candidateIndex = alignedCursor; candidateIndex < searchEnd; candidateIndex += 1) {
+          if (normalizedWord(alignedWords[candidateIndex]?.text || alignedWords[candidateIndex]?.word) === target) {
+            matchedIndex = candidateIndex;
+            break;
+          }
+        }
+        if (matchedIndex < 0) continue;
+        alignedByAnnotation.set(annotationIndex, alignedWords[matchedIndex]);
+        alignedCursor = matchedIndex + 1;
+      }
+      const pauseMarker = (pauseMs, hasNext, fallbackBreak = false) => {
+        if (!hasNext) return '';
+        const measured = Number(pauseMs || 0);
+        if (measured >= 220) {
+          const strong = measured >= 650;
+          const label = strong ? '原声明显停顿候选' : '原声短停顿候选';
+          return `<span class="pron-group-break${strong ? ' strong' : ''}" aria-label="${label}" title="${label} · ${Math.round(measured)} 毫秒">${strong ? '//' : '/'}</span>`;
+        }
+        return fallbackBreak
+          ? '<span class="pron-group-break" aria-label="AI 意群停顿候选" title="AI 意群停顿候选">/</span>'
+          : '';
+      };
+      if (wordAnnotations.length) {
+        const pairs = wordAnnotations.map((item, index) => {
+          const previous = wordAnnotations[index - 1];
+          const linkedIn = Boolean(previous?.link_to_next);
+          const linkedOut = Boolean(item.link_to_next);
+          const classes = [
+            'pron-pair',
+            String(item.ipa || '').includes('ˈ') ? 'stressed' : '',
+            item.weak ? 'weak' : '',
+            linkedIn ? 'linked-in' : '',
+            linkedOut ? 'linked-out' : '',
+          ].filter(Boolean).join(' ');
+          return `<span class="${classes}">
+            <span class="pron-word">${escapeHtml(item.word || '')}${escapeHtml(item.punctuation_after || '')}</span>
+            <span class="pron-ipa">${escapeHtml(item.ipa || '—')}${item.tone ? `<span class="pron-tone">${escapeHtml(item.tone)}</span>` : ''}</span>
+          </span>${pauseMarker(alignedByAnnotation.get(index)?.pause_after_ms, index < wordAnnotations.length - 1, item.break_after)}`;
+        });
+        const cachedLabel = data.cached ? ' · 已复用校对缓存' : '';
+        return `<div class="aligned-pronunciation">${pairs.join('')}</div>
+          <div class="pronunciation-legend">
+            <span><b>重读</b>：粗体</span>
+            <span><span class="legend-link"></span>：连读候选</span>
+            <span style="color:#8b958e">弱读：浅灰</span>
+            <span>/：原声短停顿 · //：原声明显停顿</span>
+            <span>AI 逐词校对${cachedLabel}</span>
+          </div>`;
+      }
+      if (alignedWords.length) {
+        const vowelPhones = new Set(['AA', 'AE', 'AH', 'AO', 'AW', 'AY', 'EH', 'ER', 'EY', 'IH', 'IY', 'OW', 'OY', 'UH', 'UW']);
+        const pairs = alignedWords.map((word, index) => {
+          const phones = Array.isArray(word.phones) ? word.phones : [];
+          const nextPhones = Array.isArray(alignedWords[index + 1]?.phones) ? alignedWords[index + 1].phones : [];
+          const lastPhone = String(phones.at(-1)?.label || '').replace(/[012]$/, '').toUpperCase();
+          const nextPhone = String(nextPhones[0]?.label || '').replace(/[012]$/, '').toUpperCase();
+          const gap = Number(alignedWords[index + 1]?.start) - Number(word.end);
+          const linkedOut = index < alignedWords.length - 1
+            && Number.isFinite(gap) && gap <= 0.035
+            && lastPhone && !vowelPhones.has(lastPhone) && vowelPhones.has(nextPhone);
+          const previous = alignedWords[index - 1];
+          const previousPhones = Array.isArray(previous?.phones) ? previous.phones : [];
+          const previousLast = String(previousPhones.at(-1)?.label || '').replace(/[012]$/, '').toUpperCase();
+          const gapBefore = Number(word.start) - Number(previous?.end);
+          const linkedIn = index > 0
+            && Number.isFinite(gapBefore) && gapBefore <= 0.035
+            && previousLast && !vowelPhones.has(previousLast)
+            && vowelPhones.has(String(phones[0]?.label || '').replace(/[012]$/, '').toUpperCase());
+          const ipa = String(word.ipa || '');
+          const normalized = String(word.text || word.word || '').toLowerCase();
+          const classes = [
+            'pron-pair',
+            ipa.includes('ˈ') ? 'stressed' : '',
+            PRON_WEAK_FORMS.has(normalized) && !ipa.includes('ˈ') ? 'weak' : '',
+            linkedIn ? 'linked-in' : '',
+            linkedOut ? 'linked-out' : '',
+          ].filter(Boolean).join(' ');
+          return `<span class="${classes}" title="${Number(word.start).toFixed(2)}–${Number(word.end).toFixed(2)} 秒">
+            <span class="pron-word">${escapeHtml(word.text || word.word)}</span>
+            <span class="pron-ipa">${escapeHtml(ipa || '—')}</span>
+          </span>${pauseMarker(word.pause_after_ms, index < alignedWords.length - 1)}`;
+        });
+        return `<div class="aligned-pronunciation">${pairs.join('')}</div>
+          <div class="pronunciation-legend">
+            <span><b>重读</b>：词典重音</span>
+            <span><span class="legend-link"></span>：原声紧密衔接候选</span>
+            <span style="color:#8b958e">弱读词：浅灰</span>
+            <span>/：原声短停顿 · //：原声明显停顿</span>
+            <span>MFA 原声对齐</span>
+          </div>`;
+      }
+      const natural = data.natural || data.phonetics_natural || data.canonical || '';
+      if (!natural) return '<span class="filter-note">暂未生成音标。</span>';
+      const wordTokens = String(sentenceText || '').split(/\s+/).filter(Boolean);
+      const ipaEntries = [];
+      for (const token of String(natural).split(/\s+/).filter(Boolean)) {
+        if (token === '/' || token === '|') {
+          if (ipaEntries.length) ipaEntries[ipaEntries.length - 1].breakAfter = true;
+        } else if (['↗', '↘', '→', '↗|', '↘|'].includes(token)) {
+          if (ipaEntries.length) ipaEntries[ipaEntries.length - 1].tone = token.replace('|', '');
+        } else {
+          const linkedParts = token.split('‿');
+          linkedParts.forEach((part, partIndex) => {
+            if (!part) return;
+            ipaEntries.push({
+              ipa: `${partIndex > 0 ? '‿' : ''}${part}`,
+              breakAfter: false,
+              tone: '',
+            });
+          });
+        }
+      }
+      if (wordTokens.length !== ipaEntries.length) {
+        return `<div class="aligned-pronunciation"><span class="pron-pair"><span class="pron-word">${escapeHtml(sentenceText)}</span><span class="pron-ipa">${escapeHtml(natural)}</span></span></div>
+          <div class="pronunciation-legend"><span>音标分词暂未与原句完全对齐，已保留整句对照。</span></div>`;
+      }
+      const annotations = ipaEntries.map((entry, index) => {
+        const linkedIn = entry.ipa.startsWith('‿');
+        const core = entry.ipa.startsWith('‿') ? entry.ipa.slice(1) : entry.ipa;
+        const word = pronunciationWordParts(wordTokens[index]).word.toLowerCase();
+        return {
+          linkedIn,
+          linkedOut: false,
+          stressed: core.includes('ˈ'),
+          weak: PRON_WEAK_FORMS.has(word) && !core.includes('ˈ') && !/n't$/i.test(word),
+          core,
+        };
+      });
+      for (let index = 0; index < annotations.length - 1; index += 1) {
+        annotations[index].linkedOut = annotations[index + 1].linkedIn;
+      }
+      const pairs = [];
+      wordTokens.forEach((token, index) => {
+        const entry = ipaEntries[index];
+        const annotation = annotations[index];
+        const parts = pronunciationWordParts(token);
+        const classes = [
+          'pron-pair',
+          annotation.stressed ? 'stressed' : '',
+          annotation.weak ? 'weak' : '',
+          annotation.linkedIn ? 'linked-in' : '',
+          annotation.linkedOut ? 'linked-out' : '',
+        ].filter(Boolean).join(' ');
+        if (index > 0 && ipaEntries[index - 1].breakAfter) {
+          pairs.push('<span class="pron-group-break" aria-label="意群停顿">/</span>');
+        }
+        pairs.push(`<span class="${classes}">
+          <span class="pron-word">${escapeHtml(parts.prefix)}${escapeHtml(parts.word)}${escapeHtml(parts.suffix)}</span>
+          <span class="pron-ipa">${escapeHtml(annotation.core)}${entry.tone ? `<span class="pron-tone">${escapeHtml(entry.tone)}</span>` : ''}</span>
+        </span>`);
+      });
+      const sourceLabel = data.source === 'mfa' ? 'MFA 原声对齐' : '规则音标';
+      return `<div class="aligned-pronunciation">${pairs.join('')}</div>
+        <div class="pronunciation-legend">
+          <span><b>重读</b>：粗体</span>
+          <span><span class="legend-link"></span>：连读</span>
+          <span style="color:#8b958e">弱读：浅灰</span>
+          <span>${escapeHtml(sourceLabel)}</span>
+        </div>`;
+    }
+
+    async function loadPronunciationGuide(key) {
+      const sentence = sentenceByKey(key);
+      const result = document.querySelector(`[data-pronunciation-output="${key}"]`);
+      if (!sentence || !result) return null;
+      const existing = pronunciationCache.get(Number(key));
+      const baseWords = Array.isArray(existing?.aligned_words) && existing.aligned_words.length
+        ? existing.aligned_words
+        : (Array.isArray(existing?.word_annotations) ? existing.word_annotations : []);
+      result.textContent = '正在生成基础规则音标…';
+      try {
+        const response = await fetch('/api/phonetics', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            sentences: [sentence.text],
+            mode: 'rule',
+            base: true,
+            structured: false,
+            base_words: [baseWords.map(item => ({
+              word: item.text || item.word || '',
+              ipa: item.ipa || '',
+            }))],
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || '音标生成失败');
+        const pronunciation = data.results?.[0] || {};
+        if (Array.isArray(existing?.aligned_words) && existing.aligned_words.length) {
+          pronunciation.aligned_words = existing.aligned_words;
+        }
+        pronunciationCache.set(Number(key), pronunciation);
+        result.innerHTML = renderPronunciationGuideData(pronunciation, sentence.text);
+        return pronunciation;
+      } catch (error) {
+        if (existing) {
+          result.innerHTML = `${renderPronunciationGuideData(existing, sentence.text)}<div class="filter-note">规则音标载入失败：${escapeHtml(error.message)}；已保留原声对齐结果。</div>`;
+          return existing;
+        }
+        result.textContent = `基础音标生成失败：${error.message}`;
+        return null;
+      }
+    }
+
+    function stopIntensivePlayback() {
+      if (activeSpeechTimer) {
+        clearTimeout(activeSpeechTimer);
+        clearInterval(activeSpeechTimer);
+      }
+      if (activeWordSpeechTimer) clearTimeout(activeWordSpeechTimer);
+      activeSpeechTimer = null;
+      activeWordSpeechTimer = null;
+      activeWordUtterance = null;
+      pendingYouTubeRange = null;
+      const audio = document.getElementById('intensive-audio');
+      audio?.pause();
+      if (intensiveYouTubePlayer && typeof intensiveYouTubePlayer.pauseVideo === 'function') {
+        intensiveYouTubePlayer.pauseVideo();
+      }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+
+    async function playIntensiveOriginalRange(start, end, rate = 1) {
+      const mediaUrl = intensiveDocument.lesson?.media_url;
+      if (mediaUrl && end > start) {
+        const audio = document.getElementById('intensive-audio');
+        if (!audio) return false;
+        const absoluteUrl = new URL(mediaUrl, window.location.origin).href;
+        if (audio.src !== absoluteUrl) audio.src = absoluteUrl;
+        audio.currentTime = start;
+        audio.playbackRate = rate;
+        try {
+          await audio.play();
+          monitorOriginalPlayback({start, end, rate}, () => audio.currentTime, () => audio.pause());
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+      if (
+        intensiveDocument.lesson?.source_type === 'youtube'
+        && intensiveDocument.lesson?.video_id
+        && end > start
+      ) {
+        playIntensiveYouTubeRange({start, end, rate});
+        return true;
+      }
+      return false;
+    }
+
+    function monitorOriginalPlayback(range, getCurrentTime, pause) {
+      const startedAt = Date.now();
+      const safetyWindow = Math.max(
+        12_000,
+        ((range.end - range.start) / Math.max(.25, range.rate || 1)) * 4000 + 8000,
+      );
+      let enteredSentenceRange = false;
+      activeSpeechTimer = setInterval(() => {
+        const currentTime = Number(getCurrentTime());
+        if (Number.isFinite(currentTime) && currentTime >= range.start - .35 && currentTime < range.end) {
+          enteredSentenceRange = true;
+        }
+        if (
+          (enteredSentenceRange && Number.isFinite(currentTime) && currentTime >= range.end - .04)
+          || Date.now() - startedAt >= safetyWindow
+        ) {
+          clearInterval(activeSpeechTimer);
+          activeSpeechTimer = null;
+          pause();
+        }
+      }, 80);
+    }
+
+    function hasOriginalMedia() {
+      const lesson = intensiveDocument.lesson || {};
+      return Boolean(
+        lesson.media_url
+        || (lesson.source_type === 'youtube' && lesson.video_id)
+      );
+    }
+
+    function initIntensiveYouTube() {
+      const lesson = intensiveDocument.lesson || {};
+      if (lesson.source_type !== 'youtube' || !lesson.video_id || intensiveYouTubePlayer) return;
+      const createPlayer = () => {
+        if (!window.YT?.Player || intensiveYouTubePlayer) return;
+        intensiveYouTubePlayer = new YT.Player('intensive-youtube-host', {
+          width: 240,
+          height: 135,
+          videoId: lesson.video_id,
+          playerVars: {playsinline: 1, rel: 0, controls: 0},
+          events: {
+            onReady: () => {
+              intensiveYouTubeReady = true;
+              if (pendingYouTubeRange) playIntensiveYouTubeRange(pendingYouTubeRange);
+            },
+          },
+        });
+      };
+      if (window.YT?.Player) {
+        createPlayer();
+        return;
+      }
+      if (intensiveYouTubeApiLoading) return;
+      intensiveYouTubeApiLoading = true;
+      const previousReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof previousReady === 'function') previousReady();
+        createPlayer();
+      };
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(script);
+    }
+
+    function playIntensiveYouTubeRange(range) {
+      pendingYouTubeRange = range;
+      if (!intensiveYouTubeReady || !intensiveYouTubePlayer) {
+        initIntensiveYouTube();
+        return;
+      }
+      pendingYouTubeRange = null;
+      intensiveYouTubePlayer.seekTo(range.start, true);
+      intensiveYouTubePlayer.setPlaybackRate(range.rate);
+      intensiveYouTubePlayer.playVideo();
+      monitorOriginalPlayback(
+        {...range, rate: Number(intensiveYouTubePlayer.getPlaybackRate?.()) || range.rate || 1},
+        () => intensiveYouTubePlayer?.getCurrentTime?.(),
+        () => intensiveYouTubePlayer?.pauseVideo(),
+      );
+    }
+
+    async function playIntensiveSentence(key) {
+      const sentence = sentenceByKey(key);
+      if (!sentence) return;
+      stopIntensivePlayback();
+      const rate = sentenceSpeed.get(Number(key)) || 1;
+      const start = Number(sentence.start_seconds) || 0;
+      const end = Number(sentence.end_seconds) || 0;
+      if (await playIntensiveOriginalRange(start, end, rate)) return;
+      NaturalTTS.speak(sentence.text, {lang:'en-US', rate:Math.max(.6, Math.min(1.3, rate))});
+    }
+
+    function speakIntensiveWordFallback(word) {
+      if (!window.NaturalTTS || !word) return;
+      stopIntensivePlayback();
+      activeWordUtterance = NaturalTTS.speak(word, {
+        lang:'en-US', rate:0.88, delay:80,
+        onEnd:() => { activeWordUtterance = null; },
+      });
+    }
+
+    function playIntensiveWord(word) {
+      const normalized = String(word || '').toLowerCase().replace(/[^a-z0-9'-]/g, '');
+      speakIntensiveWordFallback(normalized);
+    }
+
+    function setSentencePlaybackSpeed(key, speed) {
+      sentenceSpeed.set(Number(key), Number(speed));
+      const card = document.querySelector(`.sentence-card[data-key="${key}"]`);
+      card?.querySelectorAll('[data-sentence-speed]').forEach(button => {
+        button.classList.toggle('active', Number(button.dataset.sentenceSpeed) === Number(speed));
+      });
+      const select = card?.querySelector('[data-sentence-speed-select]');
+      if (select) select.value = String(Number(speed));
+    }
+
+    function renderOralAnalysis(data = {}) {
+      if (data.error) return `<div class="filter-note">${escapeHtml(data.error)}</div>`;
+      return `<div class="oral-modules">
+        <div class="oral-module"><span class="oral-module-label">A · 句式识别</span>${escapeHtml(data.pattern_name || '基础简单句')} · ${escapeHtml(data.cefr_level || 'B1')}</div>
+        <div class="oral-module"><span class="oral-module-label">B · 表达功能</span>${escapeHtml(data.function_cn || '暂无说明')}</div>
+        <div class="oral-module"><span class="oral-module-label">C · 雅思复用</span>${escapeHtml(data.ielts_reuse || '暂无说明')}</div>
+        <div class="oral-module"><span class="oral-module-label">D · 迁移模板</span><code class="oral-template">${escapeHtml(data.template || '暂无模板')}</code>${data.template_example ? `<div style="margin-top:6px">${escapeHtml(data.template_example)}</div>` : ''}</div>
+      </div>`;
+    }
+
+    async function generateOralAnalysis(key, force = false) {
+      const sentence = sentenceByKey(key);
+      const result = document.querySelector(`[data-oral-result="${key}"]`);
+      if (!sentence || !result) return null;
+      result.innerHTML = '<div class="filter-note">AI 正在识别句式和复用场景…</div>';
+      try {
+        const response = await fetch('/api/oral-analysis', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            english: sentence.text,
+            sentence_id: sentence.sentence_id || null,
+            persist: true,
+            force: Boolean(force),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || '口语解析失败');
+        if (data.sentence_id) sentence.sentence_id = Number(data.sentence_id);
+        sentence.oral_analysis = data;
+        oralAnalysisCache.set(Number(key), data);
+        result.innerHTML = renderOralAnalysis(data);
+        const button = document.querySelector(`[data-generate-oral="${key}"]`);
+        if (button) {
+          button.textContent = '重新解析';
+          button.dataset.force = 'true';
+        }
+        return data;
+      } catch (error) {
+        result.innerHTML = `<div class="filter-note">口语解析失败：${escapeHtml(error.message)}</div>`;
+        return null;
+      }
+    }
+
+    async function generatePracticeHint(key) {
+      const sentence = sentenceByKey(key);
+      const result = document.querySelector(`[data-practice-hint="${key}"]`);
+      if (!sentence || !result) return '';
+      result.classList.add('open');
+      result.textContent = '正在生成迁移练习…';
+      const oral = oralAnalysisCache.get(Number(key)) || {};
+      try {
+        const response = await fetch('/api/hint', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({english: sentence.text, pattern_template: oral.template || '', vocab: practiceWords(sentence)}),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || '提示生成失败');
+        practiceHintCache.set(Number(key), data.hint || '');
+        result.textContent = data.hint || '';
+        return data.hint || '';
+      } catch (error) {
+        result.textContent = `提示生成失败：${error.message}`;
+        return '';
+      }
+    }
+
+    function renderPracticeResult(data = {}) {
+      const main = data.corrected || data.standard || '';
+      const secondary = data.variant || '';
+      const feedback = Array.isArray(data.feedback) ? data.feedback : [];
+      const points = Array.isArray(data.key_points) ? data.key_points : [];
+      return `${main ? `<strong>${escapeHtml(main)}</strong>` : ''}${secondary ? `<div style="margin-top:7px">自然变体：${escapeHtml(secondary)}</div>` : ''}${feedback.length ? `<ul>${feedback.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}${points.length ? `<ul>${points.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}`;
+    }
+
+    async function submitPractice(key) {
+      const sentence = sentenceByKey(key);
+      const input = document.querySelector(`[data-practice-input="${key}"]`);
+      const result = document.querySelector(`[data-practice-result="${key}"]`);
+      if (!sentence || !input || !result) return;
+      let hint = practiceHintCache.get(Number(key)) || '';
+      if (!hint) hint = await generatePracticeHint(key);
+      if (!hint) return;
+      result.classList.add('open');
+      result.textContent = input.value.trim() ? 'AI 正在批改你的表达…' : 'AI 正在生成自然范例…';
+      const oral = oralAnalysisCache.get(Number(key)) || {};
+      try {
+        const response = await fetch('/api/practice', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            hint_cn: hint,
+            user_answer: input.value.trim(),
+            english: sentence.text,
+            pattern_template: oral.template || '',
+            vocab: practiceWords(sentence),
+            lesson_id: LESSON_ID,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || '练习提交失败');
+        result.innerHTML = renderPracticeResult(data);
+      } catch (error) {
+        result.textContent = `练习提交失败：${error.message}`;
+      }
+    }
+
+    function setPracticeMicStatus(key, message, isError = false) {
+      const status = document.querySelector(`[data-mic-status="${key}"]`);
+      if (!status) return;
+      status.textContent = message;
+      status.hidden = !message;
+      status.classList.toggle('error', isError);
+    }
+
+    function togglePracticeMic(key) {
+      const button = document.querySelector(`[data-practice-mic="${key}"]`);
+      const input = document.querySelector(`[data-practice-input="${key}"]`);
+      if (!button || !input) return;
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        setPracticeMicStatus(key, '当前浏览器不支持录音输入', true);
+        return;
+      }
+      if (activePracticeRecorder && activePracticeMicKey === Number(key)) {
+        activePracticeRecorder.stop();
+        return;
+      }
+      if (activePracticeRecorder) activePracticeRecorder.stop();
+
+      navigator.mediaDevices.getUserMedia({audio: true}).then(stream => {
+        const chunks = [];
+        const recorder = new MediaRecorder(stream);
+        activePracticeRecorder = recorder;
+        activePracticeMicKey = Number(key);
+        recorder.ondataavailable = event => {
+          if (event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onstart = () => {
+          button.textContent = '⏹';
+          button.classList.add('recording');
+          setPracticeMicStatus(key, '正在录音，说完后再次点击停止…');
+        };
+        recorder.onstop = async () => {
+          stream.getTracks().forEach(track => track.stop());
+          button.textContent = '🎤';
+          button.classList.remove('recording');
+          if (activePracticeRecorder === recorder) {
+            activePracticeRecorder = null;
+            activePracticeMicKey = null;
+          }
+          setPracticeMicStatus(key, '正在识别…');
+          const form = new FormData();
+          form.append('audio', new Blob(chunks, {type: recorder.mimeType || 'audio/webm'}), 'recording.webm');
+          try {
+            const response = await fetch('/api/transcribe', {method: 'POST', body: form});
+            const data = await response.json();
+            if (!response.ok || !data.text) throw new Error(data.error || '识别失败，请重试');
+            input.value += `${input.value && !input.value.endsWith(' ') ? ' ' : ''}${data.text}`;
+            setPracticeMicStatus(key, '');
+          } catch (error) {
+            setPracticeMicStatus(key, error.message || '转写服务连接失败', true);
+          }
+        };
+        recorder.start();
+      }).catch(error => {
+        const message = error.name === 'NotAllowedError'
+          ? '麦克风权限被拒绝，请在浏览器地址栏允许'
+          : `麦克风错误：${error.message}`;
+        setPracticeMicStatus(key, message, true);
+      });
+    }
+
+    function renderListValue(value) {
+      if (!Array.isArray(value)) return escapeHtml(value || '');
+      return value.map(item => `<li>${escapeHtml(typeof item === 'string' ? item : JSON.stringify(item))}</li>`).join('');
+    }
+
+    function hasDeepWordAnalysis(data) {
+      if (!data || typeof data !== 'object') return false;
+      const detailFields = ['pos', 'register', 'contextual_meaning', 'en_definition', 'usage', 'ielts_note'];
+      if (detailFields.some(field => String(data[field] || '').trim())) return true;
+      return ['collocations', 'synonyms', 'examples'].some(field => Array.isArray(data[field]) && data[field].length);
+    }
+
+    function renderWordAnalysis(data, key) {
+      if (data.error) return `<span style="color:var(--danger)">${escapeHtml(data.error)}</span>`;
+      const word = String(data.word || '').toLowerCase();
+      const saved = savedLessonWords.has(word);
+      const rows = [
+        ['词性', data.pos], ['语域', data.register], ['基本义', data.basic_meaning],
+        ['语境义', data.contextual_meaning], ['英文释义', data.en_definition], ['用法', data.usage],
+        ['雅思提示', data.ielts_note],
+      ].filter(row => row[1]);
+      const lists = [
+        ['常见搭配', data.collocations], ['近义词辨析', data.synonyms], ['例句', data.examples],
+      ].filter(row => Array.isArray(row[1]) && row[1].length);
+      return `<div class="word-analysis">
+        <div class="word-analysis-head">
+          <h4>${escapeHtml(data.word || '')} <small>${escapeHtml(data.ipa || '')}</small></h4>
+          <div class="word-analysis-actions">
+            <button type="button" data-speak-word="${escapeHtml(word)}" data-key="${key}" aria-label="播放 ${escapeHtml(word)} 发音">🔊</button>
+            <button class="word-save-button${saved ? ' saved' : ''}" type="button" data-toggle-word-save="${escapeHtml(word)}" data-key="${key}">${saved ? '★ 已收藏' : '☆ 收藏'}</button>
+            <button type="button" data-close-word-analysis="${key}">收起</button>
+          </div>
+        </div>
+        <div class="word-grid">
+          ${rows.map(([label, value]) => `<div class="word-block full"><span class="word-label">${label}</span>${escapeHtml(value)}</div>`).join('')}
+          ${lists.map(([label, value]) => `<div class="word-block full"><span class="word-label">${label}</span><ul>${renderListValue(value)}</ul></div>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    function familiarityText(word) {
+      if (knownWords.has(word)) return '已认识';
+      const count = Number(vocabLog[word]?.count || 0);
+      return count ? `已学习 ${count} 次` : '首次学习';
+    }
+
+    function renderIntensiveWordCard({word, key, meaning = '', phonetic = '', loading = false, error = ''}) {
+      const saved = savedLessonWords.has(word);
+      return `<div class="word-card-head">
+          <div><h3 class="word-card-title">${escapeHtml(word)}</h3>${phonetic ? `<div class="word-card-phonetic">/${escapeHtml(phonetic.replace(/^\/+|\/+$/g, ''))}/</div>` : ''}</div>
+          <div class="word-analysis-actions">
+            <button type="button" data-speak-word="${escapeHtml(word)}" data-key="${key}" aria-label="播放 ${escapeHtml(word)} 发音">🔊</button>
+            <button class="word-card-close" type="button" data-close-word-card aria-label="关闭词卡">✕</button>
+          </div>
+        </div>
+        <div class="word-card-meaning"${error ? ' style="color:var(--danger)"' : ''}>${escapeHtml(error || (loading ? '正在查询释义…' : (meaning || '暂未命中本地释义')))}</div>
+        <div class="word-card-status"><span>熟悉程度</span><strong>${escapeHtml(familiarityText(word))}</strong></div>
+        <div class="word-card-actions">
+          <button class="word-save-button${saved ? ' saved' : ''}" type="button" data-toggle-word-save="${escapeHtml(word)}" data-key="${key}">${saved ? '★ 已收藏' : '☆ 收藏'}</button>
+          <button type="button" data-mark-known="${escapeHtml(word)}">✓ 我认识</button>
+          <button class="primary-action" type="button" data-study-word="${escapeHtml(word)}" data-key="${key}">深入学习</button>
+        </div>`;
+    }
+
+    function positionIntensiveWordCard(anchor) {
+      const card = document.getElementById('intensive-word-card');
+      const rect = anchor.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const below = rect.bottom + 9;
+      const top = below + cardRect.height <= window.innerHeight - 12
+        ? below
+        : Math.max(12, rect.top - cardRect.height - 9);
+      card.style.top = `${top}px`;
+      card.style.left = `${Math.min(window.innerWidth - cardRect.width - 12, Math.max(12, rect.left))}px`;
+    }
+
+    async function openIntensiveWordCard(anchor, word, key) {
+      const normalized = String(word || '').toLowerCase();
+      const card = document.getElementById('intensive-word-card');
+      if (!normalized || !sentenceByKey(key)) return;
+      activeWordCard = {word: normalized, key: Number(key), anchor};
+      const cached = vocabLog[normalized]?.cached_analysis || wordAnalysisCache.get(`${normalized}||${key}`);
+      card.innerHTML = renderIntensiveWordCard({
+        word: normalized,
+        key,
+        meaning: cached?.basic_meaning || '',
+        phonetic: cached?.ipa || '',
+        loading: !cached,
+      });
+      card.scrollTop = 0;
+      card.classList.add('open');
+      positionIntensiveWordCard(anchor);
+      if (cached) return;
+      try {
+        const response = await fetch(`/api/v2/lessons/${LESSON_ID}/word-meaning/${encodeURIComponent(normalized)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || '释义查询失败');
+        if (!activeWordCard || activeWordCard.word !== normalized || activeWordCard.key !== Number(key)) return;
+        card.innerHTML = renderIntensiveWordCard({word: normalized, key, meaning: data.meaning || '', phonetic: data.phonetic || ''});
+        card.scrollTop = 0;
+        positionIntensiveWordCard(anchor);
+      } catch (error) {
+        card.innerHTML = renderIntensiveWordCard({word: normalized, key, error: error.message});
+        card.scrollTop = 0;
+      }
+    }
+
+    function closeIntensiveWordCard() {
+      document.getElementById('intensive-word-card').classList.remove('open');
+      activeWordCard = null;
+    }
+
+    async function logIntensiveWordStudy(word, sentence, analysis) {
+      const lessonResponse = await fetch(`/api/v2/lessons/${LESSON_ID}/word`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          word,
+          meaning: analysis?.basic_meaning || '',
+          sentence: sentence.text,
+        }),
+      });
+      if (!lessonResponse.ok) throw new Error('课程生词保存失败');
+      savedLessonWords.add(word);
+      const response = await fetch('/log-word', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          word,
+          sentence: sentence.text,
+          lesson_title: intensiveDocument.lesson?.title || '逐句精读',
+          level: 'v2',
+          analysis,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) vocabLog[word] = {...(vocabLog[word] || {}), count: data.count, cached_analysis: analysis};
+      updateWordSaveControls(word);
+      const highlighted = Array.isArray(sentence.highlighted_words) ? sentence.highlighted_words : [];
+      if (!highlighted.includes(word)) highlighted.push(word);
+      sentence.highlighted_words = highlighted;
+    }
+
+    async function analyzeIntensiveWord(word, key) {
+      const normalized = String(word || '').toLowerCase();
+      const sentence = sentenceByKey(key);
+      const card = document.querySelector(`.sentence-card[data-key="${key}"]`);
+      const result = card?.querySelector(`[data-word-result="${key}"]`);
+      if (!sentence || !card || !result) return;
+      const cacheKey = `${normalized}||${key}`;
+      const hasSessionCache = wordAnalysisCache.has(cacheKey);
+      const cached = hasSessionCache
+        ? wordAnalysisCache.get(cacheKey)
+        : vocabLog[normalized]?.cached_analysis;
+      result.classList.add('open');
+      closeIntensiveWordCard();
+      if (hasSessionCache || hasDeepWordAnalysis(cached)) {
+        wordAnalysisCache.set(cacheKey, cached);
+        result.innerHTML = renderWordAnalysis(cached, key);
+        result.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        return;
+      }
+      result.innerHTML = `<div class="word-analysis-head"><h4>${escapeHtml(normalized)}</h4><div class="word-analysis-actions"><button type="button" data-speak-word="${escapeHtml(normalized)}" data-key="${key}" aria-label="播放 ${escapeHtml(normalized)} 发音">🔊</button><button type="button" data-close-word-analysis="${key}">收起</button></div></div><span class="filter-note">AI 正在生成语境解析…</span>`;
+      try {
+        const response = await fetch('/analyze-word', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({word: normalized, sentence: sentence.text}),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || '词汇解析失败');
+        wordAnalysisCache.set(cacheKey, data);
+        await logIntensiveWordStudy(normalized, sentence, data);
+        const focusList = card.querySelector('.focus-word-list');
+        if (focusList) focusList.innerHTML = renderFocusWordChips(sentence);
+        if (!document.body.contains(result)) return;
+        result.innerHTML = renderWordAnalysis(data, key);
+        result.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        card.querySelectorAll('[data-word]').forEach(button => {
+          if (button.dataset.word === normalized) {
+            const badge = button.querySelector('.familiarity-badge');
+            if (badge) badge.textContent = `已学 ${vocabLog[normalized]?.count || 1} 次`;
+          }
+        });
+      } catch (error) {
+        result.innerHTML = `<div class="word-analysis-head"><h4>${escapeHtml(normalized)}</h4><div class="word-analysis-actions"><button type="button" data-speak-word="${escapeHtml(normalized)}" data-key="${key}" aria-label="播放 ${escapeHtml(normalized)} 发音">🔊</button><button type="button" data-close-word-analysis="${key}">收起</button></div></div><span style="color:var(--danger)">词汇解析失败：${escapeHtml(error.message)}</span>`;
+      }
+    }
+
+    function updateWordSaveControls(word) {
+      const saved = savedLessonWords.has(word);
+      document.querySelectorAll('[data-toggle-word-save]').forEach(button => {
+        if (button.dataset.toggleWordSave !== word) return;
+        button.classList.toggle('saved', saved);
+        button.textContent = saved ? '★ 已收藏' : '☆ 收藏';
+      });
+    }
+
+    async function toggleIntensiveWordSaved(word, key) {
+      const normalized = String(word || '').toLowerCase();
+      const sentence = sentenceByKey(key);
+      if (!normalized || !sentence) return;
+      const saved = savedLessonWords.has(normalized);
+      const analysis = wordAnalysisCache.get(`${normalized}||${key}`) || vocabLog[normalized]?.cached_analysis || {};
+      const response = saved
+        ? await fetch(`/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}`, {method: 'DELETE'})
+        : await fetch(`/api/v2/lessons/${LESSON_ID}/word`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              word: normalized,
+              meaning: analysis.basic_meaning || '',
+              sentence: sentence.text,
+            }),
+          });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) throw new Error(data.detail || data.error || '词语收藏更新失败');
+      if (saved) {
+        savedLessonWords.delete(normalized);
+        for (const item of intensiveDocument.sentences || []) {
+          item.highlighted_words = sentenceFocusWords(item).filter(candidate => candidate !== normalized);
+        }
+      } else {
+        savedLessonWords.add(normalized);
+        const highlighted = Array.isArray(sentence.highlighted_words) ? sentence.highlighted_words : [];
+        if (!highlighted.includes(normalized)) highlighted.push(normalized);
+        sentence.highlighted_words = highlighted;
+      }
+      updateWordSaveControls(normalized);
+      const card = document.querySelector(`.sentence-card[data-key="${key}"]`);
+      const focusList = card?.querySelector('.focus-word-list');
+      if (focusList) focusList.innerHTML = renderFocusWordChips(sentence);
+    }
+
+    async function markIntensiveWordKnown(word) {
+      const normalized = String(word || '').toLowerCase();
+      if (!normalized) return;
+      const [knownResponse, lessonResponse] = await Promise.all([
+        fetch('/api/known-words', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({word: normalized}),
+        }),
+        fetch(`/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}`, {method: 'DELETE'}),
+      ]);
+      if (!knownResponse.ok || !lessonResponse.ok) throw new Error('熟悉度保存失败');
+      knownWords.add(normalized);
+      localStorage.setItem(`known_${normalized}`, '1');
+      closeIntensiveWordCard();
+      renderAll();
+    }
+
+    async function ensureSentenceSaved(sentence) {
+      if (sentence.saved) return sentence.phase_b_key;
+      const response = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          segment_index: sentence.key,
+          start_seconds: sentence.start_seconds || 0,
+          end_seconds: sentence.end_seconds || 0,
+          text: sentence.text,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || '收藏失败');
+      sentence.saved = true;
+      sentence.phase_b_key = Number(data.sentence.segment_index);
+      sentence.sentence_id = Number(data.sentence.sentence_id);
+      sentence.tags = data.sentence.tags || [];
+      return sentence.phase_b_key;
+    }
+
+    async function saveSentenceTags(key) {
+      const sentence = sentenceByKey(key);
+      const category = document.querySelector(`[data-tag-category="${key}"]`)?.value;
+      const selectedName = document.querySelector(`[data-tag-name="${key}"]`)?.value || '';
+      const customName = document.querySelector(`[data-tag-custom="${key}"]`)?.value.trim() || '';
+      const name = selectedName === CUSTOM_TAG_VALUE ? customName : selectedName;
+      if (!sentence || !category || !name) return;
+      try {
+        const phaseBKey = await ensureSentenceSaved(sentence);
+        const tags = sentenceTags(sentence).filter(tag => tag.category && tag.name);
+        if (!tags.some(tag => tag.category === category && tag.name === name)) tags.push({category, name});
+        const response = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b/${encodeURIComponent(phaseBKey)}/tags`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tags}),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || data.error || '标签保存失败');
+        sentence.tags = data.tags || tags;
+        if (!tagCatalog.tags.some(tag => tag.name === name && tag.category === category)) tagCatalog.tags.push({name, category});
+        renderAll();
+      } catch (error) {
+        window.alert(error.message);
+      }
+    }
+
+    async function toggleSentenceSaved(key) {
+      const sentence = sentenceByKey(key);
+      if (!sentence) return;
+      try {
+        if (sentence.saved) {
+          const response = await fetch(`/api/v2/lessons/${LESSON_ID}/phase-b/${encodeURIComponent(sentence.phase_b_key)}`, {method: 'DELETE'});
+          if (!response.ok) throw new Error('取消收藏失败');
+          sentence.saved = false;
+          sentence.phase_b_key = sentence.key;
+          sentence.tags = [];
+        } else {
+          await ensureSentenceSaved(sentence);
+        }
+        renderAll();
+      } catch (error) {
+        window.alert(error.message);
+      }
+    }
+
+    async function syncIntensiveHighlightedWords() {
+      try {
+        await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync`, {method: 'POST'});
+      } catch (_) {
+        // The intensive page should still open when the optional initial sync fails.
+      }
+    }
+
+    async function loadIntensiveStudy() {
+      await syncIntensiveHighlightedWords();
+      const [documentResponse, tagResponse, knownResponse, vocabResponse] = await Promise.all([
+        fetch(`/api/v2/lessons/${LESSON_ID}/intensive`),
+        fetch('/api/v2/lessons/sentence-tags'),
+        fetch('/api/known-words'),
+        fetch('/vocab-log'),
+      ]);
+      if (!documentResponse.ok) throw new Error('无法加载整篇精读数据');
+      intensiveDocument = await documentResponse.json();
+      savedLessonWords.clear();
+      for (const word of intensiveDocument.lesson_words || []) savedLessonWords.add(String(word).toLowerCase());
+      for (const sentence of intensiveDocument.sentences || []) {
+        if (sentence.oral_analysis && Object.keys(sentence.oral_analysis).length) {
+          oralAnalysisCache.set(Number(sentence.key), sentence.oral_analysis);
+        }
+        if (Array.isArray(sentence.aligned_words) && sentence.aligned_words.length) {
+          const words = sentence.aligned_words.map((word, index, items) => ({
+            ...word,
+            pause_after_ms: index < items.length - 1
+              ? Math.max(0, Math.round((Number(items[index + 1].start) - Number(word.end)) * 1000))
+              : Number(sentence.pause_after_ms || 0),
+          }));
+          pronunciationCache.set(Number(sentence.key), {
+            source: 'mfa',
+            aligned_words: words,
+          });
+        }
+      }
+      initIntensiveYouTube();
+      if (tagResponse.ok) tagCatalog = await tagResponse.json();
+      if (knownResponse.ok) {
+        for (const word of await knownResponse.json()) knownWords.add(String(word).toLowerCase());
+      }
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith('known_') && localStorage.getItem(key) === '1') knownWords.add(key.slice(6));
+      }
+      if (vocabResponse.ok) Object.assign(vocabLog, await vocabResponse.json());
+      document.getElementById('lesson-title').textContent = intensiveDocument.lesson?.title || '逐句精读';
+      renderAll();
+      focusTargetSentence();
+    }
+
+    document.addEventListener('click', event => {
+      const closeWordCard = event.target.closest('[data-close-word-card]');
+      if (closeWordCard) { closeIntensiveWordCard(); return; }
+      const closeWordAnalysis = event.target.closest('[data-close-word-analysis]');
+      if (closeWordAnalysis) {
+        document.querySelector(`[data-word-result="${closeWordAnalysis.dataset.closeWordAnalysis}"]`)?.classList.remove('open');
+        return;
+      }
+      const speakWord = event.target.closest('[data-speak-word]');
+      if (speakWord) {
+        playIntensiveWord(speakWord.dataset.speakWord);
+        return;
+      }
+      const studyWord = event.target.closest('[data-study-word]');
+      if (studyWord) { analyzeIntensiveWord(studyWord.dataset.studyWord, Number(studyWord.dataset.key)); return; }
+      const toggleWordSave = event.target.closest('[data-toggle-word-save]');
+      if (toggleWordSave) {
+        toggleIntensiveWordSaved(toggleWordSave.dataset.toggleWordSave, Number(toggleWordSave.dataset.key))
+          .catch(error => window.alert(error.message));
+        return;
+      }
+      const markKnown = event.target.closest('[data-mark-known]');
+      if (markKnown) {
+        markIntensiveWordKnown(markKnown.dataset.markKnown).catch(error => window.alert(error.message));
+        return;
+      }
+      const mode = event.target.closest('[data-filter]');
+      if (mode) { activeMode = mode.dataset.filter; renderAll(); return; }
+      const viewMode = event.target.closest('[data-view-mode]');
+      if (viewMode) { setIntensiveViewMode(viewMode.dataset.viewMode); return; }
+      const cardNav = event.target.closest('[data-card-nav]');
+      if (cardNav) { navigateSentenceCard(Number(cardNav.dataset.cardNav)); return; }
+      const tag = event.target.closest('[data-tag-filter]');
+      if (tag) {
+        const name = tag.dataset.tagFilter;
+        if (selectedTags.has(name)) selectedTags.delete(name); else selectedTags.add(name);
+        renderAll();
+        return;
+      }
+      const toggle = event.target.closest('[data-toggle-key]');
+      if (toggle) {
+        const key = Number(toggle.dataset.toggleKey);
+        const shouldOpen = intensiveViewMode === 'card' || !openSentenceKeys.has(key);
+        if (shouldOpen) openSentenceKeys.add(key); else openSentenceKeys.delete(key);
+        renderSentenceList();
+        if (shouldOpen && !pronunciationCache.has(key)) loadPronunciationGuide(key);
+        return;
+      }
+      const toggleTagEditor = event.target.closest('[data-toggle-tag-editor]');
+      if (toggleTagEditor) {
+        const key = Number(toggleTagEditor.dataset.toggleTagEditor);
+        if (openTagEditorKeys.has(key)) openTagEditorKeys.delete(key); else openTagEditorKeys.add(key);
+        renderSentenceList();
+        return;
+      }
+      const word = event.target.closest('[data-word]');
+      if (word) { openIntensiveWordCard(word, word.dataset.word, Number(word.dataset.key)); return; }
+      const play = event.target.closest('[data-play-sentence]');
+      if (play) { playIntensiveSentence(Number(play.dataset.playSentence)); return; }
+      const speed = event.target.closest('[data-sentence-speed]');
+      if (speed) { setSentencePlaybackSpeed(Number(speed.dataset.key), Number(speed.dataset.sentenceSpeed)); return; }
+      const oral = event.target.closest('[data-generate-oral]');
+      if (oral) { generateOralAnalysis(Number(oral.dataset.generateOral), oral.dataset.force === 'true'); return; }
+      const hint = event.target.closest('[data-generate-hint]');
+      if (hint) { generatePracticeHint(Number(hint.dataset.generateHint)); return; }
+      const mic = event.target.closest('[data-practice-mic]');
+      if (mic) { togglePracticeMic(Number(mic.dataset.practiceMic)); return; }
+      const practice = event.target.closest('[data-submit-practice]');
+      if (practice) { submitPractice(Number(practice.dataset.submitPractice)); return; }
+      const save = event.target.closest('[data-toggle-save]');
+      if (save) { toggleSentenceSaved(Number(save.dataset.toggleSave)); return; }
+      const saveTags = event.target.closest('[data-save-tags]');
+      if (saveTags) { saveSentenceTags(Number(saveTags.dataset.saveTags)); return; }
+      if (!event.target.closest('#intensive-word-card')) closeIntensiveWordCard();
+    });
+
+    document.addEventListener('change', event => {
+      const headerSpeed = event.target.closest('[data-sentence-speed-select]');
+      if (headerSpeed) {
+        setSentencePlaybackSpeed(Number(headerSpeed.dataset.sentenceSpeedSelect), Number(headerSpeed.value));
+        return;
+      }
+      const category = event.target.closest('[data-tag-category]');
+      if (category) {
+        updateTagNameOptions(Number(category.dataset.tagCategory), category.value);
+        return;
+      }
+      const tagName = event.target.closest('[data-tag-name]');
+      if (tagName) updateCustomTagVisibility(Number(tagName.dataset.tagName));
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        closeIntensiveWordCard();
+        return;
+      }
+      if (
+        intensiveViewMode === 'card'
+        && !event.target.closest('input, textarea, select, [contenteditable="true"]')
+        && ['ArrowLeft', 'ArrowRight'].includes(event.key)
+      ) {
+        event.preventDefault();
+        navigateSentenceCard(event.key === 'ArrowLeft' ? -1 : 1);
+      }
+    });
+    window.addEventListener('resize', closeIntensiveWordCard);
+
+    document.getElementById('sentence-search').addEventListener('input', event => {
+      searchQuery = event.target.value;
+      renderSentenceList();
+    });
+    document.getElementById('expand-visible').addEventListener('click', () => {
+      const visible = visibleSentences();
+      const shouldOpen = visible.some(sentence => !openSentenceKeys.has(Number(sentence.key)));
+      for (const sentence of visible) {
+        if (shouldOpen) openSentenceKeys.add(Number(sentence.key));
+        else openSentenceKeys.delete(Number(sentence.key));
+      }
+      renderSentenceList();
+    });
+
+    loadIntensiveStudy().catch(error => {
+      document.getElementById('intensive-sentence-list').innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    });
+  </script>
+</body>
+</html>

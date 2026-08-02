@@ -1,0 +1,265 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+
+from fastapi.testclient import TestClient
+
+
+def test_translate_lesson_builds_sentence_units_and_caches_translations(tmp_path, monkeypatch):
+    import db
+    from webapp.services import v2_translation
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="local_audio",
+        source_url="C:/media/translation.mp3",
+        title="Translation",
+        duration=12,
+    )
+    db.configure_v2_lesson_translation(lesson["id"], requested=True)
+    db.replace_v2_subtitle_segments(
+        lesson["id"],
+        [
+            {"index": 0, "start": 0.0, "end": 4.0, "text": "Hello"},
+            {"index": 1, "start": 4.0, "end": 8.0, "text": "world."},
+            {"index": 2, "start": 8.0, "end": 12.0, "text": "Another complete sentence."},
+        ],
+    )
+    monkeypatch.setattr(v2_translation, "hy_ready", lambda: True)
+    monkeypatch.setattr(v2_translation, "hy_translate", lambda text: f"中:{text}")
+
+    result = v2_translation.translate_lesson_subtitles(lesson["id"])
+
+    assert result == {"status": "ready", "done": 2, "total": 2}
+    assert db.get_v2_sentence("Hello world.")["translation"] == "中:Hello world."
+    assert db.get_v2_sentence("Another complete sentence.")["translation"] == "中:Another complete sentence."
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["translation_status"] == "ready"
+    assert saved["translation_done"] == 2
+    assert saved["translation_total"] == 2
+    assert saved["translation_buffer_seconds"] == 12.0
+    assert saved["translation_ready"] == 1
+
+
+def test_playback_units_split_internal_punctuation_before_merging_fragments():
+    from webapp.services.v2_translation import build_translation_units
+
+    units = build_translation_units([
+        {"index": 1, "start": 0.0, "end": 9.0, "text": "Part 4. You will hear part"},
+        {"index": 2, "start": 9.0, "end": 18.0, "text": "of a talk. First, read question 31"},
+        {"index": 3, "start": 18.0, "end": 20.0, "text": "to 40."},
+    ])
+
+    assert [unit["text"] for unit in units] == [
+        "Part 4.",
+        "You will hear part of a talk.",
+        "First, read question 31 to 40.",
+    ]
+    assert units[0]["end"] == units[1]["start"]
+    assert units[1]["end"] == units[2]["start"]
+    assert units[-1]["end"] == 20.0
+
+
+def test_translate_lesson_reuses_complete_cache_without_starting_hy_mt(tmp_path, monkeypatch):
+    import db
+    from webapp.services import v2_translation
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson("local_audio", "C:/media/cached-translation.mp3")
+    db.configure_v2_lesson_translation(lesson["id"], requested=True)
+    db.replace_v2_subtitle_segments(
+        lesson["id"],
+        [{"index": 0, "start": 0.0, "end": 4.0, "text": "Already translated."}],
+    )
+    db.upsert_v2_sentence("Already translated.", translation="已经翻译。")
+    monkeypatch.setattr(
+        v2_translation,
+        "hy_ready",
+        lambda: (_ for _ in ()).throw(AssertionError("Hy-MT should not start")),
+    )
+
+    result = v2_translation.translate_lesson_subtitles(lesson["id"])
+
+    assert result == {"status": "ready", "done": 1, "total": 1}
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["translation_status"] == "ready"
+    assert saved["translation_ready"] == 1
+
+
+def test_playback_units_do_not_split_a_long_sentence_at_the_old_soft_limit():
+    from webapp.services.v2_translation import build_translation_units
+
+    units = build_translation_units([
+        {
+            "index": 1,
+            "start": 0.0,
+            "end": 4.0,
+            "text": "One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen",
+        },
+        {
+            "index": 2,
+            "start": 4.0,
+            "end": 8.0,
+            "text": "sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine roll the",
+        },
+        {"index": 3, "start": 8.0, "end": 9.0, "text": "dice."},
+    ])
+
+    assert [unit["text"] for unit in units] == [
+        (
+            "One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen "
+            "sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four "
+            "twenty-five twenty-six twenty-seven twenty-eight twenty-nine roll the dice."
+        )
+    ]
+
+
+def test_playback_units_wait_for_sentence_end_in_the_next_cue_after_word_limit():
+    from webapp.services.v2_translation import build_translation_units
+
+    units = build_translation_units([
+        {"index": 1003, "start": 0.0, "end": 1.0, "text": "Now, if you want me to go"},
+        {"index": 1004, "start": 1.0, "end": 2.0, "text": "into this in a little bit more detail"},
+        {"index": 1005, "start": 2.0, "end": 3.0, "text": "and how you can [clears throat] build an"},
+        {"index": 1006, "start": 3.0, "end": 4.0, "text": "entire system that follows these"},
+        {"index": 1007, "start": 4.0, "end": 5.0, "text": "principles, then you might want to check"},
+        {"index": 1008, "start": 5.0, "end": 6.0, "text": "out this video here where I go through"},
+        {"index": 1009, "start": 6.0, "end": 7.0, "text": "my process of how I think about building"},
+        {"index": 1010, "start": 7.0, "end": 8.0, "text": "a learning system."},
+        {"index": 1011, "start": 8.0, "end": 9.0, "text": "Otherwise, thanks for watching."},
+    ])
+
+    assert [unit["text"] for unit in units] == [
+        (
+            "Now, if you want me to go into this in a little bit more detail and how you can "
+            "[clears throat] build an entire system that follows these principles, then you might "
+            "want to check out this video here where I go through my process of how I think about "
+            "building a learning system."
+        ),
+        "Otherwise, thanks for watching.",
+    ]
+    assert units[0]["segment_ids"] == list(range(1003, 1011))
+    assert units[0]["end"] == units[1]["start"]
+
+
+def test_translate_lesson_fails_without_hy_mt_but_keeps_subtitles(tmp_path, monkeypatch):
+    import db
+    from webapp.services import v2_translation
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson("local_audio", "C:/media/no-model.mp3")
+    db.configure_v2_lesson_translation(lesson["id"], requested=True)
+    db.replace_v2_subtitle_segments(
+        lesson["id"],
+        [{"index": 0, "start": 0.0, "end": 4.0, "text": "Hello world."}],
+    )
+    db.set_v2_lesson_status(lesson["id"], subtitle_status="ready")
+    monkeypatch.setattr(v2_translation, "hy_ready", lambda: False)
+
+    result = v2_translation.translate_lesson_subtitles(lesson["id"])
+
+    assert result["status"] == "failed"
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["subtitle_status"] == "ready"
+    assert saved["translation_status"] == "failed"
+    assert "Hy-MT" in saved["translation_error"]
+
+
+def test_sentence_translation_api_returns_playback_sentence_units(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson("local_audio", "C:/media/api-translation.mp3")
+    db.replace_v2_subtitle_segments(
+        lesson["id"],
+        [
+            {"index": 0, "start": 0.0, "end": 2.0, "text": "Hello"},
+            {"index": 1, "start": 2.0, "end": 4.0, "text": "world."},
+        ],
+    )
+    db.upsert_v2_sentence("Hello world.", translation="你好，世界。")
+
+    response = client.get(f"/api/v2/lessons/{lesson['id']}/sentence-translations")
+
+    assert response.status_code == 200
+    assert response.json()["translations"] == {"Hello world.": "你好，世界。"}
+    assert response.json()["cached"] is True
+    assert response.json()["translation_status"] == "ready"
+
+    subtitles = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles")
+    assert subtitles.status_code == 200
+    assert [item["text"] for item in subtitles.json()["sentence_units"]] == ["Hello world."]
+
+
+def test_reading_selection_translation_uses_hy_mt_and_reuses_cache(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+    from webapp.services import hy_translate
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    calls = []
+    monkeypatch.setattr(hy_translate, "is_ready", lambda: True)
+    monkeypatch.setattr(
+        hy_translate,
+        "translate",
+        lambda text: calls.append(text) or f"混元:{text}",
+    )
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=translate123",
+        video_id="translate123",
+        title="Selection translation",
+    )
+
+    first = client.post(
+        f"/api/v2/lessons/{lesson['id']}/translate-selection",
+        json={"text": "  A selected\n sentence.  "},
+    )
+    second = client.post(
+        f"/api/v2/lessons/{lesson['id']}/translate-selection",
+        json={"text": "A selected sentence."},
+    )
+
+    assert first.status_code == 200
+    assert first.json() == {
+        "translation": "混元:A selected sentence.",
+        "engine": "hy-mt",
+    }
+    assert second.json() == first.json()
+    assert calls == ["A selected sentence."]
+
+
+def test_translation_endpoints_do_not_fallback_when_hy_mt_is_unavailable(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+    from webapp.services import hy_translate
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(hy_translate, "is_ready", lambda: False)
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:hy-mt-only",
+        title="Hy-MT only",
+        lesson_mode="reading",
+    )
+
+    selection = client.post(
+        f"/api/v2/lessons/{lesson['id']}/translate-selection",
+        json={"text": "Translate this."},
+    )
+    sentences = client.post(
+        f"/api/v2/lessons/{lesson['id']}/translate-sentences",
+        json={"sentences": ["Translate this too."]},
+    )
+
+    assert selection.status_code == 503
+    assert sentences.status_code == 503
+    assert "混元翻译引擎未就绪" in selection.json()["detail"]
