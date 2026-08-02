@@ -152,7 +152,6 @@ def health():
     keys_info = {
         "AI_API_KEY": key_status(ai_config.AI_API_KEY),
         "GROQ_API_KEY": key_status(os.environ.get("GROQ_API_KEY", "")),
-        "AZURE_SPEECH_KEY": key_status(ai_config.AZURE_SPEECH_KEY),
     }
     whisper_info = {
         "cache_roots": [str(root) for root in whisper_cache_roots()],
@@ -181,7 +180,6 @@ def health():
             for key, value in dict_service.DICTS.items()
         },
         "ai_key": key_status(ai_config.AI_API_KEY),
-        "azure_speech": key_status(ai_config.AZURE_SPEECH_KEY),
     }
 
 

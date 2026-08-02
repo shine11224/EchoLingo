@@ -73,7 +73,6 @@ Generated pages land in `output/` and appear on the server home page. You can al
 | `AI_BASE_URL` | No | API endpoint, default `https://api.deepseek.com` |
 | `AI_MODEL` | No | Model name, default `deepseek-chat` |
 | `GROQ_API_KEY` | No | Speeds up Whisper transcription for local media without subtitles |
-| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` | No | Pronunciation assessment (Azure free tier works) |
 | `DICT_DIR` | No | Directory with MDX dictionaries for offline word lookup |
 
 Legacy variables `DEEPSEEK_API_KEY` / `deepseek` / `DEEPSEEK` and `base_url_deepseek` are also recognized.

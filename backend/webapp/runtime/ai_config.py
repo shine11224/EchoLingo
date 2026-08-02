@@ -30,8 +30,6 @@ AI_BASE_URL = (
 )
 AI_MODEL = os.environ.get("AI_MODEL") or "deepseek-chat"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-AZURE_SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "")
-AZURE_SPEECH_REGION = os.environ.get("AZURE_SPEECH_REGION", "eastasia")
 
 def _make_client() -> OpenAI:
     # Placeholder keeps the SDK constructible with no credentials configured;
