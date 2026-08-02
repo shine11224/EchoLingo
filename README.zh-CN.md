@@ -11,6 +11,13 @@
 - **输入到输出的完整闭环**：隐藏原文精听 → 整句复述 + AI 对比 → 句式提取复用 + AI 批改 → 词汇记忆故事
 - **AI 可插拔**：任意 OpenAI 兼容接口随你换；转写、翻译、词典全部本地运行，离线也能用核心功能
 
+## 界面预览
+
+| | |
+|---|---|
+| ![首页——把真实素材变成课程](docs/screenshots/home.png) | ![课程页——双语字幕、大纲、AI 伴学](docs/screenshots/lesson.png) |
+| ![句子库——整句复述 + AI 对比、句式练习](docs/screenshots/sentence-library.png) | ![词汇工坊——语境优先的复习卡](docs/screenshots/vocab.png) |
+
 ## 它是怎么工作的
 
 1. **创建课程**：粘贴 YouTube / B 站链接、文章 URL，或上传本地音视频、粘贴文本。系统自动抓取字幕或用本地 faster-whisper 转写，然后断句、翻译、标注音标和连读现象。
@@ -29,7 +36,7 @@
 
 ## 快速开始
 
-需要 Python 3.11+ 和 [ffmpeg](https://ffmpeg.org/)（加入 PATH）。
+需要 Python 3.11+ 和 [ffmpeg](https://ffmpeg.org/)（加入 PATH）。硬件要求见下方**配置要求**。
 
 ```bash
 git clone https://github.com/shine11224/EchoLingo.git
@@ -68,6 +75,15 @@ python backend/fastapi_server.py
 **词汇**（首页标签页）：复习卡先给语境、自评后才显示释义，避免"看着眼熟"的假熟练。想要叙事强化时，用当天的词生成 AI 记忆故事；随时导出（Markdown / HTML / Anki）。
 
 **设置**（应用内）：设置页写的就是同一个 `.env` 文件——AI key、Whisper 模型大小、词典目录、词表启停都可以在页面上改，不用手动编辑文件。
+
+## 配置要求
+
+- **系统**：Windows 10/11、macOS 12+ 或 Linux
+- **运行时**：Python 3.11+，ffmpeg 加入 PATH
+- **内存**：最低 8 GB；本地跑 Whisper 推荐 16 GB
+- **显卡（可选）**：NVIDIA ≥6 GB 显存可让 large-v3 转写快数倍；纯 CPU 用 base/medium 模型也完全可用，或配置 `GROQ_API_KEY` 走云端转写
+- **磁盘**：应用约 2 GB，每个 Whisper 模型 1–3 GB，另有课程缓存
+- **麦克风**：整句复述功能需要；推荐 Chrome / Edge 浏览器
 
 ## 配置说明
 
