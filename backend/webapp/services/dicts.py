@@ -36,8 +36,14 @@ def lookup_dict(dict_key: str, word: str) -> str:
         path = os.path.join(DICT_DIR, fname)
         result = _lookup_mdx(path, word)
         if result and "@@@LINK" in result:
-            linked = result.split("=")[-1].strip().strip("\x00\r\n")
-            result = _lookup_mdx(path, linked)
+            chunks = result.split("\n---\n")
+            real = [chunk for chunk in chunks if not chunk.startswith("@@@LINK")]
+            if real:
+                # 混合记录（如 OALD9 OL 版）：丢弃跳转记录，保留真实词条
+                result = "\n---\n".join(real)
+            else:
+                linked = chunks[0].split("=", 1)[-1].split("\n")[0].strip().strip("\x00\r\n")
+                result = _lookup_mdx(path, linked)
         return strip_html(result) if result else ""
     except Exception:
         return ""
