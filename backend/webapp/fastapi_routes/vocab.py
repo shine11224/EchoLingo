@@ -596,7 +596,7 @@ def api_export_vocab(format: str = "csv"):
                 ctx_map[row["word"]] = row["sentence"]
 
     if fmt == "anki":
-        lines = ["#separator:tab", "#html:false", "#deck:English Learning Tool - Vocab"]
+        lines = ["#separator:tab", "#html:false", "#deck:EchoLingo - Vocab"]
         for w in words:
             analysis = json.loads(w["cached_analysis"]) if w["cached_analysis"] else None
             vocab_items = analysis.get("vocabulary", []) if isinstance(analysis, dict) else (analysis or [])

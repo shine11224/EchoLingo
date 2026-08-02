@@ -1,5 +1,5 @@
 """
-English Learning Tool — 浏览器全量诊断脚本
+EchoLingo — 浏览器全量诊断脚本
 用法: python scripts/playwright_qa.py [--lesson <filename>] [--check all|ipa|focus|render]
 
 设计原则: 一次运行拿全部诊断数据，禁止为同一问题迭代多个脚本。
@@ -297,7 +297,7 @@ def run(lesson: str, check_mode: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Playwright QA for English Learning Tool")
+    parser = argparse.ArgumentParser(description="Playwright QA for EchoLingo")
     parser.add_argument("--lesson", default=DEFAULT_LESSON, help="课程 HTML 文件名")
     parser.add_argument("--check", default="all", choices=["all", "ipa", "focus", "render"],
                         help="检查模块：all / ipa / focus / render")
