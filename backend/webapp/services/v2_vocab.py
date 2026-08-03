@@ -495,6 +495,7 @@ def highlight_reading_blocks(
     *,
     include_meanings: bool = True,
     source_words: set[str] | None = None,
+    source_lists: list[tuple[str, set[str]]] | None = None,
 ) -> dict:
     if source_words is not None:
         word_index = {w: {"word": w, "level": "selected"} for w in source_words}
@@ -532,14 +533,25 @@ def highlight_reading_blocks(
                     if not gloss:
                         gloss = _concise_gloss(_lookup_local_dict_meaning(candidates))
                     gloss_cache[normalized] = gloss
-            highlights.append({
+            item = {
                 "word": word,
                 "normalized": normalized,
                 "level": meta.get("level", "ielts"),
                 "meaning": gloss_cache[normalized],
                 "start": match.start(),
                 "end": match.end(),
-            })
+            }
+            if source_lists is not None:
+                # 记录最高优先级来源词表，前端据此着色
+                item["list_key"] = next(
+                    (
+                        key
+                        for key, list_words in source_lists
+                        if any(candidate in list_words for candidate in _lookup_candidates(normalized))
+                    ),
+                    "",
+                )
+            highlights.append(item)
         candidate_count += len(highlights)
         block_copy = dict(block)
         block_copy["highlights"] = highlights

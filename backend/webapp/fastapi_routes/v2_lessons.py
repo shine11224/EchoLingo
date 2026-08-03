@@ -14,6 +14,7 @@ from pydantic import BaseModel
 import db
 from prompts import PATTERN_EXTRACTION_PROMPT, PATTERN_SCENARIO_PROMPT
 from webapp.runtime import ai_config
+from webapp.services import dicts as dict_service
 from webapp.services import v2_lessons as service
 from webapp.storage.lessons import OUTPUT_DIR
 from webapp.services.v2_intensive import build_intensive_document
@@ -586,8 +587,10 @@ def lesson_reading(lesson_id: int, wordlists: str | None = None):
     blocks = service.ensure_media_reading_blocks(lesson_id, lesson)
     if not blocks:
         raise HTTPException(status_code=409, detail="Reading content is not ready")
-    source_words, _, hidden_words = _highlight_context(lesson_id, wordlists)
-    highlighted = highlight_reading_blocks(blocks, hidden_words=hidden_words, source_words=source_words)
+    source_words, source_lists, hidden_words = _highlight_context(lesson_id, wordlists)
+    highlighted = highlight_reading_blocks(
+        blocks, hidden_words=hidden_words, source_words=source_words, source_lists=source_lists
+    )
     return {"lesson": lesson, "blocks": highlighted["blocks"], "candidate_count": highlighted["candidate_count"]}
 
 
@@ -599,7 +602,9 @@ def sync_highlighted_words(lesson_id: int, wordlists: str | None = None):
     source_words, source_lists, hidden_words = _highlight_context(lesson_id, wordlists)
     if lesson.get("lesson_mode") == "reading":
         blocks = db.get_v2_reading_blocks(lesson_id)
-        highlighted = highlight_reading_blocks(blocks, hidden_words=hidden_words, source_words=source_words)
+        highlighted = highlight_reading_blocks(
+            blocks, hidden_words=hidden_words, source_words=source_words, source_lists=source_lists
+        )
         items = [
             (
                 item.get("normalized") or item.get("word") or "",
@@ -652,8 +657,12 @@ def word_meaning(lesson_id: int, word: str):
         raise HTTPException(status_code=404, detail="Lesson not found")
     lookup = lookup_word_meaning(word, allow_external_fallback=True)
     normalized = str(lookup.get("word") or word).strip().lower()
+    dict_meta = dict_service.format_ecdict_meta(
+        dict_service.lookup_ecdict_meta(str(lookup.get("lemma") or normalized))
+    )
     return {
         **lookup,
+        "dict_meta": dict_meta,
         "in_review_book": bool(normalized and db.is_word_in_review(normalized)),
     }
 

@@ -1094,6 +1094,12 @@ def test_word_meaning_route_returns_lookup_without_activating_review(tmp_path, m
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     monkeypatch.setattr(vocab, "load_word_meanings", lambda: {"complex": "复杂的"})
+    import webapp.fastapi_routes.v2_lessons as v2_routes
+    monkeypatch.setattr(
+        v2_routes.dict_service,
+        "lookup_ecdict_meta",
+        lambda w: {"frq": 1523, "bnc": None, "collins": 3, "oxford": 1, "tags": ["四级", "雅思"]},
+    )
 
     app = create_app()
     client = TestClient(app)
@@ -1111,6 +1117,8 @@ def test_word_meaning_route_returns_lookup_without_activating_review(tmp_path, m
     assert data["meaning"] == "复杂的"
     assert data["found"] is True
     assert isinstance(data.get("phonetic"), str) and len(data["phonetic"]) > 0
+    assert "COCA #1523" in data["dict_meta"]
+    assert "四级" in data["dict_meta"]
     assert data["in_review_book"] is False
     assert db.is_word_in_review("complex") is False
 

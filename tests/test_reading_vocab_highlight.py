@@ -4,6 +4,23 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 
+def test_highlight_reading_blocks_assigns_priority_list_key(monkeypatch):
+    from webapp.services import v2_vocab
+
+    monkeypatch.setattr(v2_vocab, "load_word_meanings", lambda: {})
+    monkeypatch.setattr(v2_vocab, "_lookup_local_dict_meaning", lambda candidates: "")
+
+    result = v2_vocab.highlight_reading_blocks(
+        [{"index": 1, "text": "Climate affects migration."}],
+        source_words={"climate", "migration"},
+        source_lists=[("builtin_cet4", {"climate"}), ("builtin_gre", {"migration", "climate"})],
+    )
+
+    highlights = result["blocks"][0]["highlights"]
+    assert highlights[0]["list_key"] == "builtin_cet4"   # 同词按优先级取第一个词表
+    assert highlights[1]["list_key"] == "builtin_gre"
+
+
 def test_highlight_reading_blocks_marks_candidates_without_autosave(monkeypatch):
     from webapp.services import v2_vocab
 
