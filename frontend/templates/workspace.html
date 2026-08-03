@@ -2021,8 +2021,17 @@ async function loadStatus() {
   }
 }
 
+function _wordlistsQuery() {
+  const raw = localStorage.getItem('phase_a_user_wordlists');
+  if (raw === null) return '';
+  try {
+    const arr = JSON.parse(raw);
+    return '?wordlists=' + encodeURIComponent(Array.isArray(arr) ? arr.join(',') : '');
+  } catch (e) { return ''; }
+}
+
 async function loadSubtitles({render = activeStudyMode !== 'reading'} = {}) {
-  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/subtitles`);
+  const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/subtitles${_wordlistsQuery()}`);
   if (!resp.ok) return;
   const data = await resp.json();
   segments = data.segments || [];
@@ -2113,7 +2122,7 @@ async function syncHighlightedWordsAfterRender() {
   if (highlightedWordsSyncStarted) return;
   highlightedWordsSyncStarted = true;
   try {
-    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync`, {method: 'POST'});
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync${_wordlistsQuery()}`, {method: 'POST'});
     if (!resp.ok) return;
     await loadSavedWords();
   } catch (_) {}
@@ -2129,7 +2138,7 @@ async function loadReadingLesson({render = activeStudyMode === 'reading'} = {}) 
     if (!readingBlocks.length) {
       if (!readingLoadPromise) {
         readingLoadPromise = (async () => {
-          const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/reading`);
+          const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/reading${_wordlistsQuery()}`);
           if (!resp.ok) throw new Error(`Reading request failed: ${resp.status}`);
           const data = await resp.json();
           readingBlocks = data.blocks || [];

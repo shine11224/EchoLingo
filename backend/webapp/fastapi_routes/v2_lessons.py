@@ -29,13 +29,29 @@ from webapp.services.v2_vocab import (
     highlight_reading_blocks,
     highlight_segments,
     is_word_meaning_placeholder,
+    load_exclude_words,
     load_word_meanings,
+    load_words_for_list_keys,
     lookup_word_meaning,
     remember_word_meaning,
 )
 from webapp.services.v2_translation import build_translation_units
 
 router = APIRouter(prefix="/api/v2/lessons", tags=["v2-lessons"])
+
+
+def _highlight_context(lesson_id: int, wordlists: str | None) -> tuple[set[str] | None, set[str]]:
+    """高亮上下文：source_words=None 表示按默认中频词表；hidden 始终包含 exclude 词表与已掌握词。"""
+    hidden = (
+        db.get_v2_lesson_hidden_words(lesson_id)
+        | db.get_mastered_review_targets()
+        | db.get_known_words()
+        | load_exclude_words()
+    )
+    if wordlists is None:
+        return None, hidden
+    keys = [k for k in (part.strip() for part in wordlists.split(",")) if re.fullmatch(r"[a-z0-9_]+", k)]
+    return load_words_for_list_keys(keys), hidden
 
 
 class StartLessonBody(BaseModel):
@@ -541,13 +557,13 @@ def update_lesson_mode(lesson_id: int, body: LessonModeBody):
 
 
 @router.get("/{lesson_id}/subtitles")
-def lesson_subtitles(lesson_id: int):
+def lesson_subtitles(lesson_id: int, wordlists: str | None = None):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
     segments = db.get_v2_subtitle_segments(lesson_id)
-    hidden_words = db.get_v2_lesson_hidden_words(lesson_id) | db.get_mastered_review_targets()
-    highlighted = highlight_segments(segments, hidden_words=hidden_words)
+    source_words, hidden_words = _highlight_context(lesson_id, wordlists)
+    highlighted = highlight_segments(segments, hidden_words=hidden_words, source_words=source_words)
     return {
         "lesson_id": lesson_id,
         "subtitle_status": lesson["subtitle_status"],
@@ -557,27 +573,27 @@ def lesson_subtitles(lesson_id: int):
 
 
 @router.get("/{lesson_id}/reading")
-def lesson_reading(lesson_id: int):
+def lesson_reading(lesson_id: int, wordlists: str | None = None):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
     blocks = service.ensure_media_reading_blocks(lesson_id, lesson)
     if not blocks:
         raise HTTPException(status_code=409, detail="Reading content is not ready")
-    hidden_words = db.get_v2_lesson_hidden_words(lesson_id) | db.get_mastered_review_targets()
-    highlighted = highlight_reading_blocks(blocks, hidden_words=hidden_words)
+    source_words, hidden_words = _highlight_context(lesson_id, wordlists)
+    highlighted = highlight_reading_blocks(blocks, hidden_words=hidden_words, source_words=source_words)
     return {"lesson": lesson, "blocks": highlighted["blocks"], "candidate_count": highlighted["candidate_count"]}
 
 
 @router.post("/{lesson_id}/highlighted-words/sync")
-def sync_highlighted_words(lesson_id: int):
+def sync_highlighted_words(lesson_id: int, wordlists: str | None = None):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
-    hidden_words = db.get_v2_lesson_hidden_words(lesson_id) | db.get_mastered_review_targets()
+    source_words, hidden_words = _highlight_context(lesson_id, wordlists)
     if lesson.get("lesson_mode") == "reading":
         blocks = db.get_v2_reading_blocks(lesson_id)
-        highlighted = highlight_reading_blocks(blocks, hidden_words=hidden_words)
+        highlighted = highlight_reading_blocks(blocks, hidden_words=hidden_words, source_words=source_words)
         items = [
             (
                 item.get("normalized") or item.get("word") or "",
@@ -588,7 +604,7 @@ def sync_highlighted_words(lesson_id: int):
             for item in block.get("highlights", [])
         ]
     else:
-        segments = highlight_segments(db.get_v2_subtitle_segments(lesson_id), hidden_words=hidden_words)
+        segments = highlight_segments(db.get_v2_subtitle_segments(lesson_id), hidden_words=hidden_words, source_words=source_words)
         items = [
             (
                 word,
@@ -772,9 +788,10 @@ def get_phase_b(lesson_id: int):
 
 
 @router.get("/{lesson_id}/intensive")
-def intensive_document(lesson_id: int):
+def intensive_document(lesson_id: int, wordlists: str | None = None):
     try:
-        return build_intensive_document(lesson_id)
+        source_words, hidden_words = _highlight_context(lesson_id, wordlists)
+        return build_intensive_document(lesson_id, source_words=source_words, extra_hidden=hidden_words)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
