@@ -474,6 +474,7 @@
     .word-popover .word-actions {
       display: flex;
       justify-content: flex-end;
+      gap: 8px;
       position: sticky;
       bottom: 0;
       padding-top: 8px;
@@ -491,6 +492,18 @@
     .word-save-btn.saved {
       background: #fff4c2;
       border-color: var(--gold);
+    }
+    .word-master-btn {
+      min-height: 28px;
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #15803d;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .word-master-btn:hover {
+      background: #dcfce7;
+      border-color: #22c55e;
     }
     .review-card {
       flex: 0 0 var(--study-collection-height, 26%);
@@ -2030,7 +2043,29 @@ function _wordlistsQuery() {
   } catch (e) { return ''; }
 }
 
+// 词表 key → CSS 颜色（与首页/学习页同一哈希取色算法）
+let wordlistColorMap = null;
+function _wlHashColor(key) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+  return `hsl(${Math.abs(hash) % 360} 62% 38%)`;
+}
+async function loadWordlistColors() {
+  if (wordlistColorMap) return;
+  wordlistColorMap = {};
+  try {
+    const configs = await fetch('/api/wordlists/config').then(r => r.json());
+    configs.forEach(cfg => {
+      const key = String(cfg.key || cfg.id || '');
+      if (!key) return;
+      const raw = String(cfg.color || '').trim();
+      wordlistColorMap[key] = /^(#|rgb|hsl)/i.test(raw) ? raw : _wlHashColor(key);
+    });
+  } catch (_) {}
+}
+
 async function loadSubtitles({render = activeStudyMode !== 'reading'} = {}) {
+  await loadWordlistColors();
   const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/subtitles${_wordlistsQuery()}`);
   if (!resp.ok) return;
   const data = await resp.json();
@@ -2313,6 +2348,7 @@ function buildSentenceUnits(rawSegments) {
   let words = [];
   let highlighted = new Set();
   let wordMeanings = {};
+  let wordLists = {};
   let segmentIds = [];
   let start = null;
   let end = null;
@@ -2327,12 +2363,14 @@ function buildSentenceUnits(rawSegments) {
       text,
       highlighted_words: Array.from(highlighted),
       word_meanings: {...wordMeanings},
+      word_lists: {...wordLists},
       segment_ids: segmentIds.slice(),
     });
     parts = [];
     words = [];
     highlighted = new Set();
     wordMeanings = {};
+    wordLists = {};
     segmentIds = [];
     start = null;
     end = null;
@@ -2350,6 +2388,10 @@ function buildSentenceUnits(rawSegments) {
       const normalized = normalizeWord(word);
       if (normalized && !readingHiddenWordSet.has(normalized)) highlighted.add(normalized);
     });
+    for (const [word, listKey] of Object.entries(segment.highlighted_word_lists || {})) {
+      const normalized = normalizeWord(word);
+      if (normalized && listKey && !readingHiddenWordSet.has(normalized)) wordLists[normalized] = listKey;
+    }
     for (const [word, meaning] of Object.entries(segment.word_meanings || {})) {
       if (meaning && !wordMeanings[word.toLowerCase()]) wordMeanings[word.toLowerCase()] = meaning;
     }
@@ -2571,11 +2613,13 @@ function renderSubtitleText(segment) {
       .filter(word => word && !readingHiddenWordSet.has(word))
   );
   const meanings = segment.word_meanings || {};
+  const wordLists = segment.word_lists || segment.highlighted_word_lists || {};
   const tokens = String(segment.text || '').match(/[A-Za-z]+(?:'[A-Za-z]+)?|[^A-Za-z]+/g) || [];
   return tokens.map(token => {
     if (!/^[A-Za-z]+(?:'[A-Za-z]+)?$/.test(token)) return escapeHtml(token);
     const lower = token.toLowerCase();
-    const isHighlight = mode === 'lookup' && highlighted.has(lower) && !readingHiddenWordSet.has(lower);
+    // 高亮与词表着色在 english/lookup/bilingual 模式都生效；释义角标仅 lookup 模式
+    const isHighlight = mode !== 'none' && highlighted.has(lower) && !readingHiddenWordSet.has(lower);
     const isSaved = savedWordSet.has(lower);
     const classes = ['subtitle-word'];
     if (isHighlight) classes.push('highlight-word');
@@ -2584,7 +2628,10 @@ function renderSubtitleText(segment) {
     const savedMeaning = typeof cachedMeaning === 'string' ? cachedMeaning : (cachedMeaning?.meaning || '');
     const meaning = meanings[lower] || savedMeaning || '';
     const star = isSaved ? '<span class="word-star">★</span>' : '';
-    const buttonHtml = `<button type="button" class="${classes.join(' ')}" data-word="${escapeHtml(lower)}" data-meaning="${escapeHtml(meaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}${star}</button>`;
+    // 按词表优先级着色（默认模式无映射时保持原金色）
+    const wlColor = (isHighlight && wordlistColorMap) ? (wordlistColorMap[wordLists[lower]] || '') : '';
+    const colorAttr = wlColor ? ` style="color:${wlColor}"` : '';
+    const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(lower)}" data-meaning="${escapeHtml(meaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}${star}</button>`;
     const gloss = mode === 'lookup' && (isHighlight || isSaved) ? String(meaning || '').trim() : '';
     const displayGloss = formatReadingGloss(gloss);
     return gloss
@@ -3644,6 +3691,7 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '') {
     ${sourceHtml}
     <div class="word-actions">
       <button class="word-save-btn ${saved ? 'saved' : ''}" onclick="toggleWordSave(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${saved ? '★ 已收藏' : '☆ 加入生词'}</button>
+      <button class="word-master-btn" title="标记已掌握：移出生词本，不再高亮" onclick="masterWordFromPopover(event, '${escapeJsAttr(normalized)}')">✓ 已掌握</button>
     </div>`;
   pop.classList.add('open');
   const gap = 8;
@@ -3713,6 +3761,38 @@ async function toggleWordSave(event, word, meaning) {
       renderReadingSavedItems();
     }
     openWordPopover(findWordButton(normalized) || button, normalized, wordMeaningCache[normalized] || meaning);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function masterWordFromPopover(event, word) {
+  event.stopPropagation();
+  const normalized = normalizeWord(word);
+  if (!normalized) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    // 已收藏的先移出生词本
+    if (savedWordSet.has(normalized)) {
+      await fetch(`/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}`, {method: 'DELETE'});
+      savedWordSet.delete(normalized);
+    }
+    // 标记已掌握（同步 mastered + known_words，后续不再高亮）
+    await fetch(`/api/vocab-review/${encodeURIComponent(normalized)}/lifecycle`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mastered: true}),
+    });
+    readingHiddenWordSet.add(normalized);
+    delete wordMeaningCache[normalized];
+    closeWordPopover();
+    updateCurrentSubtitle();
+    updateReviewSummary();
+    if (activeStudyMode === 'reading') {
+      refreshReadingWordStates();
+      renderReadingSavedItems();
+    }
   } finally {
     button.disabled = false;
   }
