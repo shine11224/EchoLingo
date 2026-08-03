@@ -1928,6 +1928,9 @@
       return `hsl(${hue} 62% 38%)`;
     }
 
+    // 后端 metadata 里的 color 是语义名（domain-academic 等），不是 CSS 颜色，需回退到哈希取色
+    const _isCssColor = c => /^(#|rgb|hsl)/i.test(String(c || '').trim());
+
     function decorateWordlistConfig(cfg) {
       const key = getWordlistKey(cfg);
       return {
@@ -1935,7 +1938,7 @@
         key,
         id: key,
         name: cfg.name || cfg.label || key.replace(/^user_/, ''),
-        color: cfg.color || colorForWordlist(key)
+        color: _isCssColor(cfg.color) ? cfg.color : colorForWordlist(key)
       };
     }
 
