@@ -11,9 +11,7 @@ WORD_ANALYSIS_PROMPT = """你是专业英语词汇教师，服务于雅思备考
 所在句子：{sentence}
 
 词典参考资料：
-【OALD9】{oald}
-【Longman 6】{longman}
-【Vocabulary.com】{vocab}
+【ECDICT（内置开源英汉词典）】{ecdict}
 
 请严格按以下 JSON 格式输出，不要输出任何额外文字：
 {{

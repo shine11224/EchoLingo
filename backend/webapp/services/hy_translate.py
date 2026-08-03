@@ -25,6 +25,34 @@ _PROMPT_EN_ZH = (
 )
 
 
+def _cloud_translation_ready() -> bool:
+    """Use the configured remote model on constrained production hosts."""
+    if os.environ.get("ELT_DEPLOYMENT") != "cloud":
+        return False
+    from webapp.runtime import ai_config
+
+    return bool(ai_config.AI_API_KEY and ai_config.AI_MODEL)
+
+
+def _translate_with_cloud_ai(text: str) -> str:
+    from webapp.runtime import ai_config
+
+    try:
+        response = ai_config.client.chat.completions.create(
+            model=ai_config.AI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a precise English-to-Chinese translator."},
+                {"role": "user", "content": _PROMPT_EN_ZH.format(text=text.strip())},
+            ],
+            temperature=0.1,
+            max_tokens=512,
+        )
+        return str(response.choices[0].message.content or "").strip()
+    except Exception as exc:
+        print(f"Cloud translation failed: {exc}")
+        return ""
+
+
 def _healthcheck(timeout: float = 2) -> bool:
     try:
         req = urllib.request.Request(_HEALTH_URL)
@@ -52,6 +80,8 @@ def _suppress_windows_error_dialogs():
 
 def ensure_ready(timeout: float = 30) -> bool:
     global _server_proc
+    if _cloud_translation_ready():
+        return True
     if _healthcheck(timeout=0.5):
         return True
     with _server_lock:
@@ -121,6 +151,8 @@ def stop_local_server() -> None:
 def translate(text: str, source: str = "en", target: str = "zh") -> str:
     if not text or not text.strip():
         return ""
+    if _cloud_translation_ready():
+        return _translate_with_cloud_ai(text)
     if not ensure_ready():
         return ""
     body = json.dumps({

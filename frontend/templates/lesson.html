@@ -1917,7 +1917,8 @@
     }
 
     function isUserDomainWordlist(cfg) {
-      return cfg.type === 'domain' && getWordlistKey(cfg).startsWith('user_');
+      const key = getWordlistKey(cfg);
+      return cfg.type === 'domain' && (key.startsWith('user_') || key.startsWith('builtin_') || key === 'my_vocab');
     }
 
     function colorForWordlist(key) {
@@ -2002,6 +2003,41 @@
         });
         domainSel.appendChild(btn);
       });
+
+      // 已启用词表的优先级排序（顺序 = 高亮取色优先级）
+      if (selectedWordlistKeys.length > 1) {
+        const byKey = new Map(configs.map(c => [c.key, c]));
+        const orderRow = document.createElement('div');
+        orderRow.style.cssText = 'display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--muted);';
+        orderRow.appendChild(document.createTextNode('优先级：'));
+        selectedWordlistKeys.forEach((key, i) => {
+          const cfg = byKey.get(key);
+          if (!cfg) return;
+          const chip = document.createElement('span');
+          chip.style.cssText = `display:inline-flex;align-items:center;gap:2px;border:1px solid ${cfg.color};color:${cfg.color};border-radius:8px;padding:0 4px;background:#fff;`;
+          chip.appendChild(document.createTextNode(cfg.name));
+          [['▲', -1], ['▼', 1]].forEach(([arrow, delta]) => {
+            const mv = document.createElement('button');
+            mv.type = 'button';
+            mv.textContent = arrow;
+            mv.title = delta < 0 ? '提高优先级' : '降低优先级';
+            mv.style.cssText = 'border:none;background:none;padding:0 2px;cursor:pointer;font-size:10px;color:inherit;';
+            mv.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const j = i + delta;
+              if (j < 0 || j >= selectedWordlistKeys.length) return;
+              [selectedWordlistKeys[i], selectedWordlistKeys[j]] = [selectedWordlistKeys[j], selectedWordlistKeys[i]];
+              persistWordlistSelection();
+              renderSelectors();
+              renderSentenceCards();
+              renderSubtitle();
+            });
+            chip.appendChild(mv);
+          });
+          orderRow.appendChild(chip);
+        });
+        domainSel.appendChild(orderRow);
+      }
     }
 
     async function loadWordlists() {
@@ -2019,11 +2055,16 @@
         userConfigs.forEach(cfg => { WORDLISTS[cfg.key] = new Set(); });
 
         const selectedConfigs = getSelectedUserWordlists();
+        const excludeNames = WORDLIST_CONFIGS
+          .filter(c => c.type === 'exclude')
+          .map(c => c.id || getWordlistKey(c));
         const requests = [
-          fetch(apiUrl('/wordlists/exclude_a1a2'))
-            .then(r => r.ok ? r.json() : {words: []})
-            .catch(() => ({words: []}))
-            .then(data => ({ key: 'exclude', words: data.words || [] }))
+          ...(excludeNames.length ? excludeNames : ['exclude_a1a2', 'builtin_coca_2000']).map(listName =>
+            fetch(apiUrl(`/wordlists/${listName}`))
+              .then(r => r.ok ? r.json() : {words: []})
+              .catch(() => ({words: []}))
+              .then(data => ({ key: 'exclude', words: data.words || [] }))
+          )
         ];
         userConfigs.forEach(cfg => {
           requests.push(
@@ -2038,7 +2079,9 @@
         results.forEach(res => {
           const raw = res.words || [];
           if (Array.isArray(raw)) {
-            WORDLISTS[res.key] = new Set(raw.map(w => String(w).toLowerCase()));
+            const target = WORDLISTS[res.key] || new Set();
+            raw.forEach(w => target.add(String(w).toLowerCase()));
+            WORDLISTS[res.key] = target;
           } else if (typeof raw === 'object') {
             const wordSet = new Set();
             for (const [w, info] of Object.entries(raw)) {
@@ -2161,9 +2204,14 @@
       if (!matches.length) return { show: false };
 
       const primary = matches[0];
-      const tags = matches.map(cfg =>
-        `<span class="chip-tag t-user" style="border:1px solid ${cfg.color};color:${cfg.color};background:#fff">${escapeHtml(cfg.name)}</span>`
-      );
+      const rest = matches.slice(1);
+      const tags = [
+        `<span class="chip-tag t-user" style="border:1px solid ${primary.color};color:${primary.color};background:#fff">${escapeHtml(primary.name)}</span>`
+      ];
+      if (rest.length) {
+        const allNames = matches.map(cfg => cfg.name).join('、');
+        tags.push(`<span class="chip-tag t-user" title="${escapeHtml(allNames)}" style="border:1px solid var(--line);color:var(--muted);background:#fff">+${rest.length}</span>`);
+      }
       return {
         show: true,
         levelCls: '',
@@ -3201,12 +3249,14 @@
       const collocations = data.collocations?.length ? `<ul>${renderValue(data.collocations)}</ul>` : '';
       const examples = data.examples?.length ? `<ul>${renderValue(data.examples)}</ul>` : '';
       const synonyms = data.synonyms?.length ? `<ul>${renderValue(data.synonyms)}</ul>` : '';
+      const dictMeta = String(data.dict_meta || '').trim();
       return `
         <div class="word-analysis">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <h4 style="margin:0">${escapeHtml(data.word || '')} <small>${escapeHtml(data.ipa || '')}</small></h4>
             <button type="button" class="word-analysis-close" data-close-word-result title="收起">✕</button>
           </div>
+          ${dictMeta ? `<div style="font-size:12px;color:var(--muted);margin:-4px 0 8px">${escapeHtml(dictMeta)}</div>` : ''}
           <div class="word-grid">
             <div class="word-block"><span class="word-label">词性</span>${escapeHtml(data.pos || '')}</div>
             <div class="word-block"><span class="word-label">语域</span>${escapeHtml(data.register || '')}</div>

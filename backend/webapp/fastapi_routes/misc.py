@@ -1,7 +1,6 @@
 """Phase 7C native FastAPI miscellaneous endpoints migrated from Flask."""
 from __future__ import annotations
 
-import asyncio
 import json
 import hashlib
 import os
@@ -11,13 +10,12 @@ import sqlite3
 import sys
 import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
 import db
 import webapp.storage.wordlists as wl_storage
-from fastapi import APIRouter, BackgroundTasks, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 from webapp.runtime import ai_config
@@ -30,10 +28,6 @@ from webapp.storage.lessons import OUTPUT_DIR, extract_js_var
 
 router = APIRouter()
 NATURAL_TTS_PREVIEW_DIR = OUTPUT_DIR / "tts_preview"
-WORDLIST_EXPANSION_BATCH_SIZE = 75
-WORDLIST_EXPANSION_CONCURRENCY = 3
-WORDLIST_EXPANSION_JOBS: dict[str, dict] = {}
-WORDLIST_EXPANSION_JOBS_LOCK = threading.Lock()
 
 
 async def _parse_json_or_none(request: Request) -> dict[str, Any] | None:
@@ -175,10 +169,7 @@ def health():
         "sqlite": sqlite_info,
         "api_keys": keys_info,
         "whisper": whisper_info,
-        "dicts": {
-            key: os.path.exists(os.path.join(dict_service.DICT_DIR, value))
-            for key, value in dict_service.DICTS.items()
-        },
+        "dicts": {"ecdict": dict_service.ECDICT_DB.exists()},
         "ai_key": key_status(ai_config.AI_API_KEY),
     }
 
@@ -201,22 +192,6 @@ def natural_tts_preview(text: str = ""):
         media_type="audio/wav",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
-
-
-@router.get("/audio/{word_path:path}")
-def serve_audio(word_path: str):
-    for fname in dict_service.MDD_FILES:
-        mdd = dict_service.get_mdd(fname)
-        if not mdd:
-            continue
-        try:
-            audio_key = f"\\{word_path}"
-            data = mdd[audio_key.encode()]
-            if data:
-                return Response(data, media_type="audio/mpeg")
-        except Exception:
-            continue
-    return JSONResponse({"error": "audio not found"}, status_code=404)
 
 
 @router.get("/api/lesson/check")
@@ -404,70 +379,12 @@ async def api_upload_wordlist(
     }
 
 
-def _wordlist_expansion_prompt(batch: list[str]) -> str:
-    return f"""你是英语词形专家。请扩展下面的英语原型词。
-对每个原词：
-1. 保留原词；根据实际词性给出常用且正确的屈折词形，例如名词单复数、动词第三人称单数/过去式/过去分词/ing、形容词或副词比较级和最高级。
-2. 不要编造不存在或极少使用的形式，不要添加同义词、短语或派生词（例如 analyze 不要扩展成 analysis）。
-3. 专有名词、不可数名词或无变化词只保留原词。
-只返回 JSON：{{"items":[{{"source":"study","forms":["study","studies","studied","studying"]}}]}}。
-
-原型词：{json.dumps(batch, ensure_ascii=False)}"""
-
-
-async def _expand_wordlist_batch(batch: list[str]) -> tuple[dict | None, str]:
-    error = None
-    for _attempt in range(2):
-        try:
-            response = await run_in_threadpool(
-                ai_config.client.chat.completions.create,
-                model=ai_config.AI_MODEL,
-                messages=[{"role": "user", "content": _wordlist_expansion_prompt(batch)}],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=3500,
-                extra_body={"thinking": {"type": "disabled"}},
-            )
-            raw = (response.choices[0].message.content or "").strip()
-            if not raw:
-                raise ValueError("AI 返回内容为空")
-            payload = json.loads(raw)
-            if not isinstance(payload, dict):
-                raise ValueError("AI 返回内容不是 JSON 对象")
-            return payload, ""
-        except Exception as exc:
-            error = exc
-    return None, str(error or "未知错误")
-
-
-def _merge_wordlist_payload(
-    payload: dict,
-    allowed_words: set[str],
-    expanded: set[str],
-    normalized_by_source: dict[str, set[str]],
-) -> None:
-    for item in payload.get("items", []) if isinstance(payload, dict) else []:
-        if not isinstance(item, dict):
-            continue
-        source = wl_storage._clean_word(str(item.get("source") or ""))
-        if source not in allowed_words:
-            continue
-        forms = {source}
-        for candidate in item.get("forms", []) if isinstance(item.get("forms"), list) else []:
-            clean = wl_storage._clean_word(str(candidate or ""))
-            if clean:
-                forms.add(clean)
-        expanded.update(forms)
-        normalized_by_source.setdefault(source, set()).update(forms)
-
-
-async def _expand_wordlist_words(
+def _expand_wordlist_words(
     originals: list[str],
     source_total_count: int,
     invalid: list[str],
-    progress=None,
 ) -> dict:
-    allowed_words = set(originals)
+    """Expand words locally via the built-in ECDICT inflection data; uncovered words pass through."""
     local_items = wl_storage.expand_with_local_word_families(originals)
     expanded = set(originals)
     normalized_by_source: dict[str, set[str]] = {}
@@ -476,61 +393,20 @@ async def _expand_wordlist_words(
         expanded.update(clean_forms)
         normalized_by_source[source] = clean_forms
 
-    ai_candidates = [word for word in originals if word not in local_items]
-    batches = [
-        ai_candidates[index:index + WORDLIST_EXPANSION_BATCH_SIZE]
-        for index in range(0, len(ai_candidates), WORDLIST_EXPANSION_BATCH_SIZE)
-    ]
-    completed = 0
-    successful = 0
-    warnings = []
-    if progress:
-        progress(completed, len(batches), len(local_items), len(ai_candidates), len(expanded))
-
-    semaphore = asyncio.Semaphore(WORDLIST_EXPANSION_CONCURRENCY)
-
-    async def run_batch(batch_index: int, batch: list[str]):
-        async with semaphore:
-            payload, error = await _expand_wordlist_batch(batch)
-            return batch_index, batch, payload, error
-
-    tasks = [
-        asyncio.create_task(run_batch(index, batch))
-        for index, batch in enumerate(batches, 1)
-    ]
-    for future in asyncio.as_completed(tasks):
-        batch_index, batch, payload, error = await future
-        completed += 1
-        if payload is not None:
-            successful += 1
-            _merge_wordlist_payload(payload, allowed_words, expanded, normalized_by_source)
-        else:
-            warnings.append(f"第 {batch_index}/{len(batches)} 批失败并已保留原词：{error}")
-        if progress:
-            progress(completed, len(batches), len(local_items), len(ai_candidates), len(expanded))
-
     normalized_items = [
         {"source": source, "forms": sorted(forms)}
         for source, forms in sorted(normalized_by_source.items())
     ]
-    skipped_count = sum(len(batches[index - 1]) for index in range(1, len(batches) + 1)
-                        if any(warning.startswith(f"第 {index}/") for warning in warnings))
     return {
         "ok": True,
         "source_total_count": source_total_count,
         "truncated_count": max(0, source_total_count - len(originals)),
         "original_count": len(originals),
-        "batch_count": len(batches),
-        "completed_batch_count": completed,
-        "successful_batch_count": successful,
         "local_family_count": len(local_items),
-        "ai_candidate_count": len(ai_candidates),
-        "skipped_count": skipped_count,
         "count": len(expanded),
         "added_count": len(expanded) - len(originals),
         "words": sorted(expanded),
         "items": normalized_items,
-        "warnings": warnings,
         "invalid_tokens": invalid,
     }
 
@@ -556,66 +432,7 @@ async def api_expand_wordlist(file: UploadFile = File(default=None), limit: int 
     prepared, error = await _read_wordlist_expansion_upload(file, limit)
     if error:
         return error
-    return await _expand_wordlist_words(*prepared)
-
-
-async def _run_wordlist_expansion_job(job_id: str, prepared: tuple) -> None:
-    def update_progress(completed, total, local_count, ai_count, expanded_count):
-        with WORDLIST_EXPANSION_JOBS_LOCK:
-            job = WORDLIST_EXPANSION_JOBS.get(job_id)
-            if job is not None:
-                job.update({
-                    "completed_batch_count": completed,
-                    "batch_count": total,
-                    "local_family_count": local_count,
-                    "ai_candidate_count": ai_count,
-                    "expanded_count": expanded_count,
-                })
-
-    try:
-        result = await _expand_wordlist_words(*prepared, progress=update_progress)
-        with WORDLIST_EXPANSION_JOBS_LOCK:
-            WORDLIST_EXPANSION_JOBS[job_id].update({"status": "done", "result": result})
-    except Exception as exc:
-        with WORDLIST_EXPANSION_JOBS_LOCK:
-            WORDLIST_EXPANSION_JOBS[job_id].update({"status": "failed", "error": str(exc)})
-
-
-@router.post("/api/wordlists/expand/start")
-async def api_start_wordlist_expansion(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(default=None),
-    limit: int = Form(default=0),
-):
-    if file is None or not file.filename:
-        return JSONResponse({"ok": False, "error": "请先选择词表文件。"}, status_code=400)
-    prepared, error = await _read_wordlist_expansion_upload(file, limit)
-    if error:
-        return error
-    job_id = uuid.uuid4().hex
-    with WORDLIST_EXPANSION_JOBS_LOCK:
-        if len(WORDLIST_EXPANSION_JOBS) >= 20:
-            oldest = next(iter(WORDLIST_EXPANSION_JOBS))
-            WORDLIST_EXPANSION_JOBS.pop(oldest, None)
-        WORDLIST_EXPANSION_JOBS[job_id] = {
-            "status": "running",
-            "completed_batch_count": 0,
-            "batch_count": 0,
-            "local_family_count": 0,
-            "ai_candidate_count": 0,
-            "expanded_count": len(prepared[0]),
-        }
-    background_tasks.add_task(_run_wordlist_expansion_job, job_id, prepared)
-    return {"ok": True, "job_id": job_id}
-
-
-@router.get("/api/wordlists/expand/status/{job_id}")
-def api_wordlist_expansion_status(job_id: str):
-    with WORDLIST_EXPANSION_JOBS_LOCK:
-        job = WORDLIST_EXPANSION_JOBS.get(job_id)
-        if job is None:
-            return JSONResponse({"ok": False, "error": "扩展任务不存在或已过期。"}, status_code=404)
-        return {"ok": True, **job}
+    return _expand_wordlist_words(*prepared)
 
 
 @router.patch("/api/wordlists/upload/{filename:path}")

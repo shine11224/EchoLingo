@@ -585,7 +585,7 @@ def get_review_words(
         ctx_map.setdefault(row["word"], []).append(
             {"lesson": row["lesson"], "sentence": row["sentence"]}
         )
-    return {
+    ordered = {
         row["word"]: {
             "count": row["count"],
             "first_studied": row["first_studied"],
@@ -606,6 +606,24 @@ def get_review_words(
         }
         for row in words
     }
+    try:
+        from webapp.services.dicts import ecdict_frq_map
+
+        frq = ecdict_frq_map(list(ordered.keys()))
+        if frq:
+            fam_rank = {"unknown": 0, "fuzzy": 1, "unrated": 2}
+            ordered = dict(
+                sorted(
+                    ordered.items(),
+                    key=lambda kv: (
+                        fam_rank.get(kv[1].get("familiarity"), 3),
+                        frq.get(kv[0].lower(), 999999),
+                    ),
+                )
+            )
+    except Exception:
+        pass
+    return ordered
 
 
 def set_word_review_tags(word: str, tags) -> list[str] | None:

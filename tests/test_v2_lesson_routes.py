@@ -1233,27 +1233,18 @@ def test_wordlist_upload_clears_v2_vocab_caches(tmp_path, monkeypatch):
     assert calls["cleared"] == 1
 
 
-def test_optional_ai_wordlist_expansion_returns_preview_without_uploading(monkeypatch):
+def test_wordlist_expansion_returns_local_preview_without_uploading(monkeypatch):
     from fastapi_server import create_app
     import webapp.fastapi_routes.misc as misc
 
-    payload = {
-        "items": [
-            {"source": "study", "forms": ["study", "studies", "studied", "studying"]},
-            {"source": "city", "forms": ["city", "cities"]},
-        ]
-    }
-
-    def create(**kwargs):
-        message = SimpleNamespace(content=json.dumps(payload))
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
-
     monkeypatch.setattr(
-        misc.ai_config,
-        "client",
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
+        misc.wl_storage,
+        "expand_with_local_word_families",
+        lambda words: {
+            "study": ["study", "studies", "studied", "studying"],
+            "city": ["city", "cities"],
+        },
     )
-    monkeypatch.setattr(misc.wl_storage, "expand_with_local_word_families", lambda words: {})
     client = TestClient(create_app())
 
     response = client.post(
@@ -1264,86 +1255,33 @@ def test_optional_ai_wordlist_expansion_returns_preview_without_uploading(monkey
     assert response.status_code == 200
     data = response.json()
     assert data["original_count"] == 2
-    assert data["batch_count"] == 1
+    assert data["local_family_count"] == 2
     assert data["added_count"] == 4
     assert data["words"] == ["cities", "city", "studied", "studies", "study", "studying"]
 
 
-def test_ai_wordlist_expansion_automatically_batches_large_files(monkeypatch):
+def test_wordlist_expansion_keeps_uncovered_words_as_is(monkeypatch):
+    """无词形变化的词（功能词等）原样保留，不需要 AI 补漏。"""
     from fastapi_server import create_app
     import webapp.fastapi_routes.misc as misc
 
-    calls = []
-
-    def create(**kwargs):
-        calls.append(kwargs)
-        message = SimpleNamespace(content=json.dumps({"items": []}))
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
-
-    monkeypatch.setattr(misc, "WORDLIST_EXPANSION_BATCH_SIZE", 2)
-    monkeypatch.setattr(misc.wl_storage, "expand_with_local_word_families", lambda words: {})
-    monkeypatch.setattr(
-        misc.ai_config,
-        "client",
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
-    )
-    response = TestClient(create_app()).post(
-        "/api/wordlists/expand",
-        files={"file": ("large.txt", b"alpha\nbravo\ncharlie\ndelta\necho\n", "text/plain")},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["batch_count"] == 3
-    assert response.json()["original_count"] == 5
-    assert len(calls) == 3
-
-
-def test_ai_wordlist_expansion_retries_an_empty_batch_response(monkeypatch):
-    from fastapi_server import create_app
-    import webapp.fastapi_routes.misc as misc
-
-    contents = iter([
-        "",
-        json.dumps({"items": [{"source": "study", "forms": ["study", "studied"]}]}),
-    ])
-    calls = []
-
-    def create(**kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=next(contents)))]
-        )
-
-    monkeypatch.setattr(
-        misc.ai_config,
-        "client",
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
-    )
     monkeypatch.setattr(misc.wl_storage, "expand_with_local_word_families", lambda words: {})
     response = TestClient(create_app()).post(
         "/api/wordlists/expand",
-        files={"file": ("retry.txt", b"study\n", "text/plain")},
+        files={"file": ("plain.txt", b"alpha\nbravo\n", "text/plain")},
     )
 
     assert response.status_code == 200
-    assert response.json()["words"] == ["studied", "study"]
-    assert len(calls) == 2
+    data = response.json()
+    assert data["local_family_count"] == 0
+    assert data["added_count"] == 0
+    assert data["words"] == ["alpha", "bravo"]
 
 
-def test_ai_wordlist_expansion_can_limit_a_large_source_for_preview(monkeypatch):
+def test_wordlist_expansion_can_limit_a_large_source_for_preview(monkeypatch):
     from fastapi_server import create_app
     import webapp.fastapi_routes.misc as misc
 
-    def create(**kwargs):
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"items": []})))]
-        )
-
-    monkeypatch.setattr(
-        misc.ai_config,
-        "client",
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))),
-    )
     monkeypatch.setattr(misc.wl_storage, "expand_with_local_word_families", lambda words: {})
     response = TestClient(create_app()).post(
         "/api/wordlists/expand",
@@ -1361,8 +1299,8 @@ def test_ai_wordlist_expansion_can_limit_a_large_source_for_preview(monkeypatch)
 def test_local_word_family_expansion_keeps_inflections_not_derivations():
     import webapp.storage.wordlists as wl_storage
 
-    if not wl_storage.BNC_COCA_PATH.exists():
-        pytest.skip("BNC/COCA source list not bundled; see docs/WORDLISTS.md")
+    if not wl_storage.ECDICT_DB.exists():
+        pytest.skip("ECDICT database not built; run python backend/build_ecdict.py")
 
     forms = set(wl_storage.expand_with_local_word_families(["study"])["study"])
 
@@ -1370,7 +1308,7 @@ def test_local_word_family_expansion_keeps_inflections_not_derivations():
     assert "studious" not in forms
 
 
-def test_wordlist_expansion_background_job_exposes_completed_result(monkeypatch):
+def test_wordlist_expansion_endpoint_returns_completed_result(monkeypatch):
     from fastapi_server import create_app
     import webapp.fastapi_routes.misc as misc
 
@@ -1380,32 +1318,29 @@ def test_wordlist_expansion_background_job_exposes_completed_result(monkeypatch)
         lambda words: {"study": ["study", "studies", "studied", "studying"]},
     )
     client = TestClient(create_app())
-    started = client.post(
-        "/api/wordlists/expand/start",
+    response = client.post(
+        "/api/wordlists/expand",
         files={"file": ("prototype.txt", b"study\n", "text/plain")},
         data={"limit": "1000"},
     )
 
-    assert started.status_code == 200
-    status = client.get(f"/api/wordlists/expand/status/{started.json()['job_id']}")
-    assert status.status_code == 200
-    assert status.json()["status"] == "done"
-    assert status.json()["result"]["local_family_count"] == 1
-    assert status.json()["result"]["batch_count"] == 0
+    assert response.status_code == 200
+    result = response.json()
+    assert result["ok"] is True
+    assert result["local_family_count"] == 1
+    assert result["words"] == ["studied", "studies", "study", "studying"]
 
-
-def test_homepage_hides_pattern_upload_and_keeps_ai_wordlist_expansion_optional():
+def test_homepage_hides_pattern_upload_and_keeps_wordlist_expansion_optional():
     from fastapi_server import create_app
 
     page = TestClient(create_app()).get("/")
 
     assert page.status_code == 200
     assert 'onclick="expandSelectedWordlist()"' in page.text
-    assert "AI 扩展词形" in page.text
+    assert "扩展词形" in page.text
     assert "formData.append('limit', '1000')" not in page.text
-    assert "/api/wordlists/expand/start" in page.text
-    assert "/api/wordlists/expand/status/" in page.text
-    assert "job.completed_batch_count" in page.text
+    assert 'fetch(\'/api/wordlists/expand\'' in page.text
+    assert "/api/wordlists/expand/start" not in page.text
     assert "expandedWordlistSelection?.sourceName" in page.text
     assert "toggleResourceWordlist" in page.text
     assert "setAllResourceWordlists(true)" in page.text

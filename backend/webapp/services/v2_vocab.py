@@ -335,15 +335,13 @@ def lookup_word_meaning(word: str, *, allow_external_fallback: bool = False) -> 
 def _lookup_local_dict_meaning(candidates: list[str]) -> str:
     english_fallback = ""
     for candidate in candidates:
-        entries = dict_service.lookup_all(candidate)
-        for key in ("oald", "longman", "vocab"):
-            meaning = str(entries.get(key) or "").strip()
-            if meaning:
-                summary = _summarize_local_dict_meaning(meaning)
-                if _concise_gloss(summary):
-                    return summary
-                if summary and not english_fallback:
-                    english_fallback = summary
+        meaning = str(dict_service.lookup_ecdict(candidate) or "").strip()
+        if meaning:
+            summary = _summarize_local_dict_meaning(meaning)
+            if _concise_gloss(summary):
+                return summary
+            if summary and not english_fallback:
+                english_fallback = summary
     return english_fallback
 
 

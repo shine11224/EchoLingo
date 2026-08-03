@@ -1,116 +1,133 @@
 """Dictionary and IPA helpers shared by FastAPI routes."""
 from __future__ import annotations
 
-import os
 import re
 import threading
 from pathlib import Path
 
-_DEFAULT_DICT_DIR = Path.home() / "AppData" / "Roaming" / "Francochinois" / "eudic" / "dict"
-DICT_DIR = os.environ.get("DICT_DIR", "") or str(_DEFAULT_DICT_DIR)
-DICTS = {
-    "oald": "oald9.mdx",
-    "longman": "LongmanDictionaryOfContemporaryEnglish6thEnEn.mdx",
-    "vocab": "Vocabulary.com Dictionary.mdx",
-}
-MDD_FILES = ["oald9.mdd", "oald9.1.mdd", "oald9.2.mdd", "Vocabulary.com Dictionary.mdd"]
-_MDX_CACHE = {}
-_MDX_KEY_INDEX_CACHE = {}
-_MDX_CACHE_LOCK = threading.Lock()
+ECDICT_DB = Path(__file__).resolve().parents[3] / "resources" / "ecdict" / "ecdict.db"
+
+_ECDICT_CONN = None
+_ECDICT_LOCK = threading.Lock()
 
 
-def strip_html(html: str | None) -> str:
-    if not html:
-        return ""
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"&[a-zA-Z#0-9]+;", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:1200]
+def _get_ecdict_conn():
+    global _ECDICT_CONN
+    if _ECDICT_CONN is not None:
+        return _ECDICT_CONN
+    with _ECDICT_LOCK:
+        if _ECDICT_CONN is None and ECDICT_DB.exists():
+            import sqlite3
+
+            _ECDICT_CONN = sqlite3.connect(str(ECDICT_DB), check_same_thread=False)
+    return _ECDICT_CONN
 
 
-def lookup_dict(dict_key: str, word: str) -> str:
-    fname = DICTS.get(dict_key)
-    if not fname:
+def lookup_ecdict(word: str) -> str:
+    """Look up the bundled open ECDICT (MIT) SQLite; '' when db or entry missing."""
+    conn = _get_ecdict_conn()
+    if conn is None:
         return ""
     try:
-        path = os.path.join(DICT_DIR, fname)
-        result = _lookup_mdx(path, word)
-        if result and "@@@LINK" in result:
-            chunks = result.split("\n---\n")
-            real = [chunk for chunk in chunks if not chunk.startswith("@@@LINK")]
-            if real:
-                # 混合记录（如 OALD9 OL 版）：丢弃跳转记录，保留真实词条
-                result = "\n---\n".join(real)
-            else:
-                linked = chunks[0].split("=", 1)[-1].split("\n")[0].strip().strip("\x00\r\n")
-                result = _lookup_mdx(path, linked)
-        return strip_html(result) if result else ""
+        with _ECDICT_LOCK:
+            row = conn.execute(
+                "SELECT phonetic, definition, translation, pos FROM words WHERE word = ?",
+                (word.strip(),),
+            ).fetchone()
     except Exception:
         return ""
-
-
-def _get_mdx_reader(path: str):
-    cached = _MDX_CACHE.get(path)
-    if cached is not None:
-        return cached
-    with _MDX_CACHE_LOCK:
-        cached = _MDX_CACHE.get(path)
-        if cached is None:
-            from mdict_utils.reader import MDX
-
-            cached = MDX(path, "", False, None)
-            key_index = {}
-            for index, (_, key) in enumerate(cached._key_list):
-                positions = key_index.get(key)
-                if positions is None:
-                    key_index[key] = index
-                elif isinstance(positions, int):
-                    key_index[key] = [positions, index]
-                else:
-                    positions.append(index)
-            _MDX_CACHE[path] = cached
-            _MDX_KEY_INDEX_CACHE[path] = key_index
-    return cached
-
-
-def _lookup_mdx(path: str, word: str) -> str:
-    """Reuse one parsed MDX reader and exact-key index instead of reopening per word."""
-    from mdict_utils.reader import get_record
-
-    reader = _get_mdx_reader(path)
-    key_list = reader._key_list
-    target = word.encode("UTF-8")
-    positions = _MDX_KEY_INDEX_CACHE[path].get(target)
-    if positions is None:
+    if not row:
         return ""
-    if isinstance(positions, int):
-        positions = [positions]
-    records = []
-    for index in positions:
-        offset, key = key_list[index]
-        length = key_list[index + 1][0] - offset if index + 1 < len(key_list) else -1
-        record = get_record(reader, key, offset, length)
-        if record:
-            records.append(record)
-    return "\n---\n".join(records)
+    phonetic, definition, translation, pos = row
+    parts = []
+    if phonetic:
+        parts.append(f"/{phonetic}/")
+    if pos:
+        parts.append(f"[{pos}]")
+    if definition:
+        parts.append(definition.replace("\\n", " ").replace("\n", " ").strip())
+    if translation:
+        parts.append(translation.replace("\\n", " ").replace("\n", " ").strip())
+    return re.sub(r"\s+", " ", " ".join(p for p in parts if p)).strip()[:1200]
 
 
-def lookup_all(word: str) -> dict[str, str]:
-    return {key: lookup_dict(key, word.lower()) for key in DICTS}
+_TAG_LABELS = {
+    "zk": "中考",
+    "gk": "高考",
+    "cet4": "四级",
+    "cet6": "六级",
+    "ky": "考研",
+    "toefl": "托福",
+    "ielts": "雅思",
+    "gre": "GRE",
+}
 
 
-mdd_cache = {}
+def _as_int(value) -> int | None:
+    text = str(value or "").strip()
+    return int(text) if text.isdigit() else None
 
 
-def get_mdd(fname: str):
-    if fname not in mdd_cache:
-        try:
-            from mdict_utils.reader import MDD
+def lookup_ecdict_meta(word: str) -> dict:
+    """Return frequency/exam metadata for a word from ECDICT; {} when unavailable."""
+    conn = _get_ecdict_conn()
+    if conn is None:
+        return {}
+    try:
+        with _ECDICT_LOCK:
+            row = conn.execute(
+                "SELECT frq, bnc, collins, oxford, tag FROM words WHERE word = ?",
+                (word.strip(),),
+            ).fetchone()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    frq, bnc, collins, oxford, tag = row
+    return {
+        "frq": _as_int(frq),
+        "bnc": _as_int(bnc),
+        "collins": _as_int(collins),
+        "oxford": str(oxford or "").strip() == "1",
+        "tags": [_TAG_LABELS[t] for t in str(tag or "").split() if t in _TAG_LABELS],
+    }
 
-            mdd_cache[fname] = MDD(os.path.join(DICT_DIR, fname))
-        except Exception:
-            mdd_cache[fname] = None
-    return mdd_cache[fname]
+
+def format_ecdict_meta(meta: dict) -> str:
+    """Render metadata as a compact display line, e.g. 'COCA #1523 · 牛津3000 · 雅思'."""
+    if not meta:
+        return ""
+    parts = []
+    if meta.get("frq"):
+        parts.append(f"COCA #{meta['frq']}")
+    if meta.get("oxford"):
+        parts.append("牛津3000")
+    if meta.get("collins"):
+        parts.append(f"柯林斯{meta['collins']}★")
+    parts.extend(meta.get("tags") or [])
+    return " · ".join(parts)
+
+
+def ecdict_frq_map(words: list[str]) -> dict[str, int]:
+    """Batch COCA frequency ranks (frq) for words; missing words/ranks are omitted."""
+    conn = _get_ecdict_conn()
+    if conn is None or not words:
+        return {}
+    result: dict[str, int] = {}
+    try:
+        with _ECDICT_LOCK:
+            for start in range(0, len(words), 500):
+                batch = words[start:start + 500]
+                placeholders = ",".join("?" for _ in batch)
+                for word, frq in conn.execute(
+                    f"SELECT word, frq FROM words WHERE word IN ({placeholders})", batch
+                ):
+                    rank = _as_int(frq)
+                    if rank is not None:
+                        result[word.lower()] = rank
+    except Exception:
+        pass
+    return result
 
 
 ipa_ready = False

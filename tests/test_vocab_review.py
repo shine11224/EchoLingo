@@ -319,8 +319,8 @@ def test_analyze_word_persists_deep_analysis_without_incrementing_review_count(t
     )
     monkeypatch.setattr(
         ai.dict_service,
-        "lookup_all",
-        lambda _word: {"oald": "", "longman": "", "vocab": ""},
+        "lookup_ecdict",
+        lambda _word: "",
     )
 
     generated = {
