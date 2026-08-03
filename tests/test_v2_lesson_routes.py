@@ -1511,6 +1511,8 @@ def test_subtitles_skip_hidden_words_after_word_delete(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     monkeypatch.setattr(vocab, "load_default_intermediate_words", lambda: {"complex", "analyzed"})
     monkeypatch.setattr(vocab, "load_word_meanings", lambda: {"complex": "复杂的", "analyzed": "分析"})
+    import webapp.fastapi_routes.v2_lessons as v2_routes
+    monkeypatch.setattr(v2_routes, "load_exclude_words", lambda: set())
     app = create_app()
     client = TestClient(app)
     lesson = db.create_v2_lesson(
@@ -1543,6 +1545,54 @@ def test_subtitles_skip_hidden_words_after_word_delete(tmp_path, monkeypatch):
     resync = client.post(f"/api/v2/lessons/{lesson['id']}/highlighted-words/sync")
     assert resync.status_code == 200
     assert resync.json()["synced"] == 0
+
+
+def test_subtitles_highlight_follows_selected_wordlists(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+    import webapp.services.v2_vocab as vocab
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    compiled = tmp_path / "compiled"
+    compiled.mkdir()
+    (compiled / "builtin_gre.json").write_text(json.dumps({
+        "metadata": {"name": "GRE", "type": "domain", "key": "gre", "builtin": True},
+        "words": ["complex", "systems"],
+    }), encoding="utf-8")
+    (compiled / "builtin_coca_2000.json").write_text(json.dumps({
+        "metadata": {"name": "COCA2000", "type": "exclude", "key": "coca2000", "builtin": True},
+        "words": ["systems"],
+    }), encoding="utf-8")
+    monkeypatch.setattr(vocab, "_COMPILED_DIR", compiled)
+    monkeypatch.setattr(vocab, "load_default_intermediate_words", lambda: {"analyzed"})
+    monkeypatch.setattr(vocab, "load_word_meanings", lambda: {})
+    app = create_app()
+    client = TestClient(app)
+    lesson = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=abc123def45",
+        video_id="abc123def45",
+        title="Demo",
+    )
+    db.replace_v2_subtitle_segments(lesson["id"], [
+        {"index": 0, "start": 0, "end": 2, "text": "We analyzed complex systems."}
+    ])
+
+    default = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles")
+    assert default.json()["segments"][0]["highlighted_words"] == ["analyzed"]
+
+    # 选择 GRE 词表：complex 命中；systems 虽在词表中但被 exclude 基础词表过滤
+    selected = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles?wordlists=builtin_gre")
+    assert selected.json()["segments"][0]["highlighted_words"] == ["complex"]
+
+    # 虚拟生词本词表
+    db.activate_word_review("analyzed", source="manual", analysis={"basic_meaning": "分析"})
+    vocab_book = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles?wordlists=my_vocab")
+    assert vocab_book.json()["segments"][0]["highlighted_words"] == ["analyzed"]
+
+    # 空选择：不高亮任何词
+    none = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles?wordlists=")
+    assert none.json()["segments"][0]["highlighted_words"] == []
 
 
 def test_active_words_returns_saved_meanings(tmp_path, monkeypatch):

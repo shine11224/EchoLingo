@@ -50,11 +50,12 @@ def _saved_lookup(lesson_id: int) -> tuple[dict[int, dict], dict[str, dict]]:
     )
 
 
-def _reading_highlighted_words(text: str, hidden_words: set[str]) -> list[str]:
+def _reading_highlighted_words(text: str, hidden_words: set[str], source_words: set[str] | None = None) -> list[str]:
     highlighted = highlight_reading_blocks(
         [{"text": text}],
         hidden_words=hidden_words,
         include_meanings=False,
+        source_words=source_words,
     )
     words: list[str] = []
     seen: set[str] = set()
@@ -87,13 +88,22 @@ def _merge_saved_highlights(
     return merged
 
 
-def build_intensive_document(lesson_id: int) -> dict:
+def build_intensive_document(
+    lesson_id: int,
+    *,
+    source_words: set[str] | None = None,
+    extra_hidden: set[str] | None = None,
+) -> dict:
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise ValueError("Lesson not found")
 
     saved_by_key, saved_by_text = _saved_lookup(lesson_id)
-    hidden_words = db.get_v2_lesson_hidden_words(lesson_id) | db.get_mastered_review_targets()
+    hidden_words = (
+        db.get_v2_lesson_hidden_words(lesson_id)
+        | db.get_mastered_review_targets()
+        | (extra_hidden or set())
+    )
     lesson_words = {
         str(item.get("word") or "").lower()
         for item in db.get_v2_lesson_words(lesson_id)
@@ -139,7 +149,7 @@ def build_intensive_document(lesson_id: int) -> dict:
                         "tags": saved.get("tags", []) if saved else [],
                         "highlighted_words": _merge_saved_highlights(
                             text,
-                            _reading_highlighted_words(text, hidden_words),
+                            _reading_highlighted_words(text, hidden_words, source_words),
                             lesson_words,
                             hidden_words,
                         ),
@@ -150,6 +160,7 @@ def build_intensive_document(lesson_id: int) -> dict:
             build_translation_units(db.get_v2_subtitle_segments(lesson_id)),
             hidden_words=hidden_words,
             include_meanings=False,
+            source_words=source_words,
         )
         for fallback_index, segment in enumerate(segments):
             key = int(segment.get("index", fallback_index))

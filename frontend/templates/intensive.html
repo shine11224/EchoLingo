@@ -1790,9 +1790,18 @@
       }
     }
 
+    function _wordlistsQuery() {
+      const raw = localStorage.getItem('phase_a_user_wordlists');
+      if (raw === null) return '';
+      try {
+        const arr = JSON.parse(raw);
+        return '?wordlists=' + encodeURIComponent(Array.isArray(arr) ? arr.join(',') : '');
+      } catch (e) { return ''; }
+    }
+
     async function syncIntensiveHighlightedWords() {
       try {
-        await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync`, {method: 'POST'});
+        await fetch(`/api/v2/lessons/${LESSON_ID}/highlighted-words/sync${_wordlistsQuery()}`, {method: 'POST'});
       } catch (_) {
         // The intensive page should still open when the optional initial sync fails.
       }
@@ -1801,7 +1810,7 @@
     async function loadIntensiveStudy() {
       await syncIntensiveHighlightedWords();
       const [documentResponse, tagResponse, knownResponse, vocabResponse] = await Promise.all([
-        fetch(`/api/v2/lessons/${LESSON_ID}/intensive`),
+        fetch(`/api/v2/lessons/${LESSON_ID}/intensive${_wordlistsQuery()}`),
         fetch('/api/v2/lessons/sentence-tags'),
         fetch('/api/known-words'),
         fetch('/vocab-log'),

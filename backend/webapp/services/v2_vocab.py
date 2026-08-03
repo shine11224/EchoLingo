@@ -151,6 +151,39 @@ def _load_compiled_word_set(filename: str) -> set[str]:
     return set()
 
 
+def load_words_for_list_keys(keys: list[str]) -> set[str]:
+    """用户所选词表的词集并集（compiled user_*/builtin_* + 虚拟词表 my_vocab）。"""
+    words: set[str] = set()
+    for key in keys:
+        if key == "my_vocab":
+            try:
+                words |= {str(w).lower() for w in db.get_review_word_set()}
+            except Exception:
+                pass
+            continue
+        if key == "my_mastered":
+            continue  # 已掌握是 exclude 语义，不作为高亮源
+        words |= _load_compiled_word_set(f"{key}.json")
+    return words
+
+
+def load_exclude_words() -> set[str]:
+    """所有 exclude 类型 compiled 词表的词集并集（基础词过滤，始终生效）。"""
+    words: set[str] = set()
+    if not _COMPILED_DIR.exists():
+        return words
+    for path in sorted(_COMPILED_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        meta = data.get("metadata") if isinstance(data, dict) else None
+        if not isinstance(meta, dict) or meta.get("type") != "exclude":
+            continue
+        words |= {str(w).lower() for w in data.get("words", []) if isinstance(w, str)}
+    return words
+
+
 def load_v2_wordlist_index() -> dict[str, dict]:
     global _V2_WORDLIST_INDEX
     if _V2_WORDLIST_INDEX is not None:
@@ -453,8 +486,12 @@ def highlight_reading_blocks(
     hidden_words: set[str] | None = None,
     *,
     include_meanings: bool = True,
+    source_words: set[str] | None = None,
 ) -> dict:
-    word_index = load_v2_wordlist_index()
+    if source_words is not None:
+        word_index = {w: {"word": w, "level": "selected"} for w in source_words}
+    else:
+        word_index = load_v2_wordlist_index()
     hidden = {word.lower() for word in (hidden_words or set())}
     meanings = load_word_meanings() if include_meanings else {}
     gloss_cache: dict[str, str] = {}
@@ -603,8 +640,9 @@ def highlight_segments(
     hidden_words: set[str] | None = None,
     *,
     include_meanings: bool = True,
+    source_words: set[str] | None = None,
 ) -> list[dict]:
-    intermediate = load_default_intermediate_words()
+    intermediate = source_words if source_words is not None else load_default_intermediate_words()
     meanings = load_word_meanings() if include_meanings else {}
     noise = _get_noise_words()
     hidden = {word.lower() for word in (hidden_words or set())}
