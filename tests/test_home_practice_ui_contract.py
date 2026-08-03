@@ -13,6 +13,18 @@ INDEX_HTML = (
 
 def test_sentence_library_is_browse_first_and_has_inline_listening_controls():
     assert "今日复习" not in INDEX_HTML
+
+
+def test_resources_tab_has_wordlist_selection_and_priority_ui():
+    assert 'id="wordlist-config-list"' in INDEX_HTML
+    assert 'id="wordlist-priority-row"' in INDEX_HTML
+    assert "loadWordlistConfigUI" in INDEX_HTML
+    assert "renderWordlistConfigUI" in INDEX_HTML
+    # 与学习页共用同一个 localStorage 选择键
+    assert "phase_a_user_wordlists" in INDEX_HTML
+    # 可选范围：内置词表、上传词表、我的生词本
+    assert "builtin_" in INDEX_HTML
+    assert "my_vocab" in INDEX_HTML
     assert 'id="start-listening-practice"' not in INDEX_HTML
     assert 'id="sentence-listening-session"' not in INDEX_HTML
     assert 'id="sentence-library-shell"' in INDEX_HTML

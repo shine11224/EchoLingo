@@ -1929,6 +1929,17 @@
         <div id="wordlist-expand-preview" style="display:none;margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper);font-size:13px;line-height:1.7;"></div>
       </div>
 
+      <div class="resource-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
+        <h4>✅ 词表启用与优先级</h4>
+        <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
+          勾选要在学习中高亮的词表（内置词表、我的生词本和你上传的词表都在这里）。多个词表命中同一单词时按优先级取色，用 ▲▼ 调整顺序。基础词过滤（COCA 前 2000、已掌握词）始终生效，无需勾选。
+        </p>
+        <div id="wordlist-config-list" style="display:flex;flex-wrap:wrap;gap:8px;">
+          <div style="font-size:13px;color:var(--muted);">切换到学习资源时加载…</div>
+        </div>
+        <div id="wordlist-priority-row" style="margin-top:10px;"></div>
+      </div>
+
       <div class="resource-section" hidden aria-hidden="true" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🔑 上传重点句式表</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
@@ -2039,6 +2050,7 @@ function switchTab(name) {
     const status = document.getElementById('resource-status');
     if (status) status.textContent = '';
     loadResources();
+    loadWordlistConfigUI();
     if (!window._aiSettingsLoaded) { window._aiSettingsLoaded = true; loadAiSettings(); }
   }
   updateHeaderStat(name);
@@ -2093,6 +2105,112 @@ function setAllResourceWordlists(enabled) {
     : [];
   localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify(keys));
   loadResources();
+}
+
+// ── 词表启用与优先级（内置词表 + 生词本 + 上传词表）──────────────
+let _wlSelectableConfigs = [];
+
+function wlConfigKey(cfg) {
+  return String(cfg?.key || cfg?.id || '');
+}
+
+function wlIsSelectable(cfg) {
+  const key = wlConfigKey(cfg);
+  return cfg.type === 'domain' && (key.startsWith('user_') || key.startsWith('builtin_') || key === 'my_vocab');
+}
+
+function wlHashColor(key) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+  return `hsl(${Math.abs(hash) % 360} 62% 38%)`;
+}
+
+// 后端 color 是语义名（domain-academic 等），不是 CSS 颜色，需回退到哈希取色
+function wlCssColor(cfg) {
+  const raw = String(cfg.color || '').trim();
+  return /^(#|rgb|hsl)/i.test(raw) ? raw : wlHashColor(wlConfigKey(cfg));
+}
+
+async function loadWordlistConfigUI() {
+  const listEl = document.getElementById('wordlist-config-list');
+  try {
+    const configs = await fetch('/api/wordlists/config').then(r => r.json());
+    _wlSelectableConfigs = configs.filter(wlIsSelectable).map(cfg => ({
+      ...cfg,
+      key: wlConfigKey(cfg),
+      name: cfg.name || wlConfigKey(cfg),
+      cssColor: wlCssColor(cfg),
+    }));
+    const availableKeys = _wlSelectableConfigs.map(c => c.key);
+    let selected = selectedResourceWordlistKeys().filter(k => availableKeys.includes(k));
+    if (localStorage.getItem(USER_WORDLIST_SELECTION_KEY) === null) selected = availableKeys;
+    localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify(selected));
+    renderWordlistConfigUI();
+  } catch (e) {
+    if (listEl) listEl.innerHTML = '<div style="font-size:13px;color:var(--danger);">词表配置读取失败，请刷新重试。</div>';
+  }
+}
+
+function renderWordlistConfigUI() {
+  const listEl = document.getElementById('wordlist-config-list');
+  const priorityEl = document.getElementById('wordlist-priority-row');
+  if (!listEl) return;
+  const selected = selectedResourceWordlistKeys();
+  const byKey = new Map(_wlSelectableConfigs.map(c => [c.key, c]));
+  listEl.innerHTML = '';
+  if (!_wlSelectableConfigs.length) {
+    listEl.innerHTML = '<div style="font-size:13px;color:var(--muted);">暂无可选词表</div>';
+  }
+  _wlSelectableConfigs.forEach(cfg => {
+    const active = selected.includes(cfg.key);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.wordlistKey = cfg.key;
+    btn.textContent = `${cfg.name}（${cfg.count ?? 0}）`;
+    btn.style.cssText = `padding:4px 12px;border-radius:14px;border:1.5px solid ${cfg.cssColor};font-size:13px;cursor:pointer;`
+      + (active ? `background:${cfg.cssColor};color:#fff;` : `background:#fff;color:${cfg.cssColor};`);
+    btn.title = [cfg.tag, cfg.type === 'domain' ? '学习高亮词表' : ''].filter(Boolean).join(' · ');
+    btn.addEventListener('click', () => {
+      const cur = selectedResourceWordlistKeys();
+      const next = cur.includes(cfg.key) ? cur.filter(k => k !== cfg.key) : [...cur, cfg.key];
+      localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify(next));
+      renderWordlistConfigUI();
+      loadResources();
+    });
+    listEl.appendChild(btn);
+  });
+  if (!priorityEl) return;
+  priorityEl.innerHTML = '';
+  const orderedSelected = selected.filter(k => byKey.has(k));
+  if (orderedSelected.length < 2) return;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted);';
+  row.appendChild(document.createTextNode('优先级（靠前优先取色）：'));
+  orderedSelected.forEach((key, i) => {
+    const cfg = byKey.get(key);
+    const chip = document.createElement('span');
+    chip.style.cssText = `display:inline-flex;align-items:center;gap:2px;border:1px solid ${cfg.cssColor};color:${cfg.cssColor};border-radius:8px;padding:0 4px;background:#fff;`;
+    chip.appendChild(document.createTextNode(cfg.name));
+    [['▲', -1], ['▼', 1]].forEach(([arrow, delta]) => {
+      const mv = document.createElement('button');
+      mv.type = 'button';
+      mv.textContent = arrow;
+      mv.title = delta < 0 ? '提高优先级' : '降低优先级';
+      mv.style.cssText = 'border:none;background:none;padding:0 2px;cursor:pointer;font-size:10px;color:inherit;';
+      mv.addEventListener('click', () => {
+        const j = i + delta;
+        if (j < 0 || j >= orderedSelected.length) return;
+        const next = [...orderedSelected];
+        [next[i], next[j]] = [next[j], next[i]];
+        localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify(next));
+        renderWordlistConfigUI();
+        loadResources();
+      });
+      chip.appendChild(mv);
+    });
+    row.appendChild(chip);
+  });
+  priorityEl.appendChild(row);
 }
 
 function renderResourceItems(title, items, type) {
