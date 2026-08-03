@@ -119,9 +119,8 @@ def load_default_intermediate_words() -> set[str]:
     if _INTERMEDIATE_WORDS is not None:
         return _INTERMEDIATE_WORDS
 
-    # Prefer BNC 4k-6k wordlist as closest to 3000-5000 intermediate range.
-    # Fall back to CEFR B1 if BNC file is missing, then CEFR B2.
-    candidates = ["user_bnc_4k_6k.json", "cefr_b1.json", "cefr_b2.json"]
+    # 默认高亮中频词：优先用户上传的 BNC 4k-6k，其次内置 COCA 2001-5000，再退牛津3000。
+    candidates = ["user_bnc_4k_6k.json", "builtin_coca_5000.json", "builtin_oxford3000.json"]
     _INTERMEDIATE_WORDS = set()
     for filename in candidates:
         path = _COMPILED_DIR / filename
