@@ -3768,9 +3768,9 @@ async function toggleWordSave(event, word, meaning) {
     }
     updateCurrentSubtitle();
     updateReviewSummary();
+    renderReadingSavedItems();
     if (activeStudyMode === 'reading') {
       refreshReadingWordStates();
-      renderReadingSavedItems();
     }
     openWordPopover(findWordButton(normalized) || button, normalized, wordMeaningCache[normalized] || meaning);
   } finally {
@@ -3801,9 +3801,9 @@ async function masterWordFromPopover(event, word) {
     closeWordPopover();
     updateCurrentSubtitle();
     updateReviewSummary();
+    renderReadingSavedItems();
     if (activeStudyMode === 'reading') {
       refreshReadingWordStates();
-      renderReadingSavedItems();
     }
   } finally {
     button.disabled = false;
