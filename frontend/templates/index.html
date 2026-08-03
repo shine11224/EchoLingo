@@ -2070,7 +2070,8 @@ function syncResourceWordlistSelection(items) {
   try {
     const saved = JSON.parse(localStorage.getItem(USER_WORDLIST_SELECTION_KEY));
     const savedKnown = JSON.parse(localStorage.getItem(KNOWN_USER_WORDLISTS_KEY));
-    if (Array.isArray(saved)) selected = saved.filter(key => available.includes(key));
+    // 只清理已删除的上传词表（user_*），保留内置词表和生词本的选择
+    if (Array.isArray(saved)) selected = saved.filter(key => !key.startsWith('user_') || available.includes(key));
     if (Array.isArray(savedKnown)) known = savedKnown;
   } catch (_) {}
   for (const key of available) {
@@ -2096,13 +2097,15 @@ function toggleResourceWordlist(key) {
     ? selected.filter(item => item !== key)
     : [...selected, key];
   localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify(next));
+  renderWordlistConfigUI();
   loadResources();
 }
 
 function setAllResourceWordlists(enabled) {
-  const keys = enabled
-    ? (window._uploadedWordlists || []).map(resourceWordlistKey).filter(Boolean)
-    : [];
+  // 全选/清空只作用于上传词表（user_*），保留内置词表和生词本的选择
+  const kept = selectedResourceWordlistKeys().filter(k => !k.startsWith('user_'));
+  const uploaded = (window._uploadedWordlists || []).map(resourceWordlistKey).filter(Boolean);
+  const keys = enabled ? [...kept, ...uploaded.filter(k => !kept.includes(k))] : kept;
   localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify(keys));
   loadResources();
 }
@@ -2215,23 +2218,35 @@ function renderWordlistConfigUI() {
 
 function renderResourceItems(title, items, type) {
   const selected = new Set(selectedResourceWordlistKeys());
-  const rows = (items || []).map(item => `
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fafbfa;">
+  const rows = (items || []).map(item => {
+    if (type === 'wordlist') {
+      const key = resourceWordlistKey(item);
+      const active = selected.has(key);
+      const color = wlHashColor(key);
+      return `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);">
+      <button type="button" aria-pressed="${active}" onclick="toggleResourceWordlist('${esc(key)}')"
+        style="padding:4px 12px;border-radius:14px;border:1.5px solid ${color};font-size:13px;cursor:pointer;${active ? `background:${color};color:#fff;` : `background:#fff;color:${color};`}">${esc(item.name || item.filename)}（${item.count || 0}）</button>
+      <span style="font-size:12px;color:var(--muted);flex:1;min-width:0;">${Math.ceil((item.size || 0) / 1024)} KB${item.tag ? ` · 标签：${esc(item.tag)}` : ''}</span>
+      <button type="button" class="text-link-btn" onclick="editWordlistResource('${esc(item.filename)}')">编辑</button>
+      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteResource('wordlist', '${esc(item.filename)}')">删除</button>
+    </div>`;
+    }
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);">
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.name || item.filename)}</div>
-        <div style="font-size:12px;color:var(--muted);">${item.count || 0} 条 · ${Math.ceil((item.size || 0) / 1024)} KB${item.tag ? ` · 标签：${esc(item.tag)}` : ''}</div>
+        <span style="font-weight:600;font-size:14px;">${esc(item.name || item.filename)}</span>
+        <span style="font-size:12px;color:var(--muted);">　${item.count || 0} 条 · ${Math.ceil((item.size || 0) / 1024)} KB</span>
       </div>
-      ${type === 'wordlist' ? `<button type="button" aria-pressed="${selected.has(resourceWordlistKey(item))}" onclick="toggleResourceWordlist('${esc(resourceWordlistKey(item))}')" style="color:${selected.has(resourceWordlistKey(item)) ? 'var(--brand)' : 'var(--muted)'};border-color:${selected.has(resourceWordlistKey(item)) ? 'var(--brand)' : 'var(--line)'};">${selected.has(resourceWordlistKey(item)) ? '已启用' : '已停用'}</button>` : ''}
-      ${type === 'wordlist' ? `<button type="button" onclick="editWordlistResource('${esc(item.filename)}')">编辑</button>` : ''}
-      ${type === 'pattern' ? `<button type="button" onclick="editPatternResource('${esc(item.filename)}')">编辑</button>` : ''}
-      <button type="button" style="color:var(--danger);border-color:#fca5a5;" onclick="deleteResource('${type}', '${esc(item.filename)}')">删除</button>
-    </div>
-  `).join('');
+      <button type="button" class="text-link-btn" onclick="editPatternResource('${esc(item.filename)}')">编辑</button>
+      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteResource('pattern', '${esc(item.filename)}')">删除</button>
+    </div>`;
+  }).join('');
   return `
     <section>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
         <h5 style="margin:0;font-size:13px;color:var(--muted);">${title}</h5>
-        ${type === 'wordlist' && items?.length ? '<div style="display:flex;gap:6px;"><button type="button" onclick="setAllResourceWordlists(true)">全部启用</button><button type="button" onclick="setAllResourceWordlists(false)">全部停用</button></div>' : ''}
+        ${type === 'wordlist' && items?.length ? '<div style="display:flex;gap:10px;"><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(true)">全部启用</button><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(false)">全部停用</button></div>' : ''}
       </div>
       ${rows || '<div style="font-size:13px;color:var(--muted);padding:10px 0;">暂无上传内容</div>'}
     </section>
@@ -2251,6 +2266,7 @@ async function loadResources() {
       renderResourceItems('词表', data.wordlists || [], 'wordlist'),
       renderResourceItems('句式表', data.patterns || [], 'pattern')
     ].join('');
+    loadWordlistConfigUI();
   } catch (e) {
     list.innerHTML = `<div style="font-size:13px;color:var(--danger);">读取失败：${esc(e.message)}</div>`;
   }

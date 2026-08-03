@@ -25,6 +25,9 @@ def test_resources_tab_has_wordlist_selection_and_priority_ui():
     # 可选范围：内置词表、上传词表、我的生词本
     assert "builtin_" in INDEX_HTML
     assert "my_vocab" in INDEX_HTML
+    # 上传词表的同步/全选逻辑不得清掉内置词表与生词本的选择
+    assert "!key.startsWith('user_') || available.includes(key)" in INDEX_HTML
+    assert "selectedResourceWordlistKeys().filter(k => !k.startsWith('user_'))" in INDEX_HTML
     assert 'id="start-listening-practice"' not in INDEX_HTML
     assert 'id="sentence-listening-session"' not in INDEX_HTML
     assert 'id="sentence-library-shell"' in INDEX_HTML
