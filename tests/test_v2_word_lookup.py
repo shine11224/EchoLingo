@@ -116,11 +116,11 @@ def test_local_dictionary_prefers_chinese_fallback_candidate(monkeypatch):
 
     monkeypatch.setattr(
         v2_vocab.dict_service,
-        "lookup_all",
+        "lookup_ecdict",
         lambda word: (
-            {"oald": "", "longman": "", "vocab": "spectacles are eyeglasses."}
+            "spectacles are eyeglasses."
             if word == "spectacles"
-            else {"oald": "spectacle noun 一副眼镜", "longman": "", "vocab": ""}
+            else "spectacle noun 一副眼镜"
         ),
     )
 
@@ -215,8 +215,8 @@ def test_hyphenated_local_dictionary_result_is_concise(monkeypatch):
     monkeypatch.setattr(v2_vocab, "load_word_meanings", lambda: {})
     monkeypatch.setattr(
         v2_vocab.dict_service,
-        "lookup_all",
-        lambda word: {"oald": raw if word == "non-negotiable" else "", "longman": "", "vocab": ""},
+        "lookup_ecdict",
+        lambda word: raw if word == "non-negotiable" else "",
     )
     monkeypatch.setattr(
         v2_vocab,

@@ -9,8 +9,16 @@ from openai import OpenAI
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 
+def env_path() -> Path:
+    """Resolve mutable settings outside the immutable application image when deployed."""
+    config_dir = os.environ.get("ELT_CONFIG_DIR", "").strip()
+    if config_dir:
+        return Path(config_dir).expanduser() / ".env"
+    return BASE_DIR / ".env"
+
+
 def load_dotenv() -> None:
-    env_file = BASE_DIR / ".env"
+    env_file = env_path()
     if not env_file.exists():
         return
     for line in env_file.read_text(encoding="utf-8").splitlines():
@@ -38,10 +46,6 @@ def _make_client() -> OpenAI:
 
 
 client = _make_client()
-
-
-def env_path() -> Path:
-    return BASE_DIR / ".env"
 
 
 def rebuild_openai_client() -> None:
@@ -122,4 +126,3 @@ def delete_setting(field: str) -> str | None:
     rebuild_openai_client()
     _write_env_updates({env_key_map[field]: new_value})
     return new_value
-

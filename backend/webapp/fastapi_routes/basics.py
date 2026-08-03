@@ -36,9 +36,41 @@ def api_pipeline_schema():
     return {"steps": PIPELINE_SCHEMA, "errors": ERROR_CATALOG}
 
 
+def _virtual_wordlist_configs() -> list[dict]:
+    """Dynamic wordlists backed by the vocab book: active words and mastered words."""
+    try:
+        active = db.get_review_word_set()
+        mastered = db.get_mastered_review_targets() | db.get_known_words()
+    except Exception:
+        return []
+    return [
+        {
+            "id": "my_vocab",
+            "name": "我的生词本",
+            "type": "domain",
+            "key": "my_vocab",
+            "color": "domain-user",
+            "tag": "生词本",
+            "builtin": True,
+            "virtual": True,
+            "count": len(active),
+        },
+        {
+            "id": "my_mastered",
+            "name": "已掌握词",
+            "type": "exclude",
+            "key": "my_mastered",
+            "tag": "已掌握",
+            "builtin": True,
+            "virtual": True,
+            "count": len(mastered),
+        },
+    ]
+
+
 @router.get("/api/wordlists/config")
 def api_wordlists_config():
-    return wl_storage.scan_wordlists()
+    return wl_storage.scan_wordlists() + _virtual_wordlist_configs()
 
 
 @router.get("/api/resources")
@@ -50,6 +82,10 @@ def api_resources():
 def serve_wordlist(name: str):
     if name == "sentence_patterns":
         return wl_storage.get_combined_patterns()
+    if name == "my_vocab":
+        return {"words": sorted(db.get_review_word_set())}
+    if name == "my_mastered":
+        return {"words": sorted(db.get_mastered_review_targets() | db.get_known_words())}
     safe = re.sub(r"[^a-z0-9_]", "", name)
     path = wl_storage.COMPILED_DIR / (safe + ".json")
     if not path.exists():

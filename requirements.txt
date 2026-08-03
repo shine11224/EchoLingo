@@ -8,7 +8,6 @@ uvicorn[standard]
 python-multipart
 openai
 groq
-mdict-utils
 faster-whisper
 pdfplumber
 pypdfium2

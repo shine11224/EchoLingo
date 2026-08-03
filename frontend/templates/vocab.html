@@ -146,15 +146,15 @@
       min-height: 30px; padding: 4px 10px; font-size: 13px; flex-shrink: 0;
       border-radius: 20px;
     }
-    .delete-btn {
+    .master-btn {
       position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
       width: 28px; height: 28px; padding: 0; font-size: 16px; line-height: 28px; text-align: center;
       border: none; border-radius: 4px; color: var(--ink);
       background: transparent; opacity: 0; transition: opacity .15s;
       cursor: pointer; z-index: 1;
     }
-    .word-card:hover .delete-btn { opacity: 1; }
-    .delete-btn:hover { color: var(--danger); background: #fff0ef; }
+    .word-card:hover .master-btn { opacity: 1; }
+    .master-btn:hover { color: #166534; background: #f0fdf4; }
     .review-tag { cursor: pointer; user-select: none; }
     #review-popover {
       display: none; position: fixed; z-index: 9999;
@@ -516,7 +516,7 @@
           ${knownSet.has(word) ? `<button class="tag mastered-tag" onclick="unmaster(event,'${esc(word)}')">✓ 已掌握 ×</button>` : ''}
         </div>
         <button class="speak-btn" onclick="speakWord(event,'${esc(word)}')">▶</button>
-        <button class="delete-btn" onclick="deleteWord(event,'${esc(word)}')" title="从词汇本删除">×</button>
+        <button class="master-btn" onclick="masterWord(event,'${esc(word)}')" title="标记已掌握：移出生词本，不再高亮">✓</button>
       </div>
       <div class="word-details">
         ${an.en_definition ? `<div class="detail-section">
@@ -1012,16 +1012,53 @@
   }
 
   // ── Init ──────────────────────────────────────────────
-  async function deleteWord(event, word) {
-    event.stopPropagation();
-    if (!confirm(`从词汇本彻底删除「${word}」？`)) return;
-    const resp = await fetch(`/api/vocab-words/${encodeURIComponent(word)}`, { method: 'DELETE' });
-    if (!resp.ok) { alert('删除失败，请重试'); return; }
-    delete vocabData[word];
-    document.querySelector(`.word-card[data-word="${word}"]`)?.remove();
-    const entries = Object.entries(vocabData).filter(([w]) => !w.startsWith('__'));
+  const sessionMastered = new Set();  // 本次会话中标记掌握的词（卡片即时移除，可撤销）
+  let masteredBase = 0;               // 服务端已掌握总数（my_mastered 虚拟词表）
+
+  function updateStatsBadge() {
+    const entries = Object.entries(vocabData).filter(([w]) => !w.startsWith('__') && !sessionMastered.has(w));
     const dueN = entries.filter(([,e]) => reviewStatus(e).key === 'due').length;
-    document.getElementById('stats-badge').textContent = `共 ${entries.length} 个词 · ${dueN} 个今日待复习`;
+    document.getElementById('stats-badge').textContent =
+      `共 ${entries.length} 个词 · ${dueN} 个今日待复习 · 已掌握 ${masteredBase + sessionMastered.size} 词（粗略词汇量估算）`;
+  }
+
+  async function masterWord(event, word) {
+    event.stopPropagation();
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/api/vocab-review/${encodeURIComponent(word)}/lifecycle`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mastered: true}),
+      });
+      if (!resp.ok) throw new Error('master failed');
+      sessionMastered.add(word);
+      knownSet.add(word);
+      document.querySelector(`.word-card[data-word="${word}"]`)?.remove();
+      updateStatsBadge();
+      showMasterUndo(word);
+    } catch(e) { btn.disabled = false; }
+  }
+
+  function showMasterUndo(word) {
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;z-index:99;';
+    toast.innerHTML = `已掌握「${esc(word)}」，已移出生词本 <button type="button" style="margin-left:8px;background:none;border:1px solid #fff;color:#fff;border-radius:6px;cursor:pointer;padding:1px 8px;">撤销</button>`;
+    toast.querySelector('button').onclick = async () => {
+      await fetch(`/api/vocab-review/${encodeURIComponent(word)}/lifecycle`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mastered: false}),
+      });
+      sessionMastered.delete(word);
+      knownSet.delete(word);
+      toast.remove();
+      renderList();
+      updateStatsBadge();
+    };
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 8000);
   }
 
   let _reviewPopoverWord = null;
@@ -1098,10 +1135,9 @@
     renderWordlistFilters(wordlists);
 
     const entries = Object.entries(vocabData).filter(([w]) => !w.startsWith('__'));
-    const total   = entries.length;
-    const dueN    = entries.filter(([,e]) => reviewStatus(e).key === 'due').length;
-    document.getElementById('stats-badge').textContent =
-      `共 ${total} 个词 · ${dueN} 个今日待复习`;
+    const vcfg = Object.fromEntries((wordlists || []).map(c => [c.id, c]));
+    masteredBase = vcfg.my_mastered?.count || 0;
+    updateStatsBadge();
 
     renderTodayPanel(entries);
     renderList();

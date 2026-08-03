@@ -1923,7 +1923,7 @@
           <input type="text" id="wordlist-tag-input" placeholder="标签，如 商务 / 雅思 / 自定义"
                  maxlength="10" style="max-width:220px;">
           <input type="file" id="wordlist-upload-input" accept=".txt,.csv" style="flex: 1;" onchange="resetExpandedWordlist()">
-          <button type="button" id="wordlist-expand-button" onclick="expandSelectedWordlist()">AI 扩展词形</button>
+          <button type="button" id="wordlist-expand-button" onclick="expandSelectedWordlist()">扩展词形</button>
           <button class="btn btn-primary" onclick="uploadResource('wordlist')">上传并编译</button>
         </div>
         <div id="wordlist-expand-preview" style="display:none;margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper);font-size:13px;line-height:1.7;"></div>
@@ -2249,36 +2249,17 @@ async function expandSelectedWordlist() {
   const formData = new FormData();
   formData.append('file', sourceFile);
   status.style.color = 'var(--brand)';
-  status.textContent = 'AI 正在判断词性并扩展常用词形…';
+  status.textContent = '正在用内置词典扩展词形…';
   if (preview) {
     preview.style.display = 'block';
-    preview.textContent = '正在读取本地词族并准备 AI 补全…';
+    preview.textContent = '正在读取本地词族…';
   }
   if (expandButton) expandButton.disabled = true;
 
   try {
-    const resp = await fetch('/api/wordlists/expand/start', {method: 'POST', body: formData});
-    const started = await resp.json();
-    if (!resp.ok || !started.ok) throw new Error(started.error || '扩展任务启动失败');
-    let result = null;
-    while (!result) {
-      const jobResp = await fetch(`/api/wordlists/expand/status/${encodeURIComponent(started.job_id)}`);
-      const job = await jobResp.json();
-      if (!jobResp.ok || !job.ok) throw new Error(job.error || '扩展进度读取失败');
-      if (job.status === 'failed') throw new Error(job.error || '扩展任务失败');
-      if (job.status === 'done') {
-        result = job.result;
-        break;
-      }
-      const batchProgress = job.batch_count
-        ? `AI 已完成 ${job.completed_batch_count}/${job.batch_count} 批`
-        : '正在整理 AI 待处理词';
-      status.textContent = `本地词族已覆盖 ${job.local_family_count || 0} 个词；${batchProgress}…`;
-      if (preview) {
-        preview.textContent = `正在生成预览：本地覆盖 ${job.local_family_count || 0} 词，${batchProgress}，当前结果 ${job.expanded_count || 0} 词。`;
-      }
-      await new Promise(resolve => setTimeout(resolve, 700));
-    }
+    const resp = await fetch('/api/wordlists/expand', {method: 'POST', body: formData});
+    const result = await resp.json();
+    if (!resp.ok || !result.ok) throw new Error(result.error || '扩展失败');
     const stem = sourceFile.name.replace(/\.[^.]+$/, '') || 'wordlist';
     const expandedFile = new File(
       [result.words.join('\n') + '\n'],
@@ -2290,18 +2271,15 @@ async function expandSelectedWordlist() {
       `<div><strong>${esc(item.source)}</strong> → ${esc((item.forms || []).join(' · '))}</div>`
     ).join('');
     if (preview) {
-      const processing = result.local_family_count
-        ? `本地词族覆盖 ${result.local_family_count} 词，AI 补全 ${result.completed_batch_count || 0} 批`
-        : `AI 自动处理 ${result.completed_batch_count ?? result.batch_count ?? 1} 批`;
-      const skipped = result.skipped_count ? `；${result.skipped_count} 个低频词保留原样` : '';
-      const warning = result.warnings?.length ? `<div style="margin-top:8px;color:var(--danger);">${esc(result.warnings.join('；'))}</div>` : '';
-      preview.innerHTML = `<strong>扩展预览：</strong>本次处理 ${result.original_count} 词，${processing}${skipped}，新增 ${result.added_count} 个词形，共 ${result.count} 个。${rows ? `<div style="margin-top:8px;color:var(--muted);">${rows}</div>` : ''}${(result.items || []).length > 12 ? '<div style="margin-top:6px;color:var(--muted);">仅展示前 12 组，上传时会包含全部结果。</div>' : ''}${warning}`;
+      const unchanged = result.original_count - result.local_family_count;
+      const unchangedNote = unchanged ? `；${unchanged} 个无变化词保留原样` : '';
+      preview.innerHTML = `<strong>扩展预览：</strong>本次处理 ${result.original_count} 词，本地词族覆盖 ${result.local_family_count} 词${unchangedNote}，新增 ${result.added_count} 个词形，共 ${result.count} 个。${rows ? `<div style="margin-top:8px;color:var(--muted);">${rows}</div>` : ''}${(result.items || []).length > 12 ? '<div style="margin-top:6px;color:var(--muted);">仅展示前 12 组，上传时会包含全部结果。</div>' : ''}`;
     }
-    status.textContent = 'AI 扩展完成；点击“上传并编译”会上传扩展版，也可重新选择文件恢复原始上传。';
+    status.textContent = '扩展完成；点击“上传并编译”会上传扩展版，也可重新选择文件恢复原始上传。';
   } catch (e) {
     expandedWordlistSelection = null;
     status.style.color = 'var(--danger)';
-    status.textContent = `AI 扩展失败：${e.message}`;
+    status.textContent = `扩展失败：${e.message}`;
     if (preview) preview.textContent = '未生成扩展结果，仍可直接上传原词表。';
   } finally {
     if (expandButton) expandButton.disabled = false;

@@ -2,9 +2,9 @@
 
 **中文文档 → [README.zh-CN.md](README.zh-CN.md)**
 
-**Local-first, self-hosted English learning workspace**: turn your own videos, podcasts and articles into interactive lessons — listen with hidden-original drills, retell with AI feedback, drill reusable sentence patterns, and review vocabulary. Local Whisper transcription, local translation, MDX dictionaries, and any OpenAI-compatible LLM.
+**Local-first, self-hosted English learning workspace**: turn your own videos, podcasts and articles into interactive lessons — listen with hidden-original drills, retell with AI feedback, drill reusable sentence patterns, and review vocabulary. Local Whisper transcription, local translation, an offline ECDICT dictionary, and any OpenAI-compatible LLM.
 
-本地优先、可自托管的英语学习工作台：把自己的视频 / 播客 / 文章变成交互式课程——隐藏原文精听、整句复述 + AI 对比、句式提取复用 + AI 批改、词汇复习一站完成。本地 Whisper 转写、本地翻译、MDX 词典，AI 兼容任意 OpenAI 接口。
+本地优先、可自托管的英语学习工作台：把自己的视频 / 播客 / 文章变成交互式课程——隐藏原文精听、整句复述 + AI 对比、句式提取复用 + AI 批改、词汇复习一站完成。本地 Whisper 转写、本地翻译、内置 ECDICT 离线词典，AI 兼容任意 OpenAI 接口。
 
 ## Why EchoLingo
 
@@ -23,7 +23,7 @@
 ## How it works
 
 1. **Create a lesson** from a YouTube/Bilibili link, an article URL, a local video/audio file, or pasted text. Subtitles are fetched or transcribed locally with faster-whisper, segmented into sentences, translated, and annotated with IPA and connected-speech notes.
-2. **Study the lesson** sentence by sentence: loop playback, click any word for MDX dictionary entries (OALD / Longman), get AI hints, and save useful sentences and words with one click.
+2. **Study the lesson** sentence by sentence: loop playback, click any word for offline dictionary entries (built-in ECDICT), get AI hints, and save useful sentences and words with one click.
 3. **Review in the sentence library**: hide the original and listen first, mark 听懂/听不懂, then speak a full-sentence retelling — AI compares your version with the original. Extract the reusable sentence pattern and drill it: write your own sentence, get AI correction with a revision and a more idiomatic alternative.
 4. **Review vocabulary** with a familiarity lifecycle (unknown → fuzzy → known → mastered), AI-generated memory stories with chat, and exports to Markdown / HTML / Anki.
 
@@ -31,10 +31,10 @@
 
 - **Multiple sources** — YouTube, Bilibili, article URLs, local video/audio, plain text/Markdown
 - **Lesson generation** — subtitle fetching or local faster-whisper transcription, sentence segmentation, translation, IPA annotation, connected-speech and oral analysis
-- **Interactive lesson pages** — listening & reading dual modes, per-sentence loop playback and intensive study, MDX dictionary lookup (OALD / Longman), one-click saving of words and sentences while watching
+- **Interactive lesson pages** — listening & reading dual modes, per-sentence loop playback and intensive study, built-in offline ECDICT lookup, one-click saving of words and sentences while watching
 - **AI viewing companion** — AI-generated content outline for one-click topic jumps; ask the AI questions mid-video with the current sentence as context
 - **Sentence library** — collect sentences from lessons or AI output, listening practice with hidden original, spoken retelling with AI comparison, and pattern drills graded by AI with revision + idiomatic suggestions
-- **Vocabulary system** — CEFR-graded word highlighting, personal vocab book with review lifecycle, AI memory stories with chat, and exports (Markdown / HTML / Anki)
+- **Vocabulary system** — built-in frequency & exam wordlists (Oxford 3000, COCA top 2K/5K, CET-4/6, 考研, IELTS, TOEFL, GRE) generated locally from ECDICT, word highlighting, personal vocab book with frequency-prioritized review lifecycle, AI memory stories with chat, and exports (Markdown / HTML / Anki)
 - **Local-first** — lessons, vocab DB, and caches stay on your machine; AI features work with any OpenAI-compatible API (DeepSeek, OpenAI, Groq, Ollama, …)
 
 ## Quick Start
@@ -48,6 +48,7 @@ python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
+python backend/build_ecdict.py   # one-time: builds the built-in ECDICT offline dictionary
 ```
 
 Configure API keys:
@@ -77,7 +78,7 @@ python backend/fastapi_server.py
 
 **Vocabulary** (home page tab): review cards stay context-first — rate yourself before revealing the meaning. Generate an AI memory story from today's words when you want narrative reinforcement, and export any time (Markdown / HTML / Anki).
 
-**Settings** (in-app): the settings page writes the same `.env` file — AI keys, Whisper model size, dictionary folder and wordlists can all be changed without editing files by hand.
+**Settings** (in-app): the settings page writes the same `.env` file — AI keys, Whisper model size and wordlists can all be changed without editing files by hand.
 
 ## System Requirements
 
@@ -85,7 +86,7 @@ python backend/fastapi_server.py
 - **Runtime** — Python 3.11+, ffmpeg on PATH
 - **RAM** — 8 GB minimum; 16 GB recommended when running local Whisper
 - **GPU (optional)** — an NVIDIA GPU with ≥6 GB VRAM makes large-v3 transcription several times faster; CPU-only works fine with the base/medium models, or set `GROQ_API_KEY` for fast cloud transcription
-- **Disk** — ~2 GB for the app, plus 1–3 GB per Whisper model and lesson caches
+- **Disk** — ~2 GB for the app, ~160 MB for the built-in ECDICT dictionary, plus 1–3 GB per Whisper model and lesson caches
 - **Microphone** — needed for the spoken-retell feature; a modern browser (Chrome/Edge recommended)
 
 ## Configuration
@@ -95,13 +96,13 @@ All settings live in `.env` (or the in-app Settings page, which writes the same 
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` — any OpenAI-compatible chat API (default: DeepSeek)
 - `GROQ_API_KEY` — optional, fast cloud transcription with a **free daily tier**; get a key at [console.groq.com/keys](https://console.groq.com/keys) (local Whisper works without it)
 - Local translation — drop a Tencent HY-MT1.5 GGUF into `models/` plus llama.cpp's `llama-server` into `llama-cpp/`; the model is governed by the [Tencent HY Community License](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt) (not available in the EU/UK/South Korea), see `THIRD_PARTY_LICENSES.md`
-- `DICT_DIR` — optional, folder containing MDX dictionaries (auto-detects the Eudic dictionary folder); see `docs/DICTIONARIES.md`
-- Third-party wordlists (BNC/COCA, BSL, NAWL…) are not bundled; see `docs/WORDLISTS.md` for download and build instructions
+- Built-in dictionary — `python backend/build_ecdict.py` downloads [ECDICT](https://github.com/skywind3000/ECDICT) (MIT) once and compiles a local SQLite; see `docs/DICTIONARIES.md`
+- Built-in wordlists — `python backend/build_ecdict.py` also compiles frequency/exam wordlists (from ECDICT, MIT) used for highlighting; third-party wordlists (BNC/COCA, BSL, NAWL…) are not bundled, see `docs/WORDLISTS.md`
 
 ## Documentation
 
 - `docs/WORDLISTS.md` — where to get wordlists and how to compile them
-- `docs/DICTIONARIES.md` — MDX dictionary sources and configuration
+- `docs/DICTIONARIES.md` — the built-in ECDICT dictionary
 
 ## License
 

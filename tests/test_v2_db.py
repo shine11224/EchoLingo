@@ -197,3 +197,32 @@ def test_v2_reading_lesson_stores_blocks(tmp_path, monkeypatch):
         "start_seconds": 12.5,
         "end_seconds": 16.75,
     }]
+
+
+def test_review_words_sorted_by_ecdict_frequency(tmp_path, monkeypatch):
+    import sqlite3
+    import db
+    from webapp.services import dicts
+
+    test_db = tmp_path / "vocab.db"
+    monkeypatch.setattr(db, "DB_PATH", test_db)
+    db.init_db()
+    db.activate_word_review("rareword", source="manual", analysis={"basic_meaning": "罕见"})
+    db.activate_word_review("commonword", source="manual", analysis={"basic_meaning": "常见"})
+
+    ecdict_db = tmp_path / "ecdict.db"
+    conn = sqlite3.connect(ecdict_db)
+    conn.execute(
+        "CREATE TABLE words (word TEXT PRIMARY KEY COLLATE NOCASE, phonetic TEXT, "
+        "definition TEXT, translation TEXT, pos TEXT, collins TEXT, oxford TEXT, "
+        "tag TEXT, bnc TEXT, frq TEXT, exchange TEXT)"
+    )
+    conn.execute("INSERT INTO words (word, frq) VALUES ('rareword', '40000')")
+    conn.execute("INSERT INTO words (word, frq) VALUES ('commonword', '300')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(dicts, "ECDICT_DB", ecdict_db)
+    monkeypatch.setattr(dicts, "_ECDICT_CONN", None)
+
+    keys = list(db.get_review_words().keys())
+    assert keys.index("commonword") < keys.index("rareword")

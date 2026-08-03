@@ -1,4 +1,4 @@
-import csv, io, json, os, re
+import csv, io, json, os, re, sqlite3
 from functools import lru_cache
 from pathlib import Path
 
@@ -15,36 +15,7 @@ for d in [COMPILED_DIR, PATTERNS_DIR, USER_DIR]:
 WORD_RE = re.compile(r"^[a-z][a-z'\-]{1,}$")
 REQUIRED_PATTERN_FIELDS = ("id", "name", "template", "triggers", "explanation_cn", "example", "ielts_tip")
 PATTERN_UPLOAD_SUFFIXES = {".json", ".csv", ".xlsx"}
-BNC_COCA_PATH = WORDLISTS_DIR / "bnc_coca_9k.csv"
-
-_IRREGULAR_INFLECTIONS = {
-    "be": {"am", "is", "are", "was", "were", "been", "being"},
-    "have": {"has", "had", "having"},
-    "do": {"does", "did", "done", "doing"},
-    "go": {"goes", "went", "gone", "going"},
-    "say": {"says", "said", "saying"},
-    "make": {"makes", "made", "making"},
-    "take": {"takes", "took", "taken", "taking"},
-    "come": {"comes", "came", "coming"},
-    "see": {"sees", "saw", "seen", "seeing"},
-    "get": {"gets", "got", "gotten", "getting"},
-    "give": {"gives", "gave", "given", "giving"},
-    "know": {"knows", "knew", "known", "knowing"},
-    "think": {"thinks", "thought", "thinking"},
-    "find": {"finds", "found", "finding"},
-    "run": {"runs", "ran", "running"},
-    "write": {"writes", "wrote", "written", "writing"},
-    "read": {"reads", "reading"},
-    "buy": {"buys", "bought", "buying"},
-    "bring": {"brings", "brought", "bringing"},
-    "teach": {"teaches", "taught", "teaching"},
-    "catch": {"catches", "caught", "catching"},
-    "child": {"children"}, "person": {"people"},
-    "man": {"men"}, "woman": {"women"}, "mouse": {"mice"},
-    "goose": {"geese"}, "tooth": {"teeth"}, "foot": {"feet"},
-    "good": {"better", "best"}, "bad": {"worse", "worst"},
-    "far": {"farther", "farthest", "further", "furthest"},
-}
+ECDICT_DB = BASE_DIR / "resources" / "ecdict" / "ecdict.db"
 
 def _clean_word(token: str) -> str | None:
     word = token.strip().lower()
@@ -79,58 +50,70 @@ def parse_wordlist_content_ordered(content: str) -> list[str]:
     return words
 
 
-def _regular_inflection_candidates(word: str) -> set[str]:
-    candidates = {word, f"{word}s", f"{word}ed", f"{word}ing", f"{word}er", f"{word}est"}
-    if word.endswith("e"):
-        candidates.update({f"{word}d", f"{word[:-1]}ing", f"{word}r", f"{word}st"})
-    if len(word) > 2 and word.endswith("y") and word[-2] not in "aeiou":
-        candidates.update({f"{word[:-1]}ies", f"{word[:-1]}ied", f"{word[:-1]}ier", f"{word[:-1]}iest"})
-    if word.endswith(("s", "x", "z", "ch", "sh", "o")):
-        candidates.add(f"{word}es")
-    if word.endswith("ie"):
-        candidates.add(f"{word[:-2]}ying")
-    if (
-        len(word) >= 3
-        and word[-1] not in "aeiouwxy"
-        and word[-2] in "aeiou"
-        and word[-3] not in "aeiou"
-    ):
-        doubled = f"{word}{word[-1]}"
-        candidates.update({f"{doubled}ed", f"{doubled}ing", f"{doubled}er", f"{doubled}est"})
-    candidates.update(_IRREGULAR_INFLECTIONS.get(word, set()))
-    return candidates
+_EXCHANGE_LEMMA_KIND = "0"
+_EXCHANGE_FORM_KINDS = {"p", "d", "i", "3", "s", "r", "t"}
 
 
-@lru_cache(maxsize=1)
-def load_local_word_families() -> dict[str, tuple[str, ...]]:
-    """Map BNC/COCA headwords and attested forms to their local word family."""
-    if not BNC_COCA_PATH.exists():
+def _parse_exchange(exchange: str, min_len: int = 3) -> dict[str, list[str]]:
+    """Parse an ECDICT exchange field into {kind: [clean word forms]}."""
+    parsed: dict[str, list[str]] = {}
+    for part in (exchange or "").split("/"):
+        kind, sep, values = part.partition(":")
+        if not sep:
+            continue
+        for value in values.split(","):
+            word = value.strip().lower()
+            if WORD_RE.match(word) and len(word) >= min_len:
+                parsed.setdefault(kind, []).append(word)
+    return parsed
+
+
+def _ecdict_exchange_rows(words: list[str]) -> dict[str, str]:
+    """Return {lowercased word: exchange field} for words present in ECDICT."""
+    if not ECDICT_DB.exists() or not words:
         return {}
-    families: dict[str, set[str]] = {}
-    with BNC_COCA_PATH.open(encoding="utf-8-sig", newline="") as handle:
-        for row in csv.DictReader(handle):
-            headword = _clean_word(str(row.get("headword") or ""))
-            if not headword:
-                continue
-            forms = {headword}
-            for part in str(row.get("word_forms") or "").split("),"):
-                form = _clean_word(part.strip().split("(", 1)[0])
-                if form:
-                    forms.add(form)
-            inflections = forms & _regular_inflection_candidates(headword)
-            inflections.add(headword)
-            for form in inflections:
-                families.setdefault(form, set()).update(inflections)
-    return {word: tuple(sorted(forms)) for word, forms in families.items()}
+    rows: dict[str, str] = {}
+    conn = sqlite3.connect(f"file:{ECDICT_DB}?mode=ro", uri=True)
+    try:
+        for start in range(0, len(words), 500):
+            batch = words[start:start + 500]
+            placeholders = ",".join("?" for _ in batch)
+            for word, exchange in conn.execute(
+                f"SELECT word, exchange FROM words WHERE word IN ({placeholders})", batch
+            ):
+                rows[word.lower()] = exchange or ""
+    finally:
+        conn.close()
+    return rows
 
 
 def expand_with_local_word_families(words: list[str]) -> dict[str, list[str]]:
-    families = load_local_word_families()
-    return {
-        word: list(families[word])
-        for word in words
-        if word in families and len(families[word]) > 1
-    }
+    """Expand words to attested inflection families from the built-in ECDICT exchange data."""
+    originals = [w for w in dict.fromkeys(words) if _clean_word(w)]
+    rows = _ecdict_exchange_rows(originals)
+    if not rows:
+        return {}
+    lemmas: dict[str, str] = {}
+    for word in originals:
+        exchange = rows.get(word)
+        if exchange is None:
+            continue
+        lemma_options = _parse_exchange(exchange, min_len=2).get(_EXCHANGE_LEMMA_KIND) or []
+        lemmas[word] = lemma_options[0] if lemma_options else word
+    lemma_rows = _ecdict_exchange_rows(sorted(set(lemmas.values())))
+    families: dict[str, list[str]] = {}
+    for word, lemma in lemmas.items():
+        exchange = lemma_rows.get(lemma)
+        if exchange is None:
+            exchange = rows.get(word, "")
+        parsed = _parse_exchange(exchange)
+        family = {lemma}
+        for kind, values in parsed.items():
+            if kind in _EXCHANGE_FORM_KINDS:
+                family.update(values)
+        if len(family) > 1:
+            families[word] = sorted(family)
+    return families
 
 def validate_wordlist_upload(filename: str, content: str):
     suffix = Path(filename).suffix.lower()

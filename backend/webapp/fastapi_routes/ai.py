@@ -47,13 +47,12 @@ async def analyze_word(request: Request):
     if not word:
         return JSONResponse({"error": "word required"}, status_code=400)
 
-    dicts = await run_in_threadpool(dict_service.lookup_all, word)
+    ecdict = await run_in_threadpool(dict_service.lookup_ecdict, word)
+    dict_meta = dict_service.format_ecdict_meta(dict_service.lookup_ecdict_meta(word))
     prompt = WORD_ANALYSIS_PROMPT.format(
         word=word,
         sentence=sentence,
-        oald=dicts["oald"] or "（未找到）",
-        longman=dicts["longman"] or "（未找到）",
-        vocab=dicts["vocab"] or "（未找到）",
+        ecdict=ecdict or "（未找到）",
     )
     try:
         resp = await run_in_threadpool(
@@ -70,7 +69,10 @@ async def analyze_word(request: Request):
             target_type=data.get("target_type", "word"),
             lemma=data.get("lemma", ""),
         )
-        return cached or analysis
+        result = cached or analysis
+        if isinstance(result, dict):
+            result = {**result, "dict_meta": dict_meta}
+        return result
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

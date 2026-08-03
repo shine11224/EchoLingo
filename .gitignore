@@ -1,65 +1,73 @@
-# Virtual env
+﻿# 虚拟环境
 .venv/
 
-# Python cache
+# Python 缓存
 __pycache__/
 *.pyc
 *.pyo
 
-# Tool caches (downloads, subtitles, etc.)
+# 工具缓存（视频下载、字幕等）
 .cache/
 tmp/
-logs/
+logs/*
+!logs/.gitkeep
 
-# Test artifacts
+# Claude Code & Status
+.claude/
+.codex/
+.ccb/
+.ccb-workspace.json
+status/
 .pytest_cache/
 .pytest_tmp*/
+.tmp/
 test-artifacts/
 
-# Generated lessons (local only)
-output/
+# 私人资料
+资料/
 
-# Media files
+# 生成物（不入库，本地查看）
+output/
+!output/.gitkeep
+
+# 媒体文件
 *.mp4
 *.mp3
 *.m4a
 *.wav
 *.webm
 
-# Local learning data (never commit)
+# 词汇数据库（本地学习记录，不入库）
 vocab.db
 vocab.db-shm
 vocab.db-wal
 vocab_log.json
 vocab_log.json.bak
 
-# Secrets
+# 敏感信息
 cookies.txt
 *.env
 .env
 
-# IDE / tooling config (may contain tokens)
+# MCP / IDE 工具配置（可能含 token）
 .mcp.json
 .codegraph/
 .playwright-mcp/
-.claude/
 
-# Runtime logs
-server*.log
+# 运行日志
+server.log
+server_err.log
 
-# OS files
+# 系统文件
 .DS_Store
 Thumbs.db
 
-# Local models / binaries
+
+.pytest-tmp/
 llama-cpp/
 models/
+server_*.log
 
-# Third-party wordlist sources & compiled lists (see docs/WORDLISTS.md)
-resources/wordlists/wordlists/*.csv
-resources/wordlists/wordlists/*.xlsx
-resources/wordlists/wordlists/*.txt
-resources/wordlists/wordlists/compiled/*.json
-!resources/wordlists/wordlists/compiled/sentence_patterns.json
-resources/wordlists/wordlists/user/*
-!resources/wordlists/wordlists/user/.gitkeep
+# ECDICT downloaded data (build via backend/build_ecdict.py)
+resources/ecdict/
+resources/wordlists/wordlists/compiled/builtin_*.json

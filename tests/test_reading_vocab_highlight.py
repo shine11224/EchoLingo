@@ -197,39 +197,3 @@ def test_load_v2_wordlist_index_is_cached_until_cleared(monkeypatch):
     assert refreshed is not first
     assert calls["count"] == 4
     v2_vocab.clear_vocab_caches()
-
-
-def test_mdx_lookup_reuses_reader_and_finds_duplicate_entries(monkeypatch):
-    from types import SimpleNamespace
-
-    from mdict_utils import reader as mdict_reader
-    from webapp.services import dicts
-
-    fake_reader = SimpleNamespace(
-        _key_list=[
-            (0, b"apple"),
-            (5, b"banana"),
-            (11, b"banana"),
-            (18, b"carrot"),
-        ]
-    )
-    loads = []
-    monkeypatch.setattr(
-        mdict_reader,
-        "MDX",
-        lambda path, encoding, substyle, passcode: loads.append(path) or fake_reader,
-    )
-    monkeypatch.setattr(
-        mdict_reader,
-        "get_record",
-        lambda reader, key, offset, length: f"{offset}:{length}",
-    )
-    dicts._MDX_CACHE.clear()
-    dicts._MDX_KEY_INDEX_CACHE.clear()
-
-    assert dicts._lookup_mdx("fake.mdx", "banana") == "5:6\n---\n11:7"
-    assert dicts._lookup_mdx("fake.mdx", "banana") == "5:6\n---\n11:7"
-    assert dicts._lookup_mdx("fake.mdx", "missing") == ""
-    assert loads == ["fake.mdx"]
-    dicts._MDX_CACHE.clear()
-    dicts._MDX_KEY_INDEX_CACHE.clear()

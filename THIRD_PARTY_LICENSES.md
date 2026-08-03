@@ -19,7 +19,6 @@ installed via pip and can be replaced or upgraded independently.
 | python-multipart | Apache-2.0 | file uploads |
 | openai | Apache-2.0 | OpenAI-compatible LLM client |
 | groq | Apache-2.0 | Groq transcription client |
-| mdict-utils | MIT | MDX/MDD dictionary lookup |
 | faster-whisper | MIT | local speech-to-text |
 | pdfplumber | MIT | PDF text extraction |
 | pypdfium2 | Apache-2.0 / BSD-3-Clause | PDF rendering |
@@ -45,6 +44,49 @@ https://github.com/rany2/edge-tts
 ## Models (downloaded at runtime, not distributed)
 
 - **Whisper** (via faster-whisper / CTranslate2) — model weights MIT © OpenAI
+
+## Built-in dictionary data (open license)
+
+- **ECDICT** — the default dictionary database, © skywind3000,
+  [MIT License](https://github.com/skywind3000/ECDICT). Not bundled in the repo;
+  each user builds it locally with `python backend/build_ecdict.py`.
+
+## Online services (user-configured, subject to their own terms)
+
+EchoLingo calls these third-party services over the network; your use of them is
+governed by each provider's terms of service:
+
+- **DeepSeek API** — default LLM for word/sentence analysis (configurable to any
+  OpenAI-compatible endpoint)
+- **Groq API** — optional cloud Whisper transcription
+- **MyMemory Translation API** (translated.net) — fallback machine translation
+  for words/sentences when no other translator is configured; anonymous free
+  usage with daily limits, subject to Translated's terms of service
+- **Microsoft Edge neural voices** — the `edge-tts` library (LGPLv3, see above)
+  uses an unofficial interface to Microsoft's proprietary online speech service;
+  the generated audio is subject to Microsoft's terms, and use beyond personal,
+  non-commercial purposes may violate them
+- **YouTube** — playback via the YouTube IFrame Player API and downloading via
+  yt-dlp are subject to YouTube's Terms of Service; only process content you
+  have the rights to
+- **Bilibili** — subtitle/audio access is subject to Bilibili's terms; only
+  process content you have the rights to
+
+## Third-party wordlists (not bundled)
+
+The graded wordlists the app can compile locally are **not distributed** with
+this repository (see `docs/WORDLISTS.md`). Their licenses:
+
+- **Business Service List (BSL)** — CC BY-SA 4.0, © Browne & Culligan
+- **New Academic Word List (NAWL)** — CC BY-SA 4.0, © Browne, Culligan & Phillips
+- **Fitness English List (FEL)** — NGSL project (Browne & Culligan, 2020), free
+  to use with attribution
+- **BNC/COCA word-family frequency list** — free for research/teaching use;
+  redistribution terms are unclear, which is why it is not bundled
+
+Locally compiled JSON files derived from the CC BY-SA lists remain under
+CC BY-SA 4.0 if you share them. `compiled/sentence_patterns.json`, the only
+wordlist data shipped in this repo, is original and self-authored.
 
 ### Tencent HY-MT1.5 (local translation)
 
@@ -78,5 +120,5 @@ model copy.
 
 - The video → transcript → AI-notes workflow was partly inspired by
   [BiliNote](https://github.com/JefferyHcool/BiliNote) (MIT License).
-- Dictionary files (OALD, Longman, Vocabulary.com) are user-provided and not
-  distributed; see `docs/DICTIONARIES.md`.
+- Dictionary data comes from the MIT-licensed ECDICT, built locally by each
+  user; see `docs/DICTIONARIES.md`.
