@@ -1584,11 +1584,18 @@ def test_subtitles_highlight_follows_selected_wordlists(tmp_path, monkeypatch):
     # 选择 GRE 词表：complex 命中；systems 虽在词表中但被 exclude 基础词表过滤
     selected = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles?wordlists=builtin_gre")
     assert selected.json()["segments"][0]["highlighted_words"] == ["complex"]
+    # 词表归属映射：前端据此着色
+    assert selected.json()["segments"][0]["highlighted_word_lists"] == {"complex": "builtin_gre"}
+    assert any(
+        u.get("highlighted_word_lists", {}).get("complex") == "builtin_gre"
+        for u in selected.json()["sentence_units"]
+    )
 
     # 虚拟生词本词表
     db.activate_word_review("analyzed", source="manual", analysis={"basic_meaning": "分析"})
     vocab_book = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles?wordlists=my_vocab")
     assert vocab_book.json()["segments"][0]["highlighted_words"] == ["analyzed"]
+    assert vocab_book.json()["segments"][0]["highlighted_word_lists"] == {"analyzed": "my_vocab"}
 
     # 空选择：不高亮任何词
     none = client.get(f"/api/v2/lessons/{lesson['id']}/subtitles?wordlists=")

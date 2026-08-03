@@ -58,12 +58,13 @@ def build_translation_units(segments: list[dict]) -> list[dict]:
     word_count = 0
     highlighted: set[str] = set()
     word_meanings: dict[str, str] = {}
+    word_lists: dict[str, str] = {}
     segment_ids: list[int] = []
     start: float | None = None
     end = 0.0
 
     def flush() -> None:
-        nonlocal parts, word_count, highlighted, word_meanings, segment_ids, start, end
+        nonlocal parts, word_count, highlighted, word_meanings, word_lists, segment_ids, start, end
         text = " ".join(" ".join(parts).split())
         if text:
             units.append({
@@ -73,12 +74,14 @@ def build_translation_units(segments: list[dict]) -> list[dict]:
                 "end": float(end),
                 "highlighted_words": sorted(highlighted),
                 "word_meanings": dict(word_meanings),
+                "highlighted_word_lists": dict(word_lists),
                 "segment_ids": list(segment_ids),
             })
         parts = []
         word_count = 0
         highlighted = set()
         word_meanings = {}
+        word_lists = {}
         segment_ids = []
         start = None
         end = 0.0
@@ -100,6 +103,9 @@ def build_translation_units(segments: list[dict]) -> list[dict]:
         for word, meaning in (segment.get("word_meanings") or {}).items():
             if meaning and word not in word_meanings:
                 word_meanings[word] = meaning
+        for word, list_key in (segment.get("highlighted_word_lists") or {}).items():
+            if list_key and word not in word_lists:
+                word_lists[word] = list_key
         next_segment = split_segments[index + 1] if index + 1 < len(split_segments) else None
         gap = (float(next_segment.get("start") or 0) - end) if next_segment else 0.0
         next_ends_sentence = bool(

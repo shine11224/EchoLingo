@@ -151,19 +151,27 @@ def _load_compiled_word_set(filename: str) -> set[str]:
     return set()
 
 
-def load_words_for_list_keys(keys: list[str]) -> set[str]:
-    """用户所选词表的词集并集（compiled user_*/builtin_* + 虚拟词表 my_vocab）。"""
-    words: set[str] = set()
+def load_lists_for_keys(keys: list[str]) -> list[tuple[str, set[str]]]:
+    """按给定顺序返回 (词表 key, 词集)，顺序即高亮取色优先级。"""
+    lists: list[tuple[str, set[str]]] = []
     for key in keys:
         if key == "my_vocab":
             try:
-                words |= {str(w).lower() for w in db.get_review_word_set()}
+                lists.append((key, {str(w).lower() for w in db.get_review_word_set()}))
             except Exception:
-                pass
+                lists.append((key, set()))
             continue
         if key == "my_mastered":
             continue  # 已掌握是 exclude 语义，不作为高亮源
-        words |= _load_compiled_word_set(f"{key}.json")
+        lists.append((key, _load_compiled_word_set(f"{key}.json")))
+    return lists
+
+
+def load_words_for_list_keys(keys: list[str]) -> set[str]:
+    """用户所选词表的词集并集（compiled user_*/builtin_* + 虚拟词表 my_vocab）。"""
+    words: set[str] = set()
+    for _, word_set in load_lists_for_keys(keys):
+        words |= word_set
     return words
 
 
@@ -641,6 +649,7 @@ def highlight_segments(
     *,
     include_meanings: bool = True,
     source_words: set[str] | None = None,
+    source_lists: list[tuple[str, set[str]]] | None = None,
 ) -> list[dict]:
     intermediate = source_words if source_words is not None else load_default_intermediate_words()
     meanings = load_word_meanings() if include_meanings else {}
@@ -663,5 +672,11 @@ def highlight_segments(
         seg_copy = dict(seg)
         seg_copy["highlighted_words"] = highlighted
         seg_copy["word_meanings"] = {w: meanings.get(w, "") for w in highlighted if meanings.get(w, "")}
+        if source_lists is not None:
+            # 每个高亮词记录其最高优先级来源词表，前端据此着色
+            seg_copy["highlighted_word_lists"] = {
+                w: next((key for key, list_words in source_lists if w in list_words), "")
+                for w in highlighted
+            }
         result.append(seg_copy)
     return result
