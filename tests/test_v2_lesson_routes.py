@@ -1595,6 +1595,45 @@ def test_subtitles_highlight_follows_selected_wordlists(tmp_path, monkeypatch):
     assert none.json()["segments"][0]["highlighted_words"] == []
 
 
+def test_resume_interrupted_translations_on_startup(tmp_path, monkeypatch):
+    import db
+    import fastapi_server
+    import webapp.services.v2_translation as v2_translation
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    stuck = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=stuck123abc",
+        video_id="stuck123abc",
+        title="Stuck",
+    )
+    db.configure_v2_lesson_translation(stuck["id"], requested=True)
+    db.update_v2_translation_status(stuck["id"], status="translating", done=3, total=10, ready=False)
+    other = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=done123abcd",
+        video_id="done123abcd",
+        title="Done",
+    )
+    db.configure_v2_lesson_translation(other["id"], requested=True)
+    db.update_v2_translation_status(other["id"], status="ready", done=10, total=10, ready=True)
+
+    resumed: list[int] = []
+
+    def fake_translate(lesson_id: int) -> dict:
+        resumed.append(int(lesson_id))
+        return {"status": "ready"}
+
+    monkeypatch.setattr(v2_translation, "translate_lesson_subtitles", fake_translate)
+    fastapi_server._resume_interrupted_translations()
+    for _ in range(50):
+        if resumed:
+            break
+        time.sleep(0.05)
+    assert resumed == [stuck["id"]]
+
+
 def test_active_words_returns_saved_meanings(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
