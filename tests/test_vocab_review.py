@@ -421,6 +421,28 @@ def test_vocab_review_supports_word_phrase_familiarity_archive_and_mastery(tmp_p
     assert db.is_word_in_review("use") is True
 
 
+def test_mastered_lifecycle_activates_missing_review_item(tmp_path, monkeypatch):
+    """课程页直接标记已掌握：词不在复习本时先激活再置为已掌握，可逆。"""
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    app = create_app()
+    client = TestClient(app)
+
+    resp = client.patch("/api/vocab-review/column/lifecycle", json={"mastered": True})
+    assert resp.status_code == 200
+    assert resp.json()["mastered"] is True
+    assert db.get_mastered_review_targets() == {"column"}
+    assert "column" in db.get_known_words()
+    assert "column" not in db.get_review_word_set()
+
+    undo = client.patch("/api/vocab-review/column/lifecycle", json={"mastered": False})
+    assert undo.status_code == 200
+    assert db.get_mastered_review_targets() == set()
+    assert "column" not in db.get_known_words()
+
+
 def test_successful_sentence_correction_does_not_implicitly_activate_vocabulary(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app

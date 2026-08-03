@@ -941,11 +941,13 @@ def lesson_words(lesson_id: int):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
+    # 已掌握/已认识词不再出现在学习收藏面板（取消掌握后自动恢复）
+    excluded = db.get_mastered_review_targets() | db.get_known_words()
     words = []
     meanings = {}
     for item in db.get_v2_lesson_words(lesson_id):
         word = item.get("word", "")
-        if not word:
+        if not word or word.lower() in excluded:
             continue
         words.append(word)
         analysis = item.get("cached_analysis")

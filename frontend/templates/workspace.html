@@ -2639,11 +2639,8 @@ function renderSubtitleText(segment) {
     const wlColor = (isHighlight && wordlistColorMap) ? (wordlistColorMap[wordLists[lower]] || '') : '';
     const colorAttr = wlColor ? ` style="color:${wlColor}"` : '';
     const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(lower)}" data-meaning="${escapeHtml(meaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}${star}</button>`;
-    const gloss = mode === 'lookup' && (isHighlight || isSaved) ? String(meaning || '').trim() : '';
-    const displayGloss = formatReadingGloss(gloss);
-    return gloss
-      ? `<ruby class="lookup-word-wrap">${buttonHtml}<rt class="word-gloss" title="${escapeHtml(gloss)}">${escapeHtml(displayGloss)}</rt></ruby>`
-      : buttonHtml;
+    // 沉浸式学习：不在单词下方显示中文角标，释义通过点击弹窗按需查看
+    return buttonHtml;
   }).join('');
 }
 
@@ -2774,11 +2771,9 @@ function renderReadingTextRange(block, startOffset, endOffset) {
     const gloss = mode === 'lookup' && highlight && !readingHiddenWordSet.has(normalized)
       ? String(highlight.meaning || '').trim()
       : '';
-    const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(normalized)}" data-query="${escapeHtml(token)}" onclick="showWordMeaning(event)">${escapeHtml(token)}</button>`;
-    const displayGloss = formatReadingGloss(gloss);
-    pieces.push(gloss
-      ? `<ruby class="reading-word-wrap">${buttonHtml}<rt class="word-gloss" title="${escapeHtml(gloss)}">${escapeHtml(displayGloss)}</rt></ruby>`
-      : buttonHtml);
+    const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(normalized)}" data-query="${escapeHtml(token)}" data-meaning="${escapeHtml(gloss)}" onclick="showWordMeaning(event)">${escapeHtml(token)}</button>`;
+    // 沉浸式学习：不显示中文角标，释义通过点击弹窗按需查看
+    pieces.push(buttonHtml);
     cursor = localStart + token.length;
   }
   pieces.push(escapeHtml(visibleText.slice(cursor)));
