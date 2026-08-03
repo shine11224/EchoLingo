@@ -33,12 +33,36 @@ from webapp.fastapi_routes.v2_chat import router as v2_chat_router
 from webapp.runtime import ai_config
 from webapp.storage.lessons import migrate_lessons_to_db
 
+
+def _resume_interrupted_translations() -> None:
+    """服务重启后继续被中断的句子翻译（状态停留在 translating 的课程）。"""
+    try:
+        import threading
+
+        from webapp.services.v2_translation import translate_lesson_subtitles
+
+        for lesson in db.list_v2_lessons():
+            if str(lesson.get("translation_status") or "") != "translating":
+                continue
+            if not int(lesson.get("translation_requested") or 0):
+                continue
+            threading.Thread(
+                target=translate_lesson_subtitles,
+                args=(int(lesson["id"]),),
+                daemon=True,
+                name=f"resume-translate-{lesson['id']}",
+            ).start()
+    except Exception:
+        pass
+
+
 def create_app() -> FastAPI:
     db.init_db()
     migrate_lessons_to_db()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        _resume_interrupted_translations()
         yield
         try:
             from webapp.services.hy_translate import stop_local_server
