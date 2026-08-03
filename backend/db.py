@@ -784,6 +784,10 @@ def set_review_word_lifecycle(
 ) -> dict | None:
     normalized = " ".join(str(word or "").replace("’", "'").lower().split())
     current = get_review_word_item(normalized)
+    if not current and mastered:
+        # 课程页直接标记已掌握时词可能还没进复习本，先激活再置为已掌握
+        activate_word_review(normalized, source="mastered")
+        current = get_review_word_item(normalized)
     if not current:
         return None
     new_archived = bool(current["archived"]) if archived is None else bool(archived)

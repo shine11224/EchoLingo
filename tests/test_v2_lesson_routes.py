@@ -1649,6 +1649,30 @@ def test_resume_interrupted_translations_on_startup(tmp_path, monkeypatch):
     assert resumed == [stuck["id"]]
 
 
+def test_lesson_words_exclude_mastered_and_known(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    app = create_app()
+    client = TestClient(app)
+    lesson = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=abc123def45",
+        video_id="abc123def45",
+        title="Demo",
+    )
+    db.upsert_word("column", "2026-08-04", level="v2")
+    db.upsert_word("excel", "2026-08-04", level="v2")
+    db.save_v2_lesson_word(lesson["id"], "column", "a column of data")
+    db.save_v2_lesson_word(lesson["id"], "excel", "excel at work")
+    db.add_known_word("column", "2026-08-04")
+
+    resp = client.get(f"/api/v2/lessons/{lesson['id']}/words")
+    assert resp.status_code == 200
+    assert resp.json()["words"] == ["excel"]
+
+
 def test_active_words_returns_saved_meanings(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
