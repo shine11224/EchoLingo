@@ -56,7 +56,8 @@ def test_ecdict_meta_returns_frequency_and_tags(ecdict_tmp_db):
     assert meta["collins"] == 3
     assert meta["oxford"] is True
     assert meta["tags"] == ["雅思", "托福"]
-    assert dicts.format_ecdict_meta(meta) == "COCA #1523 · 牛津3000 · 柯林斯3★ · 雅思 · 托福"
+    # tags 数据仍返回，但展示行不含考试标签（may 要求查词弹窗去掉标签）
+    assert dicts.format_ecdict_meta(meta) == "COCA #1523 · 牛津3000 · 柯林斯3★"
 
 
 def test_ecdict_meta_missing_returns_empty(tmp_path, monkeypatch):

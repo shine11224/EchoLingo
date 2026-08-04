@@ -955,6 +955,11 @@ def lesson_words(lesson_id: int):
             meaning = str(analysis.get("basic_meaning") or "").strip()
             if meaning:
                 meanings[word] = meaning
+        # 收藏时未带释义的词，用 ECDICT 首义项回填，保证 lookup 角标有内容
+        if word not in meanings:
+            backfill = dict_service.lookup_ecdict_translation(word)
+            if backfill:
+                meanings[word] = backfill
     review_words = db.get_review_word_set()
     return {
         "words": words,

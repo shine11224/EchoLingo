@@ -1,7 +1,8 @@
 jinja2
 requests
 beautifulsoup4
-yt-dlp
+yt-dlp>=2026.07.04
+yt-dlp-ejs
 youtube-transcript-api
 fastapi
 uvicorn[standard]
@@ -15,3 +16,4 @@ pytesseract
 openpyxl
 playwright
 edge-tts==7.2.8
+dashscope>=1.20.0

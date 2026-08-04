@@ -3252,14 +3252,13 @@
       const collocations = data.collocations?.length ? `<ul>${renderValue(data.collocations)}</ul>` : '';
       const examples = data.examples?.length ? `<ul>${renderValue(data.examples)}</ul>` : '';
       const synonyms = data.synonyms?.length ? `<ul>${renderValue(data.synonyms)}</ul>` : '';
-      const dictMeta = String(data.dict_meta || '').trim();
+      // 词频/词典标注行（COCA·牛津·柯林斯）按 may 要求不展示；dict_meta 数据保留
       return `
         <div class="word-analysis">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <h4 style="margin:0">${escapeHtml(data.word || '')} <small>${escapeHtml(data.ipa || '')}</small></h4>
             <button type="button" class="word-analysis-close" data-close-word-result title="收起">✕</button>
           </div>
-          ${dictMeta ? `<div style="font-size:12px;color:var(--muted);margin:-4px 0 8px">${escapeHtml(dictMeta)}</div>` : ''}
           <div class="word-grid">
             <div class="word-block"><span class="word-label">词性</span>${escapeHtml(data.pos || '')}</div>
             <div class="word-block"><span class="word-label">语域</span>${escapeHtml(data.register || '')}</div>

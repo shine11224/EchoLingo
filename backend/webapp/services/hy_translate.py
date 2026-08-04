@@ -25,8 +25,24 @@ _PROMPT_EN_ZH = (
 )
 
 
+def _hy_remote_config() -> dict | None:
+    """Dedicated remote translation engine (e.g. TokenHub Hy-MT), independent of
+    the main LLM config. Enabled when HY_TRANSLATE_API_KEY is set."""
+    key = os.environ.get("HY_TRANSLATE_API_KEY", "").strip()
+    if not key:
+        return None
+    return {
+        "api_key": key,
+        "base_url": os.environ.get("HY_TRANSLATE_BASE_URL", "").strip()
+        or "https://tokenhub.tencentmaas.com/v1",
+        "model": os.environ.get("HY_TRANSLATE_MODEL", "").strip() or "hy-mt2-plus",
+    }
+
+
 def _cloud_translation_ready() -> bool:
     """Use the configured remote model on constrained production hosts."""
+    if _hy_remote_config():
+        return True
     if os.environ.get("ELT_DEPLOYMENT") != "cloud":
         return False
     from webapp.runtime import ai_config
@@ -35,11 +51,21 @@ def _cloud_translation_ready() -> bool:
 
 
 def _translate_with_cloud_ai(text: str) -> str:
-    from webapp.runtime import ai_config
+    cfg = _hy_remote_config()
+    if cfg:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"])
+        model = cfg["model"]
+    else:
+        from webapp.runtime import ai_config
+
+        client = ai_config.client
+        model = ai_config.AI_MODEL
 
     try:
-        response = ai_config.client.chat.completions.create(
-            model=ai_config.AI_MODEL,
+        response = client.chat.completions.create(
+            model=model,
             messages=[
                 {"role": "system", "content": "You are a precise English-to-Chinese translator."},
                 {"role": "user", "content": _PROMPT_EN_ZH.format(text=text.strip())},

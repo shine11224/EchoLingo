@@ -175,10 +175,10 @@ def _groq_segments_to_items(raw_segs, offset: float, next_index: int) -> list[Se
     return items
 
 
-def _call_groq_whisper(client, audio_path: Path):
+def _call_api_whisper(client, model: str, audio_path: Path):
     with open(audio_path, "rb") as f:
         return client.audio.transcriptions.create(
-            model="whisper-large-v3-turbo",
+            model=model,
             file=f,
             response_format="verbose_json",
             timestamp_granularities=["segment"],
@@ -186,11 +186,8 @@ def _call_groq_whisper(client, audio_path: Path):
         )
 
 
-def _transcribe_with_groq(audio_path: Path) -> list[Segment]:
-    """使用 Groq Whisper API 转录，必要时压缩并切片长音频。"""
-    from groq import Groq
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-
+def _transcribe_via_api(client, model: str, audio_path: Path) -> list[Segment]:
+    """通过 OpenAI 兼容的 Whisper API 转录（Groq / OpenAI 等），必要时压缩并切片长音频。"""
     print("[STEP:whisper_transcribe]", flush=True)
     with tempfile.TemporaryDirectory(prefix="english-groq-") as tmp:
         tmpdir = Path(tmp)
@@ -212,7 +209,7 @@ def _transcribe_with_groq(audio_path: Path) -> list[Segment]:
         if transcribe_path.stat().st_size <= _GROQ_MAX_BYTES:
             try:
                 print(f"[GROQ_CHUNK] current=1 total=1 bytes={transcribe_path.stat().st_size}", flush=True)
-                resp = _call_groq_whisper(client, transcribe_path)
+                resp = _call_api_whisper(client, model, transcribe_path)
             except Exception as exc:
                 print(f"[GROQ_ERROR] chunk=1 total=1 reason={exc}", flush=True)
                 raise
@@ -230,7 +227,7 @@ def _transcribe_with_groq(audio_path: Path) -> list[Segment]:
                     f"bytes={chunk_path.stat().st_size} offset={offset:.3f}",
                     flush=True,
                 )
-                resp = _call_groq_whisper(client, chunk_path)
+                resp = _call_api_whisper(client, model, chunk_path)
             except Exception as exc:
                 print(f"[GROQ_ERROR] chunk={chunk_index} total={total} reason={exc}", flush=True)
                 raise
@@ -239,6 +236,86 @@ def _transcribe_with_groq(audio_path: Path) -> list[Segment]:
             print(f"[WHISPER_PROGRESS] {min(99, int(chunk_index / total * 100))}%", flush=True)
         print("[WHISPER_PROGRESS] 100%", flush=True)
         return items
+
+
+def _transcribe_with_groq(audio_path: Path) -> list[Segment]:
+    """使用 Groq Whisper API 转录。"""
+    from groq import Groq
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    return _transcribe_via_api(client, "whisper-large-v3-turbo", audio_path)
+
+
+def _transcribe_with_openai(audio_path: Path) -> list[Segment]:
+    """使用 OpenAI Whisper API 转录（云端部署的转录兜底，Groq 屏蔽机房 IP 时可用）。"""
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY"),
+        base_url=os.environ.get("OPENAI_BASE_URL") or None,
+    )
+    model = os.environ.get("OPENAI_WHISPER_MODEL", "whisper-1")
+    return _transcribe_via_api(client, model, audio_path)
+
+
+def _transcribe_with_paraformer(audio_path: Path) -> list[Segment]:
+    """使用阿里云百炼 Paraformer 实时语音识别转录（Recognition.call 本地文件直传）。
+
+    云端部署的转录兜底：Groq 屏蔽机房 IP、本地大模型跑不动时使用。
+    非流式调用直接读本地文件，无需公网 URL；结果带句级 begin_time/end_time（毫秒）。
+    """
+    from http import HTTPStatus
+
+    import dashscope
+    from dashscope.audio.asr import Recognition
+
+    dashscope.api_key = os.environ.get("DASHSCOPE_API_KEY")
+    # 默认连北京 endpoint；用国际站（新加坡）Key 时设
+    # DASHSCOPE_WS_URL=wss://dashscope-intl.aliyuncs.com/api/v1
+    ws_url = os.environ.get("DASHSCOPE_WS_URL")
+    if ws_url:
+        dashscope.base_websocket_api_url = ws_url
+
+    print("[STEP:whisper_transcribe]", flush=True)
+    with tempfile.TemporaryDirectory(prefix="english-paraformer-") as tmp:
+        # Paraformer 的 wav 必须是 PCM 编码，统一转成 16kHz 单声道 PCM wav 再识别
+        wav_path = Path(tmp) / "paraformer-16k.wav"
+        print(f"[PARAFORMER_CONVERT] {audio_path.name} -> 16kHz mono pcm wav", flush=True)
+        _run_ffmpeg([
+            _find_ffmpeg(), "-y", "-i", str(audio_path),
+            "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path),
+        ])
+        recognition = Recognition(
+            model=os.environ.get("PARAFORMER_MODEL", "paraformer-realtime-v2"),
+            format="wav",
+            sample_rate=16000,
+            language_hints=["en"],  # 英语学习素材固定按英文识别，避免语种误判
+            callback=None,
+        )
+        result = recognition.call(str(wav_path))
+
+    if result.status_code != HTTPStatus.OK:
+        raise RuntimeError(
+            f"Paraformer 转录失败：{result.message}"
+            f"（request_id={result.get_request_id()}）"
+        )
+
+    sentences = result.get_sentence() or []
+    if isinstance(sentences, dict):  # 兜底：个别版本单句结果返回 dict
+        sentences = [sentences]
+    items: list[Segment] = []
+    for sentence in sentences:
+        text = re.sub(r"\s+", " ", str(sentence.get("text", ""))).strip()
+        if not text:
+            continue
+        items.append(
+            Segment(
+                index=len(items) + 1,
+                text=text,
+                start=float(sentence.get("begin_time") or 0) / 1000.0,
+                end=float(sentence.get("end_time") or 0) / 1000.0,
+            )
+        )
+    print("[WHISPER_PROGRESS] 100%", flush=True)
+    return items
 
 
 def _transcribe_with_optional_whisper(
@@ -267,6 +344,28 @@ def _transcribe_with_optional_whisper(
             print("[WHISPER_PROGRESS] 100%", flush=True)
             return from_html
 
+    if whisper_model == "paraformer":
+        if not os.environ.get("DASHSCOPE_API_KEY"):
+            raise RuntimeError(
+                "已选择 Paraformer 转录，但未配置 DASHSCOPE_API_KEY。"
+                "请在资源管理 → API 设置中填写阿里云百炼 API-KEY。"
+            )
+        print("  使用阿里云 Paraformer 语音识别转录…", flush=True)
+        segments = _transcribe_with_paraformer(audio_path)
+        save_transcript_cache(audio_path, whisper_model, segments)
+        return segments
+
+    if whisper_model == "openai":
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise RuntimeError(
+                "已选择 OpenAI 转录，但未配置 OPENAI_API_KEY。"
+                "请在资源管理 → API 设置中填写 OpenAI Key。"
+            )
+        print("  使用 OpenAI Whisper API 转录…", flush=True)
+        segments = _transcribe_with_openai(audio_path)
+        save_transcript_cache(audio_path, whisper_model, segments)
+        return segments
+
     if whisper_model == "groq":
         if not os.environ.get("GROQ_API_KEY"):
             raise RuntimeError(
@@ -275,6 +374,14 @@ def _transcribe_with_optional_whisper(
             )
         print("  使用 Groq Whisper API 转录…", flush=True)
         segments = _transcribe_with_groq(audio_path)
+        save_transcript_cache(audio_path, whisper_model, segments)
+        return segments
+
+    # 云端部署无本地模型且已配 OpenAI key 时，自动走 OpenAI Whisper API，
+    # 避免在受限服务器上下载/运行大模型。
+    if os.environ.get("ELT_DEPLOYMENT") == "cloud" and os.environ.get("OPENAI_API_KEY"):
+        print("  云端环境：改用 OpenAI Whisper API 转录…", flush=True)
+        segments = _transcribe_with_openai(audio_path)
         save_transcript_cache(audio_path, whisper_model, segments)
         return segments
 

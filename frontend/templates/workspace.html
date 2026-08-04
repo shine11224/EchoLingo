@@ -147,6 +147,12 @@
       flex-direction: column;
       gap: 12px;
     }
+    /* 宽屏下 body 是 100vh + overflow:hidden，左列内容（视频+控制条+中英字幕卡）
+       超出视口时必须有列内滚动，否则中文字幕行被视口下缘切断且无法下滑 */
+    .watch-column {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
     .side-column { gap: 0; }
     .video-card,
     .subtitle-card,
@@ -1552,6 +1558,7 @@ let rangeStartIdx = null;
 let rangeEndIdx = null;
 let subtitlePoll = null;
 let timePoll = null;
+let translationWasPending = false;
 let ytPlayer = null;
 let localMedia = null;
 let ytApiLoaded = false;
@@ -2210,6 +2217,13 @@ function startPolling() {
     const translationPending = lessonData
       && Number(lessonData.translation_requested || 0) === 1
       && ['pending', 'translating'].includes(lessonData.translation_status);
+    if (translationPending) {
+      translationWasPending = true;
+    } else if (translationWasPending) {
+      // 后台翻译刚结束（ready/failed）：补拉全量翻译，否则本会话只显示开头一部分中文字幕
+      translationWasPending = false;
+      await loadSentenceTranslations();
+    }
     if (lessonData && lessonData.subtitle_status !== 'pending' && !translationPending) {
       clearInterval(subtitlePoll);
       subtitlePoll = null;
@@ -2639,8 +2653,12 @@ function renderSubtitleText(segment) {
     const wlColor = (isHighlight && wordlistColorMap) ? (wordlistColorMap[wordLists[lower]] || '') : '';
     const colorAttr = wlColor ? ` style="color:${wlColor}"` : '';
     const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(lower)}" data-meaning="${escapeHtml(meaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}${star}</button>`;
-    // 沉浸式学习：不在单词下方显示中文角标，释义通过点击弹窗按需查看
-    return buttonHtml;
+    // 释义角标仅 lookup 模式、且只给手动收藏（重点）词显示；词表高亮只留颜色
+    const gloss = mode === 'lookup' && isSaved ? String(meaning || '').trim() : '';
+    const displayGloss = formatReadingGloss(gloss);
+    return gloss
+      ? `<ruby class="lookup-word-wrap">${buttonHtml}<rt class="word-gloss" title="${escapeHtml(gloss)}">${escapeHtml(displayGloss)}</rt></ruby>`
+      : buttonHtml;
   }).join('');
 }
 
@@ -2768,12 +2786,21 @@ function renderReadingTextRange(block, startOffset, endOffset) {
     // 按词表优先级着色（默认模式无映射时保持原色）
     const wlColor = (highlight && wordlistColorMap) ? (wordlistColorMap[highlight.list_key] || '') : '';
     const colorAttr = wlColor ? ` style="color:${wlColor}"` : '';
-    const gloss = mode === 'lookup' && highlight && !readingHiddenWordSet.has(normalized)
-      ? String(highlight.meaning || '').trim()
+    // 释义角标仅 lookup 模式、且只给手动收藏（重点）词显示；词表高亮只留颜色。
+    // data-meaning 仍保留词表释义供点击弹窗秒开。
+    const isSavedWord = savedWordSet.has(normalized);
+    const cachedGloss = wordMeaningCache[normalized];
+    const savedGloss = typeof cachedGloss === 'string' ? cachedGloss : (cachedGloss?.meaning || '');
+    const popoverMeaning = String(highlight?.meaning || savedGloss || '').trim();
+    const gloss = mode === 'lookup' && isSavedWord && !readingHiddenWordSet.has(normalized)
+      ? popoverMeaning
       : '';
-    const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(normalized)}" data-query="${escapeHtml(token)}" data-meaning="${escapeHtml(gloss)}" onclick="showWordMeaning(event)">${escapeHtml(token)}</button>`;
-    // 沉浸式学习：不显示中文角标，释义通过点击弹窗按需查看
-    pieces.push(buttonHtml);
+    const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(normalized)}" data-query="${escapeHtml(token)}" data-meaning="${escapeHtml(popoverMeaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}</button>`;
+    // 释义角标仅 lookup 模式显示；english/bilingual 保持沉浸，点击弹窗按需查看
+    const displayGloss = formatReadingGloss(gloss);
+    pieces.push(gloss
+      ? `<ruby class="reading-word-wrap">${buttonHtml}<rt class="word-gloss" title="${escapeHtml(gloss)}">${escapeHtml(displayGloss)}</rt></ruby>`
+      : buttonHtml);
     cursor = localStart + token.length;
   }
   pieces.push(escapeHtml(visibleText.slice(cursor)));
@@ -3689,11 +3716,10 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '', dict
   const normalized = normalizeWord(word);
   const saved = savedWordSet.has(normalized);
   const phoneticHtml = phonetic ? `<div class="phonetic">/${escapeHtml(phonetic)}/</div>` : '';
-  const dictMetaHtml = dictMeta ? `<div class="dict-meta">${escapeHtml(dictMeta)}</div>` : '';
+  // \u8bcd\u9891/\u8bcd\u5178\u6807\u6ce8\u884c\uff08COCA\u00b7\u725b\u6d25\u00b7\u67ef\u6797\u65af\uff09\u6309 may \u8981\u6c42\u4e0d\u5c55\u793a\uff1bdictMeta \u6570\u636e\u4fdd\u7559
   const sourceHtml = source === 'external' ? '<div class="lookup-source">AI \u5728\u7ebf\u8865\u5145\u91ca\u4e49</div>' : '';
   pop.innerHTML = `<div class="word">${escapeHtml(word)}</div>
     ${phoneticHtml}
-    ${dictMetaHtml}
     <div class="meaning">${escapeHtml(meaning || '\u6682\u65e0\u91ca\u4e49')}</div>
     ${sourceHtml}
     <div class="word-actions">

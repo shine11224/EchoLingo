@@ -79,19 +79,34 @@ def _write_env_updates(updates: dict[str, str]) -> None:
     path.write_text("\n".join(new_lines), encoding="utf-8")
 
 
-def save_settings(api_key: str, base_url: str, model: str, groq_api_key: str) -> None:
+def save_settings(
+    api_key: str,
+    base_url: str,
+    model: str,
+    groq_api_key: str,
+    hy_translate_api_key: str = "",
+    hy_translate_model: str = "",
+    dashscope_api_key: str = "",
+) -> None:
     global AI_API_KEY, AI_BASE_URL, AI_MODEL, GROQ_API_KEY
     _write_env_updates({
         "AI_API_KEY": api_key,
         "AI_BASE_URL": base_url,
         "AI_MODEL": model,
         "GROQ_API_KEY": groq_api_key,
+        "HY_TRANSLATE_API_KEY": hy_translate_api_key,
+        "HY_TRANSLATE_MODEL": hy_translate_model,
+        "DASHSCOPE_API_KEY": dashscope_api_key,
     })
     AI_API_KEY = api_key
     AI_BASE_URL = base_url
     AI_MODEL = model
     GROQ_API_KEY = groq_api_key
     os.environ["GROQ_API_KEY"] = groq_api_key
+    # 混元翻译与千问转录在调用处实时读 os.environ，无需重建 client
+    os.environ["HY_TRANSLATE_API_KEY"] = hy_translate_api_key
+    os.environ["HY_TRANSLATE_MODEL"] = hy_translate_model
+    os.environ["DASHSCOPE_API_KEY"] = dashscope_api_key
     rebuild_openai_client()
 
 
@@ -102,12 +117,18 @@ def delete_setting(field: str) -> str | None:
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-chat",
         "groq_api_key": "",
+        "hy_translate_api_key": "",
+        "hy_translate_model": "",
+        "dashscope_api_key": "",
     }
     env_key_map = {
         "api_key": "AI_API_KEY",
         "base_url": "AI_BASE_URL",
         "model": "AI_MODEL",
         "groq_api_key": "GROQ_API_KEY",
+        "hy_translate_api_key": "HY_TRANSLATE_API_KEY",
+        "hy_translate_model": "HY_TRANSLATE_MODEL",
+        "dashscope_api_key": "DASHSCOPE_API_KEY",
     }
     if field not in defaults:
         return None
@@ -121,8 +142,8 @@ def delete_setting(field: str) -> str | None:
         AI_MODEL = new_value
     elif field == "groq_api_key":
         GROQ_API_KEY = new_value
-        os.environ["GROQ_API_KEY"] = new_value
 
     rebuild_openai_client()
+    os.environ[env_key_map[field]] = new_value
     _write_env_updates({env_key_map[field]: new_value})
     return new_value
