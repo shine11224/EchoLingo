@@ -12,11 +12,41 @@ from sources.subtitle_parser import parse_subtitle_file
 _BASE_DIR = Path(__file__).parent.parent
 
 
+def _yt_proxy() -> str | None:
+    """Optional proxy for all YouTube traffic — used on cloud servers whose
+    datacenter IP is bot-checked by YouTube. Set YOUTUBE_PROXY, e.g.
+    http://mihomo:7890 (compose service name)."""
+    import os
+
+    return os.environ.get("YOUTUBE_PROXY", "").strip() or None
+
+
+def _default_cookies_file() -> str | None:
+    """Pick up a Netscape cookies.txt placed by the user/deploy, so the web flow
+    gets YouTube cookies without a CLI flag. Priority: explicit env var, then
+    $ELT_CONFIG_DIR (cloud config volume), then repo resources/."""
+    import os
+
+    candidates: list[Path] = []
+    env_file = os.environ.get("YOUTUBE_COOKIES_FILE", "").strip()
+    if env_file:
+        candidates.append(Path(env_file))
+    config_dir = os.environ.get("ELT_CONFIG_DIR", "").strip()
+    if config_dir:
+        candidates.append(Path(config_dir) / "youtube_cookies.txt")
+    candidates.append(_BASE_DIR / "resources" / "youtube_cookies.txt")
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def build_youtube_lesson(
     url: str,
     cookies_file: str | None = None,
     download_audio: bool = False,
 ) -> SourceBundle:
+    cookies_file = cookies_file or _default_cookies_file()
     video_id = extract_video_id(url)
     try:
         bundle = _build_with_ytdlp(url, video_id, cookies_file)
@@ -68,6 +98,8 @@ def _download_audio(url: str, video_id: str, cache_dir: Path, cookies_file: str 
         opts["ffmpeg_location"] = str(_conda_ffmpeg)
     if cookies_file:
         opts["cookiefile"] = cookies_file
+    if proxy := _yt_proxy():
+        opts["proxy"] = proxy
     with YoutubeDL(opts) as ydl:
         ydl.download([url])
 
@@ -113,6 +145,8 @@ def _build_with_ytdlp(url: str, video_id: str, cookies_file: str | None = None) 
             }
             if cookies_file:
                 options["cookiefile"] = cookies_file
+            if proxy := _yt_proxy():
+                options["proxy"] = proxy
             with YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=True)
 
@@ -145,7 +179,15 @@ def _build_with_ytdlp(url: str, video_id: str, cookies_file: str | None = None) 
 def _build_with_transcript_api(url: str, video_id: str) -> SourceBundle:
     from youtube_transcript_api import YouTubeTranscriptApi
 
-    transcript = YouTubeTranscriptApi().fetch(video_id, languages=["en", "en-US", "en-GB"])
+    if proxy := _yt_proxy():
+        from youtube_transcript_api.proxies import GenericProxyConfig
+
+        api = YouTubeTranscriptApi(
+            proxy_config=GenericProxyConfig(http_url=proxy, https_url=proxy)
+        )
+    else:
+        api = YouTubeTranscriptApi()
+    transcript = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
     segments = [
         Segment(
             index=i + 1,

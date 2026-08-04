@@ -51,6 +51,25 @@ def lookup_ecdict(word: str) -> str:
     return re.sub(r"\s+", " ", " ".join(p for p in parts if p)).strip()[:1200]
 
 
+def lookup_ecdict_translation(word: str) -> str:
+    """仅取 ECDICT 中文释义的首个义项（角标级短文本）；缺失返回 ''。"""
+    conn = _get_ecdict_conn()
+    if conn is None:
+        return ""
+    try:
+        with _ECDICT_LOCK:
+            row = conn.execute(
+                "SELECT translation FROM words WHERE word = ?",
+                (word.strip().lower(),),
+            ).fetchone()
+    except Exception:
+        return ""
+    if not row or not row[0]:
+        return ""
+    first = str(row[0]).replace("\\n", "\n").split("\n", 1)[0].strip()
+    return first[:40]
+
+
 _TAG_LABELS = {
     "zk": "中考",
     "gk": "高考",
@@ -94,7 +113,8 @@ def lookup_ecdict_meta(word: str) -> dict:
 
 
 def format_ecdict_meta(meta: dict) -> str:
-    """Render metadata as a compact display line, e.g. 'COCA #1523 · 牛津3000 · 雅思'."""
+    """Render metadata as a compact display line, e.g. 'COCA #1523 · 牛津3000'.
+    考试标签（四级/雅思/GRE 等）按 may 要求不展示；tags 数据保留在 lookup 结果中。"""
     if not meta:
         return ""
     parts = []
@@ -104,7 +124,6 @@ def format_ecdict_meta(meta: dict) -> str:
         parts.append("牛津3000")
     if meta.get("collins"):
         parts.append(f"柯林斯{meta['collins']}★")
-    parts.extend(meta.get("tags") or [])
     return " · ".join(parts)
 
 

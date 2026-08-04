@@ -1571,12 +1571,14 @@
                   <option value="medium">medium（均衡）</option>
                   <option value="base">base（最快）</option>
                   <option value="groq">Groq（large-v3）</option>
+                  <option value="paraformer">Paraformer（云端，阿里云百炼）</option>
                 </select>
                 <span class="groq-net-hint" id="groq-net-hint" style="display:none" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
                   <span class="groq-net-pop">Groq 转录需要能访问 api.groq.com（海外网络或代理）。直连不可用时会报 403 / 连接错误，请改用本地模型（large-v3 / medium / base）。</span>
                 </span>
               </div>
               <div id="groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
+              <div id="dashscope-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置千问 Key — 请先在设置 → API 设置填写（阿里云百炼 API-KEY）</div>
             </div>
           </div>
         </section>
@@ -2000,6 +2002,29 @@
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('groq_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-groq-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
             <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">转录专用</span>
+          </div>
+          <div class="input-row" style="display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);">
+            <span style="width: 80px; font-weight: 500;">混元 Key</span>
+            <input type="password" id="hy-translate-api-key" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="腾讯 TokenHub API Key（可选）">
+            <button class="btn btn-sm" onclick="editAiField('hy-translate-api-key')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('hy_translate_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
+            <span class="ai-configured-badge" id="badge-hy-translate-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
+            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">中文字幕翻译专用</span>
+          </div>
+          <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 80px; font-weight: 500;">混元 Model</span>
+            <input type="text" id="hy-translate-model" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="hy-mt2-plus">
+            <button class="btn btn-sm" onclick="editAiField('hy-translate-model')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('hy_translate_model')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
+            <span class="ai-configured-badge" id="badge-hy-translate-model" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
+          </div>
+          <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 80px; font-weight: 500;">千问 Key</span>
+            <input type="password" id="dashscope-api-key" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="sk-...（阿里云百炼，可选）">
+            <button class="btn btn-sm" onclick="editAiField('dashscope-api-key')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('dashscope_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
+            <span class="ai-configured-badge" id="badge-dashscope-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
+            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">Paraformer 转录专用</span>
           </div>
           <div style="margin-top: 8px;">
             <button class="btn btn-primary" onclick="saveAiSettings()">保存配置</button>
@@ -6521,27 +6546,28 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 
 // ── AI / Groq Settings ────────────────────────
 let _groqKeyConfigured = false;
+let _dashscopeKeyConfigured = false;
 
 const _AI_FIELD_MAP = {
-  'ai-base-url':   { field: 'base_url',     badge: 'badge-base-url' },
-  'ai-api-key':    { field: 'api_key',      badge: 'badge-api-key' },
-  'ai-model':      { field: 'model',        badge: 'badge-model' },
-  'groq-api-key':  { field: 'groq_api_key', badge: 'badge-groq-api-key' },
+  'ai-base-url':          { field: 'base_url',             badge: 'badge-base-url' },
+  'ai-api-key':           { field: 'api_key',              badge: 'badge-api-key' },
+  'ai-model':             { field: 'model',                badge: 'badge-model' },
+  'groq-api-key':         { field: 'groq_api_key',         badge: 'badge-groq-api-key' },
+  'hy-translate-api-key': { field: 'hy_translate_api_key', badge: 'badge-hy-translate-api-key' },
+  'hy-translate-model':   { field: 'hy_translate_model',   badge: 'badge-hy-translate-model' },
+  'dashscope-api-key':    { field: 'dashscope_api_key',    badge: 'badge-dashscope-api-key' },
 };
 
 async function loadAiSettings() {
   try {
     const d = await fetch('/api/settings/ai').then(r => r.json());
-    const baseEl  = document.getElementById('ai-base-url');
-    const modelEl = document.getElementById('ai-model');
-    const keyEl   = document.getElementById('ai-api-key');
-    const groqEl  = document.getElementById('groq-api-key');
-    if (baseEl  && d.base_url)     baseEl.value  = d.base_url;
-    if (modelEl && d.model)        modelEl.value = d.model;
-    if (keyEl  && d.api_key)       keyEl.value   = d.api_key;
-    if (groqEl && d.groq_api_key)  groqEl.value  = d.groq_api_key;
+    for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
+      const el = document.getElementById(inputId);
+      if (el && d[meta.field]) el.value = d[meta.field];
+    }
 
     _groqKeyConfigured = !!d.groq_api_key;
+    _dashscopeKeyConfigured = !!d.dashscope_api_key;
 
     // 更新各字段的"已配置"标记
     for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -6587,6 +6613,10 @@ async function deleteAiSetting(field) {
       _groqKeyConfigured = false;
       onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
     }
+    if (field === 'dashscope_api_key') {
+      _dashscopeKeyConfigured = false;
+      onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
+    }
   } catch (e) {
     alert('删除失败：' + e.message);
   }
@@ -6594,16 +6624,16 @@ async function deleteAiSetting(field) {
 
 async function saveAiSettings() {
   const status   = document.getElementById('ai-settings-status');
-  const key      = document.getElementById('ai-api-key')?.value.trim()    || '';
-  const url      = document.getElementById('ai-base-url')?.value.trim()   || '';
-  const model    = document.getElementById('ai-model')?.value.trim()      || '';
-  const groqKey  = document.getElementById('groq-api-key')?.value.trim()  || '';
+  const body = {};
+  for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
+    body[meta.field] = document.getElementById(inputId)?.value.trim() || '';
+  }
   if (status) { status.style.color = 'var(--brand)'; status.textContent = '保存中…'; }
   try {
     const r = await fetch('/api/settings/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: key, base_url: url, model, groq_api_key: groqKey })
+      body: JSON.stringify(body)
     });
     const d = await r.json();
     if (status) {
@@ -6611,7 +6641,8 @@ async function saveAiSettings() {
       status.textContent = d.message || (d.ok ? '已保存' : '保存失败');
     }
     if (d.ok) {
-      _groqKeyConfigured = !!groqKey;
+      _groqKeyConfigured = !!body.groq_api_key;
+      _dashscopeKeyConfigured = !!body.dashscope_api_key;
       onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
       // 刷新"已配置"标记
       for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -6632,6 +6663,8 @@ function onWhisperModelChange(val) {
   if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
   const hint = document.getElementById('groq-net-hint');
   if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
+  const dashWarn = document.getElementById('dashscope-key-warn');
+  if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
 }
 
 // ── Init ──────────────────────────────────────
