@@ -251,6 +251,8 @@ def practice_history(
     target: str = "",
     sentence_id: int | None = None,
     practice_type: str = "",
+    lesson_id: int | None = None,
+    source_context: str = "",
     page: int = 1,
     page_size: int = 20,
 ):
@@ -265,6 +267,8 @@ def practice_history(
         target=target,
         sentence_id=sentence_id,
         practice_type=clean_type,
+        lesson_id=lesson_id,
+        source_context=source_context,
         page=page,
         page_size=page_size,
     )

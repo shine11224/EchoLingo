@@ -53,7 +53,7 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "formatReadingGloss(gloss)" in resp.text
     assert "const isSaved = savedWordSet.has(lower);" in resp.text
     assert "const savedMeaning = typeof cachedMeaning === 'string'" in resp.text
-    assert "mode === 'lookup' && (isHighlight || isSaved)" in resp.text
+    assert "mode === 'lookup' && isSavedWord && !readingHiddenWordSet.has(normalized)" in resp.text
     assert "chipsEl.innerHTML = '';" in resp.text
     assert "max-height: calc(100vh - 24px)" in resp.text
     assert "overscroll-behavior: contain" in resp.text

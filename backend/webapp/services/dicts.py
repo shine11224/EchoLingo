@@ -149,6 +149,34 @@ def ecdict_frq_map(words: list[str]) -> dict[str, int]:
     return result
 
 
+def ecdict_meta_map(words: list[str]) -> dict[str, dict]:
+    """Batch frequency + exam-tag metadata for words; missing words are omitted.
+
+    Returns {word_lower: {"frq": int | None, "exam_tags": [label, ...]}}.
+    """
+    conn = _get_ecdict_conn()
+    if conn is None or not words:
+        return {}
+    result: dict[str, dict] = {}
+    try:
+        with _ECDICT_LOCK:
+            for start in range(0, len(words), 500):
+                batch = words[start:start + 500]
+                placeholders = ",".join("?" for _ in batch)
+                for word, frq, tag in conn.execute(
+                    f"SELECT word, frq, tag FROM words WHERE word IN ({placeholders})", batch
+                ):
+                    result[word.lower()] = {
+                        "frq": _as_int(frq),
+                        "exam_tags": [
+                            _TAG_LABELS[t] for t in str(tag or "").split() if t in _TAG_LABELS
+                        ],
+                    }
+    except Exception:
+        pass
+    return result
+
+
 ipa_ready = False
 
 

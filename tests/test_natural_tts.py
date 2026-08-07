@@ -90,7 +90,7 @@ def test_all_tts_surfaces_use_unified_natural_voice_layer():
     assert "natural" in natural_js.lower()
     assert "speechSynthesis.getVoices()" in natural_js
     assert "/api/tts/natural" in natural_js
-    assert "options.neural" in natural_js
+    assert "speakNeural" in natural_js
     assert "new global.Audio" in natural_js
 
 

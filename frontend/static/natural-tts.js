@@ -4,6 +4,63 @@
   const preferredNames = ['Ava', 'Aria', 'Jenny', 'Guy', 'Samantha', 'Google US English'];
   let activeAudio = null;
   let activeAudioUrl = '';
+  let sharedAudio = null;
+  let sharedAudioUnlocked = false;
+
+  const TTS_VERSION = '20260805-3';
+
+  // On-screen diagnostics for mobile browsers we cannot attach a debugger to.
+  // Opt-in only: localStorage.ttsDebug = '1' (or open /static/tts-diag.html).
+  function ttsToast(msg) {
+    try {
+      if (global.localStorage?.getItem('ttsDebug') !== '1') return;
+      const doc = global.document;
+      if (!doc || !doc.body) return;
+      let el = doc.getElementById('__tts_toast');
+      if (!el) {
+        el = doc.createElement('div');
+        el.id = '__tts_toast';
+        el.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;'
+          + 'background:rgba(0,0,0,.85);color:#0f0;font:12px/1.5 monospace;'
+          + 'padding:8px 10px;border-radius:8px;white-space:pre-wrap;';
+        doc.body.appendChild(el);
+      }
+      el.textContent = `[TTS ${TTS_VERSION}] ${msg}`;
+      clearTimeout(el.__ttsTimer);
+      el.__ttsTimer = global.setTimeout(() => { el.textContent = ''; }, 10000);
+    } catch (_) { /* diagnostics must never break playback */ }
+  }
+
+  // 1-second silent WAV: keeps the shared <audio> element "unlocked" after a user
+  // gesture, so async fetches (server TTS ~seconds later) may still call play().
+  const SILENT_WAV =
+    'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=';
+
+  function getSharedAudio() {
+    if (!sharedAudio) {
+      sharedAudio = new global.Audio();
+      sharedAudio.preload = 'auto';
+    }
+    return sharedAudio;
+  }
+
+  // Must be called synchronously inside a user-gesture handler (click/tap).
+  function unlockSharedAudio() {
+    if (sharedAudioUnlocked) return;
+    const audio = getSharedAudio();
+    try {
+      audio.muted = true;
+      audio.src = SILENT_WAV;
+      const attempt = audio.play();
+      if (attempt && typeof attempt.then === 'function') {
+        attempt
+          .then(() => { sharedAudioUnlocked = true; })
+          .catch(() => {});
+      } else {
+        sharedAudioUnlocked = true;
+      }
+    } catch (_) { /* gesture unlock best-effort */ }
+  }
 
   function voiceScore(voice, lang) {
     const name = String(voice?.name || '');
@@ -41,10 +98,10 @@
   }
 
   function stop() {
+    speakSession++;
     global.speechSynthesis?.cancel();
     if (activeAudio) {
       activeAudio.pause();
-      activeAudio.currentTime = 0;
       activeAudio = null;
     }
     if (activeAudioUrl) {
@@ -53,42 +110,113 @@
     }
   }
 
-  async function speakNeural(text, options = {}) {
-    stop();
+  async function fetchTtsBlob(text) {
     const response = await global.fetch(`/api/tts/natural?text=${encodeURIComponent(text)}`);
     if (!response.ok) throw new Error(`Natural TTS failed: ${response.status}`);
-    const blob = await response.blob();
-    const audioUrl = global.URL.createObjectURL(blob);
-    const audio = new global.Audio(audioUrl);
-    activeAudio = audio;
-    activeAudioUrl = audioUrl;
-    audio.playbackRate = Math.max(0.85, Math.min(1.15, Number(options.playbackRate) || 1));
-    const cleanup = () => {
-      if (activeAudio === audio) activeAudio = null;
-      if (activeAudioUrl === audioUrl) activeAudioUrl = '';
-      global.URL.revokeObjectURL(audioUrl);
-      if (typeof options.onEnd === 'function') options.onEnd();
-    };
-    audio.onended = cleanup;
-    audio.onerror = cleanup;
-    try {
-      await audio.play();
-    } catch (error) {
-      audio.onended = null;
-      audio.onerror = null;
-      cleanup();
-      throw error;
+    return response.blob();
+  }
+
+  const TTS_CHUNK_LIMIT = 450; // backend /api/tts/natural rejects text > 500 chars
+
+  function splitTtsChunks(text) {
+    const normalized = String(text || '').trim();
+    if (normalized.length <= TTS_CHUNK_LIMIT) return [normalized];
+    const pieces = normalized.match(/[^.!?;:\n]+[.!?;:\n]+["'”’)\]]*\s*|[^.!?;:\n]+$/g) || [normalized];
+    const chunks = [];
+    let current = '';
+    for (const piece of pieces) {
+      let rest = piece;
+      while (rest.length > TTS_CHUNK_LIMIT) {
+        if (current.trim()) { chunks.push(current.trim()); current = ''; }
+        chunks.push(rest.slice(0, TTS_CHUNK_LIMIT).trim());
+        rest = rest.slice(TTS_CHUNK_LIMIT);
+      }
+      if (current && (current + rest).length > TTS_CHUNK_LIMIT) {
+        chunks.push(current.trim());
+        current = rest;
+      } else {
+        current += rest;
+      }
     }
-    return audio;
+    if (current.trim()) chunks.push(current.trim());
+    return chunks.filter(Boolean);
+  }
+
+  let speakSession = 0;
+
+  function playTtsBlob(blob, options, session) {
+    return new Promise((resolve, reject) => {
+      if (session !== speakSession) { resolve(); return; }
+      const audioUrl = global.URL.createObjectURL(blob);
+      const audio = getSharedAudio();
+      activeAudio = audio;
+      activeAudioUrl = audioUrl;
+      audio.muted = false;
+      audio.src = audioUrl;
+      audio.playbackRate = Math.max(0.85, Math.min(1.15, Number(options.playbackRate || options.rate) || 1));
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        audio.onended = null;
+        audio.onerror = null;
+        if (activeAudio === audio) activeAudio = null;
+        if (activeAudioUrl === audioUrl) activeAudioUrl = '';
+        global.URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      audio.onended = finish;
+      audio.onerror = finish;
+      const attempt = audio.play();
+      if (attempt && typeof attempt.then === 'function') {
+        attempt
+          .then(() => ttsToast(`播放中 (rate=${audio.playbackRate})`))
+          .catch((error) => {
+            ttsToast(`play() 被拒: ${error.name} ${error.message}`);
+            if (!settled) {
+              settled = true;
+              audio.onended = null;
+              audio.onerror = null;
+              global.URL.revokeObjectURL(audioUrl);
+              reject(error);
+            }
+          });
+      }
+    });
+  }
+
+  async function speakNeural(text, options = {}) {
+    stop();
+    const session = ++speakSession;
+    const chunks = splitTtsChunks(text);
+    ttsToast(`请求服务端 TTS: "${String(text).slice(0, 24)}"${chunks.length > 1 ? `（${chunks.length} 段）` : ''}`);
+    const blobs = await Promise.all(chunks.map(fetchTtsBlob));
+    if (session !== speakSession) return null;
+    ttsToast(`TTS 合成完成（${chunks.length} 段，共 ${Math.round(blobs.reduce((sum, b) => sum + b.size, 0) / 1024)}KB）`);
+    for (const blob of blobs) {
+      if (session !== speakSession) return null;
+      await playTtsBlob(blob, options, session);
+    }
+    if (session === speakSession && typeof options.onEnd === 'function') options.onEnd();
+    return activeAudio;
   }
 
   function speak(text, options = {}) {
     if (!text) return null;
-    if (options.neural) {
-      speakNeural(text, options).catch(() => speakWithBrowser(text, options));
-      return null;
+    if (options.browser) {
+      return speakWithBrowser(text, options);
     }
-    return speakWithBrowser(text, options);
+    // Neural-first for every caller: on many Android browsers (MIUI, Chrome
+    // without voice packs) speechSynthesis exists but has zero voices and
+    // fails silently, so browser TTS is only a fallback.
+    ttsToast(`speak(): "${String(text).slice(0, 24)}"`);
+    unlockSharedAudio();
+    speakNeural(text, options).catch((error) => {
+      const voices = global.speechSynthesis ? global.speechSynthesis.getVoices().length : -1;
+      ttsToast(`服务端 TTS 失败(${error.message})，回退浏览器 TTS，voices=${voices}`);
+      speakWithBrowser(text, options);
+    });
+    return null;
   }
 
   global.NaturalTTS = {

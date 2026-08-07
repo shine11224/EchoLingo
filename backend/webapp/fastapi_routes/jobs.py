@@ -11,6 +11,7 @@ import time
 import uuid
 from pathlib import Path
 
+import db
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from webapp.constants import PIPELINE_SCHEMA
@@ -240,7 +241,7 @@ async def api_generate(request: Request):
                 job_runtime._set_job_error(job_runtime._jobs.get(jid, {}), code, message, detail=str(exc))
                 append_job_log(lp, f"[job] exception code={code} detail={exc}")
 
-        threading.Thread(target=_run_text, daemon=True).start()
+        db.spawn_with_db_context(_run_text, name=f"job-text-{job_id}")
         return {"job_id": job_id}
 
     else:
@@ -279,7 +280,7 @@ async def api_generate(request: Request):
     def _run(jid=job_id, log_p=str(log_path), tmo=timeout_secs, command=list(cmd)):
         proc = None
         try:
-            env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            env = {**os.environ, "PYTHONUNBUFFERED": "1", "ELT_USER_DB": str(db.current_db_path())}
             proc = subprocess.Popen(
                 command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
@@ -365,5 +366,5 @@ async def api_generate(request: Request):
         finally:
             job_runtime._active_procs.pop(jid, None)
 
-    threading.Thread(target=_run, daemon=True).start()
+    db.spawn_with_db_context(_run, name=f"job-subprocess-{job_id}")
     return {"job_id": job_id}

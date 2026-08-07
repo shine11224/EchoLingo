@@ -17,6 +17,42 @@ _SAFE_BUFFER_SECONDS = 120.0
 _SAFE_TRANSLATION_RATE = 2.0
 
 
+_WORD_PUNCT_RE = re.compile(r"[.!?]")
+
+
+def _split_segment_by_words(segment: dict) -> list[Segment] | None:
+    """用词级时间戳按标点边界切句（paraformer words），无词数据返回 None 走插值兜底。"""
+    words = segment.get("words") or []
+    if not words:
+        return None
+    source_index = int(segment.get("index", segment.get("segment_index", 0)))
+    groups: list[list[dict]] = []
+    buf: list[dict] = []
+    for w in words:
+        buf.append(w)
+        if _WORD_PUNCT_RE.search(str(w.get("punctuation") or "")):
+            groups.append(buf)
+            buf = []
+    if buf:
+        groups.append(buf)
+    out: list[Segment] = []
+    for group in groups:
+        # punctuation 字段（". "/", "）附着在词后，包含所需空格，一并拼接
+        text = "".join(
+            str(w.get("text") or "") + str(w.get("punctuation") or "") for w in group
+        )
+        text = " ".join(text.split())
+        if not text:
+            continue
+        out.append(Segment(
+            index=source_index,
+            text=text,
+            start=float(group[0].get("start") or 0),
+            end=float(group[-1].get("end") or group[-1].get("start") or 0),
+        ))
+    return out or None
+
+
 def _split_source_segments(segments: list[dict]) -> list[dict]:
     """Split strong punctuation inside source chunks before cross-chunk merging."""
     pieces: list[dict] = []
@@ -28,7 +64,7 @@ def _split_source_segments(segments: list[dict]) -> list[dict]:
             start=float(segment.get("start", segment.get("start_seconds", 0)) or 0),
             end=float(segment.get("end", segment.get("end_seconds", 0)) or 0),
         )
-        for piece in SentenceAnalyzer._split_segment_sentences(source):
+        for piece in (_split_segment_by_words(segment) or SentenceAnalyzer._split_segment_sentences(source)):
             words = {word.casefold() for word in _WORD_RE.findall(piece.text)}
             highlighted = [
                 word for word in segment.get("highlighted_words", [])

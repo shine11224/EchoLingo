@@ -17,12 +17,34 @@ HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 }
 
+_BASE_DIR = Path(__file__).resolve().parents[2]  # repo 根目录（backend/sources/ 上两级）
+
+
+def _default_cookies_file() -> str | None:
+    """自动拾取 Bilibili cookies.txt，让网页流程无需 CLI 参数也能带登录态。
+    优先级：BILIBILI_COOKIES_FILE > $ELT_CONFIG_DIR（云端 config 卷）> resources/。
+    字幕列表接口 x/player/v2 不登录时 subtitles 恒为空，必须带 SESSDATA。"""
+    import os
+
+    candidates: list[Path] = []
+    env_file = os.environ.get("BILIBILI_COOKIES_FILE", "").strip()
+    if env_file:
+        candidates.append(Path(env_file))
+    config_dir = os.environ.get("ELT_CONFIG_DIR", "").strip()
+    if config_dir:
+        candidates.append(Path(config_dir) / "bilibili_cookies.txt")
+    candidates.append(_BASE_DIR / "resources" / "bilibili_cookies.txt")
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
 
 def probe_bilibili(url: str, cookies_file: str | None = None, check_subtitles: bool = False) -> dict:
     """只获取视频元信息，不下载任何内容。
     返回 {bvid, title, pages, is_multi, has_subtitle (仅 check_subtitles=True 时)}
     """
-    cookies = _load_cookies_txt(cookies_file)
+    cookies = _load_cookies_txt(cookies_file or _default_cookies_file())
     bvid, part_index = _extract_bvid_and_part(url)
     view = requests.get(
         "https://api.bilibili.com/x/web-interface/view",
@@ -73,7 +95,7 @@ def probe_bilibili(url: str, cookies_file: str | None = None, check_subtitles: b
 
 
 def build_bilibili_lesson(url: str, cookies_file: str | None = None, download_video: bool = False, whisper_model: str = "large-v3") -> SourceBundle:
-    cookies = _load_cookies_txt(cookies_file)
+    cookies = _load_cookies_txt(cookies_file or _default_cookies_file())
     bvid, part_index = _extract_bvid_and_part(url)
 
     view = requests.get(
@@ -169,9 +191,16 @@ def _load_cookies_txt(cookies_file: str | None) -> dict:
     return cookies
 
 
+def _extract_url_from_share_text(text: str) -> str:
+    """App 分享文本常带标题和【】，先抽出其中的真实 URL，否则原样返回。"""
+    match = re.search(r"https?://[^\s【】\]\"'<>]+", text)
+    return match.group(0).rstrip("。，；！？,.") if match else text.strip()
+
+
 def _extract_bvid_and_part(url: str) -> tuple[str, int | None]:
     """从 URL 提取 BV 号和分 P 编号（p=N），没有 p 参数则返回 None。"""
     from urllib.parse import parse_qs, urlparse
+    url = _extract_url_from_share_text(url)
     if "b23.tv" in url:
         url = _resolve_bilibili_short_url(url)
 
@@ -191,11 +220,17 @@ def _extract_bvid_and_part(url: str) -> tuple[str, int | None]:
 
 
 def _resolve_bilibili_short_url(url: str) -> str:
-    """Expand b23.tv share links before extracting BV id."""
+    """Expand b23.tv share links before extracting BV id.
+
+    只取 302 Location，不拉最终页面——www.bilibili.com 的 HTML 页在部分
+    机房 IP（东京实测）会被 412 风控，但我们只需要 URL 里的 BV 号。"""
     try:
-        with requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True, stream=True) as resp:
-            resp.raise_for_status()
-            return resp.url
+        resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=False)
+        if resp.is_redirect and resp.headers.get("Location"):
+            return resp.headers["Location"]
+        # 兜底：跟完重定向链取最终 URL，容忍最终页面的风控状态码
+        with requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True, stream=True) as resp2:
+            return resp2.url
     except Exception as exc:
         raise ValueError(f"无法展开 Bilibili 短链接: {url}") from exc
 
@@ -445,7 +480,7 @@ def _raise_playurl_error(playurl: dict) -> None:
         "该视频可能需要登录才能下载，请按以下步骤操作：\n"
         "  1. 用浏览器登录 bilibili.com\n"
         "  2. 安装浏览器插件 'Get cookies.txt LOCALLY'（Chrome/Edge 均可）\n"
-        "  3. 在 bilibili.com 页面点插件图标，导出 cookies，保存为 cookies.txt\n"
-        "  4. 重新运行，加上 --bilibili-cookies 参数：\n"
-        "       python main.py --bilibili <url> --bilibili-cookies cookies.txt"
+        "  3. 在 bilibili.com 页面点插件图标，导出 cookies，保存为 bilibili_cookies.txt\n"
+        "  4. 网页版：把 bilibili_cookies.txt 放到 resources/ 目录（云端放 config 卷）后重试\n"
+        "     命令行：重新运行时加 --bilibili-cookies bilibili_cookies.txt"
     )

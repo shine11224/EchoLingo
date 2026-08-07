@@ -172,13 +172,10 @@ def enqueue_lesson_alignment(lesson_id: int, *, force: bool = False) -> dict:
         _status_path(lesson_id),
         {"lesson_id": lesson_id, "status": "queued", "updated_at": _now(), "error": ""},
     )
-    thread = threading.Thread(
-        target=_alignment_worker,
-        args=(lesson_id, force),
-        daemon=True,
+    db.spawn_with_db_context(
+        _alignment_worker, lesson_id, force,
         name=f"mfa-alignment-{lesson_id}",
     )
-    thread.start()
     return get_alignment_status(lesson_id)
 
 

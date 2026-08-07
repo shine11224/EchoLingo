@@ -59,7 +59,7 @@ def health():
         return {"available": bool(path), "path": path or ""}
 
     def check_sqlite() -> dict:
-        db_path = Path(getattr(db, "DB_PATH", ai_config.BASE_DIR / "resources" / "vocab.db"))
+        db_path = db.current_db_path()
         result = {
             "path": str(db_path),
             "exists": db_path.exists(),
@@ -363,7 +363,7 @@ async def api_upload_wordlist(
         return JSONResponse({"ok": False, "error": message, "invalid_tokens": invalid}, status_code=400)
 
     safe_name = re.sub(r"[^a-zA-Z0-9_\-\.]", "_", file.filename)
-    save_path = wl_storage.USER_DIR / safe_name
+    save_path = wl_storage.user_source_dir() / safe_name
     save_path.write_text(content, encoding="utf-8")
 
     success = wl_storage.compile_user_wordlist(save_path, display_name=name, tag=tag)

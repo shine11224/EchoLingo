@@ -87,7 +87,7 @@ def serve_wordlist(name: str):
     if name == "my_mastered":
         return {"words": sorted(db.get_mastered_review_targets() | db.get_known_words())}
     safe = re.sub(r"[^a-z0-9_]", "", name)
-    path = wl_storage.COMPILED_DIR / (safe + ".json")
+    path = wl_storage.resolve_compiled_path(safe)
     if not path.exists():
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(str(path), media_type="application/json")

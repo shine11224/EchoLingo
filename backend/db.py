@@ -1,5 +1,8 @@
-﻿import sqlite3, json
+﻿import os
+import sqlite3, json
 import re
+import contextvars
+import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import contextmanager
@@ -8,10 +11,57 @@ from typing import Optional
 DB_PATH = Path(__file__).resolve().parents[1] / "resources" / "vocab.db"
 V2_TAG_CATEGORIES = {"vocabulary", "pronunciation", "structure", "expression", "practice"}
 
+# ── 多用户：数据库路径三级解析 contextvar → ELT_USER_DB → 默认 ──
+_current_db_path: contextvars.ContextVar[Optional[Path]] = contextvars.ContextVar(
+    "elt_db_path", default=None
+)
+_initialized_paths: set = set()
+
+
+def current_db_path() -> Path:
+    """当前请求/线程应使用的 SQLite 路径。"""
+    p = _current_db_path.get()
+    if p is not None:
+        return p
+    env = os.environ.get("ELT_USER_DB")
+    if env:
+        return Path(env)
+    return DB_PATH
+
+
+def set_current_db_path(path: Path) -> contextvars.Token:
+    return _current_db_path.set(Path(path))
+
+
+def reset_current_db_path(token: contextvars.Token) -> None:
+    _current_db_path.reset(token)
+
+
+def current_user_root() -> Optional[Path]:
+    """多用户请求上下文返回 resources/users/<username>/；单用户（含 ELT_USER_DB 覆盖）返回 None。
+
+    判定依据是 contextvar 是否被中间件显式设置，与 ELT_USER_DB/默认路径无关。
+    """
+    p = _current_db_path.get()
+    return p.parent if p is not None else None
+
+
+def spawn_with_db_context(target, *args, name: str | None = None, **kwargs) -> threading.Thread:
+    """后台线程不继承 contextvar，用 copy_context 显式传播用户数据库上下文。"""
+    ctx = contextvars.copy_context()
+    t = threading.Thread(target=lambda: ctx.run(target, *args, **kwargs), daemon=True, name=name)
+    t.start()
+    return t
+
 
 @contextmanager
 def _db():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    path = current_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path not in _initialized_paths:
+        init_db(path)
+        _initialized_paths.add(path)
+    conn = sqlite3.connect(path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -25,447 +75,460 @@ def _db():
         conn.close()
 
 
-def init_db():
-    with _db() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS words (
-                word             TEXT PRIMARY KEY,
-                count            INTEGER NOT NULL DEFAULT 0,
-                first_studied    TEXT    NOT NULL DEFAULT '',
-                last_studied     TEXT    NOT NULL DEFAULT '',
-                level            TEXT    NOT NULL DEFAULT '',
-                cached_analysis  TEXT
-            );
-            CREATE TABLE IF NOT EXISTS contexts (
-                id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                word     TEXT NOT NULL REFERENCES words(word) ON DELETE CASCADE,
-                lesson   TEXT NOT NULL DEFAULT '',
-                sentence TEXT NOT NULL DEFAULT '',
-                UNIQUE(word, lesson, sentence)
-            );
-            CREATE TABLE IF NOT EXISTS stories (
-                cache_key  TEXT PRIMARY KEY,
-                words_json TEXT NOT NULL,
-                story      TEXT NOT NULL,
-                date       TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS story_history (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                cache_key     TEXT NOT NULL,
-                words_json    TEXT NOT NULL,
-                story         TEXT NOT NULL,
-                date          TEXT NOT NULL,
-                learner_level TEXT NOT NULL DEFAULT '',
-                theme         TEXT NOT NULL DEFAULT '',
-                created_at    TEXT NOT NULL DEFAULT '',
-                UNIQUE(cache_key, story)
-            );
-            CREATE INDEX IF NOT EXISTS idx_story_history_created
-                ON story_history(created_at DESC, id DESC);
-            CREATE TABLE IF NOT EXISTS known_words (
-                word      TEXT PRIMARY KEY,
-                added_at  TEXT NOT NULL DEFAULT ''
-            );
-            CREATE TABLE IF NOT EXISTS lessons (
-                filename       TEXT PRIMARY KEY,
-                title          TEXT NOT NULL DEFAULT '',
-                source_type    TEXT NOT NULL DEFAULT 'local_video',
-                source_url     TEXT NOT NULL DEFAULT '',
-                sentence_count INTEGER NOT NULL DEFAULT 0,
-                duration       INTEGER NOT NULL DEFAULT 0,
-                created_at     TEXT NOT NULL DEFAULT ''
-            );
-            CREATE TABLE IF NOT EXISTS study_sessions (
-                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_filename      TEXT    NOT NULL,
-                started_at           TEXT    NOT NULL DEFAULT '',
-                last_active_at       TEXT    NOT NULL DEFAULT '',
-                current_sentence_idx INTEGER NOT NULL DEFAULT 0,
-                total_sentences      INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(lesson_filename)
-            );
-            CREATE TABLE IF NOT EXISTS sentence_marks (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_filename TEXT    NOT NULL,
-                sentence_idx    INTEGER NOT NULL,
-                marked_at       TEXT    NOT NULL DEFAULT '',
-                UNIQUE(lesson_filename, sentence_idx)
-            );
-            CREATE TABLE IF NOT EXISTS lesson_reflections (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename    TEXT NOT NULL,
-                reflection  TEXT NOT NULL DEFAULT '',
-                created_at  TEXT NOT NULL DEFAULT ''
-            );
-            CREATE TABLE IF NOT EXISTS practice_attempts (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename     TEXT NOT NULL,
-                sentence_idx INTEGER NOT NULL,
-                user_input   TEXT NOT NULL DEFAULT '',
-                ai_feedback  TEXT NOT NULL DEFAULT '',
-                created_at   TEXT NOT NULL DEFAULT ''
-            );
+def init_db(path: Path | None = None):
+    _token = None
+    if path is not None:
+        _token = set_current_db_path(path)
+        _initialized_paths.add(path)
+    try:
+        with _db() as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS words (
+                    word             TEXT PRIMARY KEY,
+                    count            INTEGER NOT NULL DEFAULT 0,
+                    first_studied    TEXT    NOT NULL DEFAULT '',
+                    last_studied     TEXT    NOT NULL DEFAULT '',
+                    level            TEXT    NOT NULL DEFAULT '',
+                    cached_analysis  TEXT
+                );
+                CREATE TABLE IF NOT EXISTS contexts (
+                    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    word     TEXT NOT NULL REFERENCES words(word) ON DELETE CASCADE,
+                    lesson   TEXT NOT NULL DEFAULT '',
+                    sentence TEXT NOT NULL DEFAULT '',
+                    UNIQUE(word, lesson, sentence)
+                );
+                CREATE TABLE IF NOT EXISTS stories (
+                    cache_key  TEXT PRIMARY KEY,
+                    words_json TEXT NOT NULL,
+                    story      TEXT NOT NULL,
+                    date       TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS story_history (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key     TEXT NOT NULL,
+                    words_json    TEXT NOT NULL,
+                    story         TEXT NOT NULL,
+                    date          TEXT NOT NULL,
+                    learner_level TEXT NOT NULL DEFAULT '',
+                    theme         TEXT NOT NULL DEFAULT '',
+                    created_at    TEXT NOT NULL DEFAULT '',
+                    UNIQUE(cache_key, story)
+                );
+                CREATE INDEX IF NOT EXISTS idx_story_history_created
+                    ON story_history(created_at DESC, id DESC);
+                CREATE TABLE IF NOT EXISTS known_words (
+                    word      TEXT PRIMARY KEY,
+                    added_at  TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS lessons (
+                    filename       TEXT PRIMARY KEY,
+                    title          TEXT NOT NULL DEFAULT '',
+                    source_type    TEXT NOT NULL DEFAULT 'local_video',
+                    source_url     TEXT NOT NULL DEFAULT '',
+                    sentence_count INTEGER NOT NULL DEFAULT 0,
+                    duration       INTEGER NOT NULL DEFAULT 0,
+                    created_at     TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS study_sessions (
+                    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_filename      TEXT    NOT NULL,
+                    started_at           TEXT    NOT NULL DEFAULT '',
+                    last_active_at       TEXT    NOT NULL DEFAULT '',
+                    current_sentence_idx INTEGER NOT NULL DEFAULT 0,
+                    total_sentences      INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(lesson_filename)
+                );
+                CREATE TABLE IF NOT EXISTS sentence_marks (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_filename TEXT    NOT NULL,
+                    sentence_idx    INTEGER NOT NULL,
+                    marked_at       TEXT    NOT NULL DEFAULT '',
+                    UNIQUE(lesson_filename, sentence_idx)
+                );
+                CREATE TABLE IF NOT EXISTS lesson_reflections (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename    TEXT NOT NULL,
+                    reflection  TEXT NOT NULL DEFAULT '',
+                    created_at  TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS practice_attempts (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename     TEXT NOT NULL,
+                    sentence_idx INTEGER NOT NULL,
+                    user_input   TEXT NOT NULL DEFAULT '',
+                    ai_feedback  TEXT NOT NULL DEFAULT '',
+                    created_at   TEXT NOT NULL DEFAULT ''
+                );
 
-            -- v2 tables for video workspace
-            CREATE TABLE IF NOT EXISTS v2_lessons (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                source_type     TEXT NOT NULL,
-                source_url      TEXT NOT NULL,
-                video_id        TEXT NOT NULL DEFAULT '',
-                lesson_mode     TEXT NOT NULL DEFAULT 'listening',
-                media_url       TEXT NOT NULL DEFAULT '',
-                media_kind      TEXT NOT NULL DEFAULT '',
-                title           TEXT NOT NULL DEFAULT '',
-                duration        REAL NOT NULL DEFAULT 0,
-                subtitle_status TEXT NOT NULL DEFAULT 'pending',
-                summary_status  TEXT NOT NULL DEFAULT 'pending',
-                subtitle_error  TEXT NOT NULL DEFAULT '',
-                summary_error   TEXT NOT NULL DEFAULT '',
-                translation_requested INTEGER NOT NULL DEFAULT 0,
-                translation_status TEXT NOT NULL DEFAULT 'disabled',
-                translation_done INTEGER NOT NULL DEFAULT 0,
-                translation_total INTEGER NOT NULL DEFAULT 0,
-                translation_buffer_seconds REAL NOT NULL DEFAULT 0,
-                translation_rate REAL NOT NULL DEFAULT 0,
-                translation_ready INTEGER NOT NULL DEFAULT 0,
-                translation_error TEXT NOT NULL DEFAULT '',
-                created_at      TEXT NOT NULL DEFAULT '',
-                updated_at      TEXT NOT NULL DEFAULT '',
-                archived        INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(source_type, source_url)
-            );
+                -- v2 tables for video workspace
+                CREATE TABLE IF NOT EXISTS v2_lessons (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_type     TEXT NOT NULL,
+                    source_url      TEXT NOT NULL,
+                    video_id        TEXT NOT NULL DEFAULT '',
+                    lesson_mode     TEXT NOT NULL DEFAULT 'listening',
+                    media_url       TEXT NOT NULL DEFAULT '',
+                    media_kind      TEXT NOT NULL DEFAULT '',
+                    title           TEXT NOT NULL DEFAULT '',
+                    duration        REAL NOT NULL DEFAULT 0,
+                    subtitle_status TEXT NOT NULL DEFAULT 'pending',
+                    summary_status  TEXT NOT NULL DEFAULT 'pending',
+                    subtitle_error  TEXT NOT NULL DEFAULT '',
+                    summary_error   TEXT NOT NULL DEFAULT '',
+                    translation_requested INTEGER NOT NULL DEFAULT 0,
+                    translation_status TEXT NOT NULL DEFAULT 'disabled',
+                    translation_done INTEGER NOT NULL DEFAULT 0,
+                    translation_total INTEGER NOT NULL DEFAULT 0,
+                    translation_buffer_seconds REAL NOT NULL DEFAULT 0,
+                    translation_rate REAL NOT NULL DEFAULT 0,
+                    translation_ready INTEGER NOT NULL DEFAULT 0,
+                    translation_error TEXT NOT NULL DEFAULT '',
+                    created_at      TEXT NOT NULL DEFAULT '',
+                    updated_at      TEXT NOT NULL DEFAULT '',
+                    archived        INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(source_type, source_url)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_subtitle_segments (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                idx        INTEGER NOT NULL,
-                start      REAL NOT NULL DEFAULT 0,
-                end        REAL NOT NULL DEFAULT 0,
-                text       TEXT NOT NULL DEFAULT '',
-                normalized TEXT NOT NULL DEFAULT '',
-                UNIQUE(lesson_id, idx)
-            );
+                CREATE TABLE IF NOT EXISTS v2_subtitle_segments (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    idx        INTEGER NOT NULL,
+                    start      REAL NOT NULL DEFAULT 0,
+                    end        REAL NOT NULL DEFAULT 0,
+                    text       TEXT NOT NULL DEFAULT '',
+                    normalized TEXT NOT NULL DEFAULT '',
+                    UNIQUE(lesson_id, idx)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_lesson_summaries (
-                lesson_id    INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                summary      TEXT NOT NULL DEFAULT '',
-                outline_json TEXT NOT NULL DEFAULT '[]',
-                keywords_json TEXT NOT NULL DEFAULT '[]',
-                status       TEXT NOT NULL DEFAULT 'pending',
-                updated_at   TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_lesson_summaries (
+                    lesson_id    INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    summary      TEXT NOT NULL DEFAULT '',
+                    outline_json TEXT NOT NULL DEFAULT '[]',
+                    keywords_json TEXT NOT NULL DEFAULT '[]',
+                    status       TEXT NOT NULL DEFAULT 'pending',
+                    updated_at   TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_lesson_progress (
-                lesson_id             INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                last_position_seconds REAL NOT NULL DEFAULT 0,
-                last_segment_index    INTEGER NOT NULL DEFAULT 0,
-                updated_at            TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_lesson_progress (
+                    lesson_id             INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    last_position_seconds REAL NOT NULL DEFAULT 0,
+                    last_segment_index    INTEGER NOT NULL DEFAULT 0,
+                    updated_at            TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_chat_sessions (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                title      TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_chat_sessions (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    title      TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_chat_messages (
-                id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_id              INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                session_id             INTEGER REFERENCES v2_chat_sessions(id) ON DELETE CASCADE,
-                timestamp_seconds      REAL NOT NULL DEFAULT 0,
-                selected_start_seconds REAL,
-                selected_end_seconds   REAL,
-                selected_segment_ids   TEXT NOT NULL DEFAULT '[]',
-                user_message           TEXT NOT NULL DEFAULT '',
-                ai_response            TEXT NOT NULL DEFAULT '',
-                context_mode           TEXT NOT NULL DEFAULT 'auto',
-                created_at             TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_chat_messages (
+                    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id              INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    session_id             INTEGER REFERENCES v2_chat_sessions(id) ON DELETE CASCADE,
+                    timestamp_seconds      REAL NOT NULL DEFAULT 0,
+                    selected_start_seconds REAL,
+                    selected_end_seconds   REAL,
+                    selected_segment_ids   TEXT NOT NULL DEFAULT '[]',
+                    user_message           TEXT NOT NULL DEFAULT '',
+                    ai_response            TEXT NOT NULL DEFAULT '',
+                    context_mode           TEXT NOT NULL DEFAULT 'auto',
+                    created_at             TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_phase_b_sentences (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_id     INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                sentence_id   INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL,
-                segment_index INTEGER NOT NULL,
-                start_seconds REAL NOT NULL DEFAULT 0,
-                end_seconds   REAL NOT NULL DEFAULT 0,
-                text          TEXT NOT NULL DEFAULT '',
-                created_at    TEXT NOT NULL DEFAULT '',
-                UNIQUE(lesson_id, segment_index)
-            );
+                CREATE TABLE IF NOT EXISTS v2_phase_b_sentences (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id     INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    sentence_id   INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL,
+                    segment_index INTEGER NOT NULL,
+                    start_seconds REAL NOT NULL DEFAULT 0,
+                    end_seconds   REAL NOT NULL DEFAULT 0,
+                    text          TEXT NOT NULL DEFAULT '',
+                    created_at    TEXT NOT NULL DEFAULT '',
+                    UNIQUE(lesson_id, segment_index)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_sentences (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                normalized_text TEXT NOT NULL UNIQUE,
-                text            TEXT NOT NULL DEFAULT '',
-                translation     TEXT NOT NULL DEFAULT '',
-                phonetics       TEXT NOT NULL DEFAULT '',
-                audio_url       TEXT NOT NULL DEFAULT '',
-                review_count    INTEGER NOT NULL DEFAULT 0,
-                listening_result TEXT NOT NULL DEFAULT 'untested',
-                archived        INTEGER NOT NULL DEFAULT 0,
-                last_reviewed_at TEXT NOT NULL DEFAULT '',
-                next_review     TEXT NOT NULL DEFAULT '',
-                first_seen_at   TEXT NOT NULL DEFAULT '',
-                last_seen_at    TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_sentences (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    normalized_text TEXT NOT NULL UNIQUE,
+                    text            TEXT NOT NULL DEFAULT '',
+                    translation     TEXT NOT NULL DEFAULT '',
+                    phonetics       TEXT NOT NULL DEFAULT '',
+                    audio_url       TEXT NOT NULL DEFAULT '',
+                    review_count    INTEGER NOT NULL DEFAULT 0,
+                    listening_result TEXT NOT NULL DEFAULT 'untested',
+                    archived        INTEGER NOT NULL DEFAULT 0,
+                    last_reviewed_at TEXT NOT NULL DEFAULT '',
+                    next_review     TEXT NOT NULL DEFAULT '',
+                    first_seen_at   TEXT NOT NULL DEFAULT '',
+                    last_seen_at    TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_sentence_listening_attempts (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                sentence_id INTEGER NOT NULL REFERENCES v2_sentences(id) ON DELETE CASCADE,
-                result      TEXT NOT NULL CHECK(result IN ('understood', 'not_understood')),
-                created_at  TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_sentence_listening_attempts (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sentence_id INTEGER NOT NULL REFERENCES v2_sentences(id) ON DELETE CASCADE,
+                    result      TEXT NOT NULL CHECK(result IN ('understood', 'not_understood')),
+                    created_at  TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_sentence_patterns (
-                sentence_id      INTEGER PRIMARY KEY REFERENCES v2_sentences(id) ON DELETE CASCADE,
-                pattern_template TEXT NOT NULL DEFAULT '',
-                scenario_cn      TEXT NOT NULL DEFAULT '',
-                analysis_json    TEXT NOT NULL DEFAULT '{}',
-                updated_at       TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_sentence_patterns (
+                    sentence_id      INTEGER PRIMARY KEY REFERENCES v2_sentences(id) ON DELETE CASCADE,
+                    pattern_template TEXT NOT NULL DEFAULT '',
+                    scenario_cn      TEXT NOT NULL DEFAULT '',
+                    analysis_json    TEXT NOT NULL DEFAULT '{}',
+                    updated_at       TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_tags (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                category   TEXT NOT NULL,
-                name       TEXT NOT NULL,
-                source     TEXT NOT NULL DEFAULT 'user',
-                created_at TEXT NOT NULL DEFAULT '',
-                UNIQUE(category, name)
-            );
+                CREATE TABLE IF NOT EXISTS v2_tags (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category   TEXT NOT NULL,
+                    name       TEXT NOT NULL,
+                    source     TEXT NOT NULL DEFAULT 'user',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    UNIQUE(category, name)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_sentence_tags (
-                sentence_id INTEGER NOT NULL REFERENCES v2_sentences(id) ON DELETE CASCADE,
-                tag_id      INTEGER NOT NULL REFERENCES v2_tags(id) ON DELETE CASCADE,
-                created_at  TEXT NOT NULL DEFAULT '',
-                PRIMARY KEY(sentence_id, tag_id)
-            );
+                CREATE TABLE IF NOT EXISTS v2_sentence_tags (
+                    sentence_id INTEGER NOT NULL REFERENCES v2_sentences(id) ON DELETE CASCADE,
+                    tag_id      INTEGER NOT NULL REFERENCES v2_tags(id) ON DELETE CASCADE,
+                    created_at  TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY(sentence_id, tag_id)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_lesson_words (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                word       TEXT NOT NULL REFERENCES words(word) ON DELETE CASCADE,
-                sentence   TEXT NOT NULL DEFAULT '',
-                created_at TEXT NOT NULL DEFAULT '',
-                UNIQUE(lesson_id, word)
-            );
+                CREATE TABLE IF NOT EXISTS v2_lesson_words (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    word       TEXT NOT NULL REFERENCES words(word) ON DELETE CASCADE,
+                    sentence   TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    UNIQUE(lesson_id, word)
+                );
 
-            CREATE TABLE IF NOT EXISTS word_review_items (
-                word       TEXT PRIMARY KEY REFERENCES words(word) ON DELETE CASCADE,
-                source     TEXT NOT NULL DEFAULT '',
-                lesson_id  INTEGER REFERENCES v2_lessons(id) ON DELETE SET NULL,
-                target_type TEXT NOT NULL DEFAULT 'word',
-                lemma       TEXT NOT NULL DEFAULT '',
-                display_text TEXT NOT NULL DEFAULT '',
-                familiarity TEXT NOT NULL DEFAULT 'unrated',
-                archived    INTEGER NOT NULL DEFAULT 0,
-                mastered    INTEGER NOT NULL DEFAULT 0,
-                tags        TEXT NOT NULL DEFAULT '[]',
-                added_at   TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS word_review_items (
+                    word       TEXT PRIMARY KEY REFERENCES words(word) ON DELETE CASCADE,
+                    source     TEXT NOT NULL DEFAULT '',
+                    lesson_id  INTEGER REFERENCES v2_lessons(id) ON DELETE SET NULL,
+                    target_type TEXT NOT NULL DEFAULT 'word',
+                    lemma       TEXT NOT NULL DEFAULT '',
+                    display_text TEXT NOT NULL DEFAULT '',
+                    familiarity TEXT NOT NULL DEFAULT 'unrated',
+                    archived    INTEGER NOT NULL DEFAULT 0,
+                    mastered    INTEGER NOT NULL DEFAULT 0,
+                    tags        TEXT NOT NULL DEFAULT '[]',
+                    added_at   TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_practice_attempts (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                practice_type   TEXT NOT NULL,
-                target          TEXT NOT NULL DEFAULT '',
-                target_type     TEXT NOT NULL DEFAULT 'word',
-                sentence_id     INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL,
-                lesson_id       INTEGER REFERENCES v2_lessons(id) ON DELETE SET NULL,
-                user_input      TEXT NOT NULL,
-                input_method    TEXT NOT NULL DEFAULT 'keyboard',
-                hint_used       INTEGER NOT NULL DEFAULT 0,
-                scenario_cn     TEXT NOT NULL DEFAULT '',
-                hint_text       TEXT NOT NULL DEFAULT '',
-                source_context  TEXT NOT NULL DEFAULT '',
-                verdict         TEXT NOT NULL,
-                key_issue       TEXT NOT NULL DEFAULT '',
-                revised_sentence TEXT NOT NULL DEFAULT '',
-                idiomatic_suggestion TEXT NOT NULL DEFAULT '',
-                result_json     TEXT NOT NULL,
-                created_at      TEXT NOT NULL DEFAULT ''
-            );
+                CREATE TABLE IF NOT EXISTS v2_practice_attempts (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    practice_type   TEXT NOT NULL,
+                    target          TEXT NOT NULL DEFAULT '',
+                    target_type     TEXT NOT NULL DEFAULT 'word',
+                    sentence_id     INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL,
+                    lesson_id       INTEGER REFERENCES v2_lessons(id) ON DELETE SET NULL,
+                    user_input      TEXT NOT NULL,
+                    input_method    TEXT NOT NULL DEFAULT 'keyboard',
+                    hint_used       INTEGER NOT NULL DEFAULT 0,
+                    scenario_cn     TEXT NOT NULL DEFAULT '',
+                    hint_text       TEXT NOT NULL DEFAULT '',
+                    source_context  TEXT NOT NULL DEFAULT '',
+                    verdict         TEXT NOT NULL,
+                    key_issue       TEXT NOT NULL DEFAULT '',
+                    revised_sentence TEXT NOT NULL DEFAULT '',
+                    idiomatic_suggestion TEXT NOT NULL DEFAULT '',
+                    result_json     TEXT NOT NULL,
+                    created_at      TEXT NOT NULL DEFAULT ''
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_lesson_hidden_words (
-                lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                word       TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT '',
-                PRIMARY KEY(lesson_id, word)
-            );
+                CREATE TABLE IF NOT EXISTS v2_lesson_hidden_words (
+                    lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    word       TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY(lesson_id, word)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_reading_blocks (
-                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-                lesson_id          INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                block_index        INTEGER NOT NULL,
-                text               TEXT NOT NULL DEFAULT '',
-                start_seconds      REAL,
-                end_seconds        REAL,
-                sentences_json     TEXT NOT NULL DEFAULT '[]',
-                source_segment_ids TEXT NOT NULL DEFAULT '[]',
-                created_at         TEXT NOT NULL DEFAULT '',
-                UNIQUE(lesson_id, block_index)
-            );
+                CREATE TABLE IF NOT EXISTS v2_reading_blocks (
+                    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id          INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    block_index        INTEGER NOT NULL,
+                    text               TEXT NOT NULL DEFAULT '',
+                    start_seconds      REAL,
+                    end_seconds        REAL,
+                    sentences_json     TEXT NOT NULL DEFAULT '[]',
+                    source_segment_ids TEXT NOT NULL DEFAULT '[]',
+                    created_at         TEXT NOT NULL DEFAULT '',
+                    UNIQUE(lesson_id, block_index)
+                );
 
-            CREATE TABLE IF NOT EXISTS v2_document_outlines (
-                lesson_id    INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
-                content_hash TEXT NOT NULL DEFAULT '',
-                outline_json TEXT NOT NULL DEFAULT '{}',
-                updated_at   TEXT NOT NULL DEFAULT ''
-            );
-        """)
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO story_history
-                (cache_key, words_json, story, date, learner_level, theme, created_at)
-            SELECT cache_key, words_json, story, date, '', '', date || 'T00:00:00+00:00'
-            FROM stories
-            """
-        )
-        # 迁移：给已有 lessons 表加 archived 字段
-        try:
-            conn.execute("ALTER TABLE lessons ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
-        except Exception:
-            pass
-        # 迁移：给已有 words 表加 next_review 字段
-        try:
-            conn.execute("ALTER TABLE words ADD COLUMN next_review TEXT NOT NULL DEFAULT ''")
-        except Exception:
-            pass
-        # 旧 words 记录无法区分“导入词库”和“主动深入学习”，不能批量迁入复习本。
-        conn.execute("DELETE FROM word_review_items WHERE source = 'legacy_review'")
-        # 查词和旧批改接口都不是显式收藏；清理旧版本误写的成员关系。
-        conn.execute("DELETE FROM word_review_items WHERE source IN ('lookup', 'practice')")
-        practice_attempt_columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(v2_practice_attempts)").fetchall()
-        }
-        for column_sql in (
-            "ALTER TABLE v2_lessons ADD COLUMN lesson_mode TEXT NOT NULL DEFAULT 'listening'",
-            "ALTER TABLE v2_lessons ADD COLUMN media_url TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_lessons ADD COLUMN media_kind TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_phase_b_sentences ADD COLUMN sentence_id INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL",
-            "ALTER TABLE v2_chat_messages ADD COLUMN session_id INTEGER REFERENCES v2_chat_sessions(id) ON DELETE CASCADE",
-            "ALTER TABLE v2_reading_blocks ADD COLUMN start_seconds REAL",
-            "ALTER TABLE v2_reading_blocks ADD COLUMN end_seconds REAL",
-            "ALTER TABLE v2_reading_blocks ADD COLUMN sentences_json TEXT NOT NULL DEFAULT '[]'",
-            "ALTER TABLE v2_reading_blocks ADD COLUMN source_segment_ids TEXT NOT NULL DEFAULT '[]'",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_requested INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_status TEXT NOT NULL DEFAULT 'disabled'",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_done INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_total INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_buffer_seconds REAL NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_rate REAL NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_ready INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN translation_error TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_lessons ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_lessons ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_sentences ADD COLUMN last_reviewed_at TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_sentences ADD COLUMN next_review TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_sentences ADD COLUMN phonetics_source TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_sentences ADD COLUMN listening_result TEXT NOT NULL DEFAULT 'untested'",
-            "ALTER TABLE v2_sentences ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE v2_sentences ADD COLUMN saved_manually INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE word_review_items ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
-            "ALTER TABLE word_review_items ADD COLUMN lemma TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE word_review_items ADD COLUMN display_text TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE word_review_items ADD COLUMN familiarity TEXT NOT NULL DEFAULT 'unrated'",
-            "ALTER TABLE word_review_items ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE word_review_items ADD COLUMN mastered INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE word_review_items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
-            "ALTER TABLE v2_practice_attempts ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
-            "ALTER TABLE v2_practice_attempts ADD COLUMN hint_text TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_practice_attempts ADD COLUMN source_context TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_practice_attempts ADD COLUMN key_issue TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_practice_attempts ADD COLUMN revised_sentence TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_practice_attempts ADD COLUMN idiomatic_suggestion TEXT NOT NULL DEFAULT ''",
-            "ALTER TABLE v2_sentence_patterns ADD COLUMN analysis_json TEXT NOT NULL DEFAULT '{}'",
-        ):
+                CREATE TABLE IF NOT EXISTS v2_document_outlines (
+                    lesson_id    INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    content_hash TEXT NOT NULL DEFAULT '',
+                    outline_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at   TEXT NOT NULL DEFAULT ''
+                );
+            """)
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO story_history
+                    (cache_key, words_json, story, date, learner_level, theme, created_at)
+                SELECT cache_key, words_json, story, date, '', '', date || 'T00:00:00+00:00'
+                FROM stories
+                """
+            )
+            # 迁移：给已有 lessons 表加 archived 字段
             try:
-                conn.execute(column_sql)
+                conn.execute("ALTER TABLE lessons ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
             except Exception:
                 pass
-        if "target_type" not in practice_attempt_columns:
-            conn.execute(
-                "UPDATE v2_practice_attempts SET target_type=practice_type"
-                " WHERE practice_type IN ('word', 'phrase', 'pattern')"
-            )
-        # 旧版只保存 good/hard/again 对应的下次复习日；迁移为听力二态。
-        legacy_reviews = conn.execute(
-            """
-            SELECT id, review_count, last_reviewed_at, next_review, listening_result
-            FROM v2_sentences
-            WHERE review_count > 0 AND listening_result='untested'
-            """
-        ).fetchall()
-        for legacy in legacy_reviews:
-            result = "not_understood"
+            # 迁移：给已有 words 表加 next_review 字段
             try:
-                reviewed_day = date.fromisoformat(str(legacy["last_reviewed_at"])[:10])
-                next_day = date.fromisoformat(str(legacy["next_review"])[:10])
-                if (next_day - reviewed_day).days > 3:
-                    result = "understood"
-            except (TypeError, ValueError):
+                conn.execute("ALTER TABLE words ADD COLUMN next_review TEXT NOT NULL DEFAULT ''")
+            except Exception:
                 pass
-            conn.execute(
-                "UPDATE v2_sentences SET listening_result=? WHERE id=?",
-                (result, legacy["id"]),
-            )
-        conn.execute("""
-            INSERT INTO v2_chat_sessions (lesson_id, title, created_at, updated_at)
-            SELECT messages.lesson_id, 'Legacy conversation',
-                   COALESCE(MIN(messages.created_at), ''),
-                   COALESCE(MAX(messages.created_at), '')
-            FROM v2_chat_messages AS messages
-            WHERE messages.session_id IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM v2_chat_sessions AS sessions
-                  WHERE sessions.lesson_id = messages.lesson_id
-                    AND sessions.title = 'Legacy conversation'
-              )
-            GROUP BY messages.lesson_id
-        """)
-        conn.execute("""
-            UPDATE v2_chat_messages
-            SET session_id = (
-                SELECT sessions.id FROM v2_chat_sessions AS sessions
-                WHERE sessions.lesson_id = v2_chat_messages.lesson_id
-                  AND sessions.title = 'Legacy conversation'
-                ORDER BY sessions.id ASC LIMIT 1
-            )
-            WHERE session_id IS NULL
-        """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_v2_chat_messages_lesson_session_id"
-            " ON v2_chat_messages (lesson_id, session_id, id)"
-        )
-        for category, names in {
-            "vocabulary": ("重点词汇", "搭配", "短语动词", "习语表达", "学术表达"),
-            "pronunciation": ("连读", "弱读", "略读/吞音", "重音", "语调", "意群停顿"),
-            "structure": ("可复用句式", "从句结构", "比较对比", "因果逻辑", "让步转折", "条件假设"),
-            "expression": ("提出观点", "解释原因", "举例说明", "总结归纳", "反驳/让步", "描述趋势", "提出建议"),
-            "practice": ("跟读", "听写", "中译英", "背诵", "口语复用", "写作复用"),
-        }.items():
-            for name in names:
+            # 迁移：字幕段存词级时间戳（paraformer words），用于精确断句
+            try:
+                conn.execute("ALTER TABLE v2_subtitle_segments ADD COLUMN words_json TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            # 旧 words 记录无法区分“导入词库”和“主动深入学习”，不能批量迁入复习本。
+            conn.execute("DELETE FROM word_review_items WHERE source = 'legacy_review'")
+            # 查词和旧批改接口都不是显式收藏；清理旧版本误写的成员关系。
+            conn.execute("DELETE FROM word_review_items WHERE source IN ('lookup', 'practice')")
+            practice_attempt_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(v2_practice_attempts)").fetchall()
+            }
+            for column_sql in (
+                "ALTER TABLE v2_lessons ADD COLUMN lesson_mode TEXT NOT NULL DEFAULT 'listening'",
+                "ALTER TABLE v2_lessons ADD COLUMN media_url TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_lessons ADD COLUMN media_kind TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_phase_b_sentences ADD COLUMN sentence_id INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL",
+                "ALTER TABLE v2_chat_messages ADD COLUMN session_id INTEGER REFERENCES v2_chat_sessions(id) ON DELETE CASCADE",
+                "ALTER TABLE v2_reading_blocks ADD COLUMN start_seconds REAL",
+                "ALTER TABLE v2_reading_blocks ADD COLUMN end_seconds REAL",
+                "ALTER TABLE v2_reading_blocks ADD COLUMN sentences_json TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE v2_reading_blocks ADD COLUMN source_segment_ids TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_requested INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_status TEXT NOT NULL DEFAULT 'disabled'",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_done INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_total INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_buffer_seconds REAL NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_rate REAL NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_ready INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN translation_error TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_lessons ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_lessons ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_sentences ADD COLUMN last_reviewed_at TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_sentences ADD COLUMN next_review TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_sentences ADD COLUMN phonetics_source TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_sentences ADD COLUMN listening_result TEXT NOT NULL DEFAULT 'untested'",
+                "ALTER TABLE v2_sentences ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_sentences ADD COLUMN saved_manually INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE word_review_items ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
+                "ALTER TABLE word_review_items ADD COLUMN lemma TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE word_review_items ADD COLUMN display_text TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE word_review_items ADD COLUMN familiarity TEXT NOT NULL DEFAULT 'unrated'",
+                "ALTER TABLE word_review_items ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE word_review_items ADD COLUMN mastered INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE word_review_items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE v2_practice_attempts ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
+                "ALTER TABLE v2_practice_attempts ADD COLUMN hint_text TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_practice_attempts ADD COLUMN source_context TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_practice_attempts ADD COLUMN key_issue TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_practice_attempts ADD COLUMN revised_sentence TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_practice_attempts ADD COLUMN idiomatic_suggestion TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_sentence_patterns ADD COLUMN analysis_json TEXT NOT NULL DEFAULT '{}'",
+            ):
                 try:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO v2_tags (category, name, source, created_at) VALUES (?, ?, 'system', ?)",
-                        (category, name, _now_iso()),
-                    )
+                    conn.execute(column_sql)
                 except Exception:
                     pass
-        try:
+            if "target_type" not in practice_attempt_columns:
+                conn.execute(
+                    "UPDATE v2_practice_attempts SET target_type=practice_type"
+                    " WHERE practice_type IN ('word', 'phrase', 'pattern')"
+                )
+            # 旧版只保存 good/hard/again 对应的下次复习日；迁移为听力二态。
+            legacy_reviews = conn.execute(
+                """
+                SELECT id, review_count, last_reviewed_at, next_review, listening_result
+                FROM v2_sentences
+                WHERE review_count > 0 AND listening_result='untested'
+                """
+            ).fetchall()
+            for legacy in legacy_reviews:
+                result = "not_understood"
+                try:
+                    reviewed_day = date.fromisoformat(str(legacy["last_reviewed_at"])[:10])
+                    next_day = date.fromisoformat(str(legacy["next_review"])[:10])
+                    if (next_day - reviewed_day).days > 3:
+                        result = "understood"
+                except (TypeError, ValueError):
+                    pass
+                conn.execute(
+                    "UPDATE v2_sentences SET listening_result=? WHERE id=?",
+                    (result, legacy["id"]),
+                )
             conn.execute("""
-                INSERT OR IGNORE INTO v2_lesson_words (lesson_id, word, sentence, created_at)
-                SELECT v2_lessons.id, contexts.word, contexts.sentence, COALESCE(v2_lessons.updated_at, '')
-                FROM contexts
-                JOIN v2_lessons ON v2_lessons.title = contexts.lesson
-                JOIN words ON words.word = contexts.word
-                WHERE contexts.lesson != ''
+                INSERT INTO v2_chat_sessions (lesson_id, title, created_at, updated_at)
+                SELECT messages.lesson_id, 'Legacy conversation',
+                       COALESCE(MIN(messages.created_at), ''),
+                       COALESCE(MAX(messages.created_at), '')
+                FROM v2_chat_messages AS messages
+                WHERE messages.session_id IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM v2_chat_sessions AS sessions
+                      WHERE sessions.lesson_id = messages.lesson_id
+                        AND sessions.title = 'Legacy conversation'
+                  )
+                GROUP BY messages.lesson_id
             """)
-        except Exception:
-            pass
+            conn.execute("""
+                UPDATE v2_chat_messages
+                SET session_id = (
+                    SELECT sessions.id FROM v2_chat_sessions AS sessions
+                    WHERE sessions.lesson_id = v2_chat_messages.lesson_id
+                      AND sessions.title = 'Legacy conversation'
+                    ORDER BY sessions.id ASC LIMIT 1
+                )
+                WHERE session_id IS NULL
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_v2_chat_messages_lesson_session_id"
+                " ON v2_chat_messages (lesson_id, session_id, id)"
+            )
+            for category, names in {
+                "vocabulary": ("重点词汇", "搭配", "短语动词", "习语表达", "学术表达"),
+                "pronunciation": ("连读", "弱读", "略读/吞音", "重音", "语调", "意群停顿"),
+                "structure": ("可复用句式", "从句结构", "比较对比", "因果逻辑", "让步转折", "条件假设"),
+                "expression": ("提出观点", "解释原因", "举例说明", "总结归纳", "反驳/让步", "描述趋势", "提出建议"),
+                "practice": ("跟读", "听写", "中译英", "背诵", "口语复用", "写作复用"),
+            }.items():
+                for name in names:
+                    try:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO v2_tags (category, name, source, created_at) VALUES (?, ?, 'system', ?)",
+                            (category, name, _now_iso()),
+                        )
+                    except Exception:
+                        pass
+            try:
+                conn.execute("""
+                    INSERT OR IGNORE INTO v2_lesson_words (lesson_id, word, sentence, created_at)
+                    SELECT v2_lessons.id, contexts.word, contexts.sentence, COALESCE(v2_lessons.updated_at, '')
+                    FROM contexts
+                    JOIN v2_lessons ON v2_lessons.title = contexts.lesson
+                    JOIN words ON words.word = contexts.word
+                    WHERE contexts.lesson != ''
+                """)
+            except Exception:
+                pass
+    finally:
+        if _token is not None:
+            reset_current_db_path(_token)
 
 
 def get_all_words() -> dict:
@@ -607,17 +670,22 @@ def get_review_words(
         for row in words
     }
     try:
-        from webapp.services.dicts import ecdict_frq_map
+        from webapp.services.dicts import ecdict_meta_map
 
-        frq = ecdict_frq_map(list(ordered.keys()))
-        if frq:
+        meta = ecdict_meta_map(list(ordered.keys()))
+        if meta:
+            for word, entry in ordered.items():
+                info = meta.get(word.lower())
+                if info:
+                    entry["frq"] = info["frq"]
+                    entry["exam_tags"] = info["exam_tags"]
             fam_rank = {"unknown": 0, "fuzzy": 1, "unrated": 2}
             ordered = dict(
                 sorted(
                     ordered.items(),
                     key=lambda kv: (
                         fam_rank.get(kv[1].get("familiarity"), 3),
-                        frq.get(kv[0].lower(), 999999),
+                        (meta.get(kv[0].lower()) or {}).get("frq") or 999999,
                     ),
                 )
             )
@@ -860,6 +928,46 @@ def review_word(word: str, today: str) -> Optional[int]:
             (new_count, today, word),
         )
         return new_count
+
+
+def sentence_contains_word(sentence: str, word: str) -> bool:
+    """词边界匹配：sentence 中是否出现 word（容忍变形：conjugated/studies 视为命中词族）。
+
+    前缀规则：词长 >=4 时取 max(4, len-2) 前缀做词干匹配，覆盖常见屈折变化
+    （conjugated/studies）；前缀过短会误配（viral→virgin），故下限 4 字符。
+    不规则变形（go/went）不命中——此时守卫会尝试换句而不是误删正确语境的风险
+    由调用方权衡（见 find_v2_sentence_containing 的失败兜底）。
+    """
+    text = (sentence or "").lower()
+    w = (word or "").strip().lower()
+    if not text or not w:
+        return False
+    if " " in w:
+        return w in text
+    tokens = re.findall(r"[a-z]+(?:'[a-z]+)?", text)
+    if w in tokens:
+        return True
+    if len(w) < 5:
+        return False
+    prefix = w[: max(4, len(w) - 2)]
+    return any(t.startswith(prefix) for t in tokens)
+
+
+def find_v2_sentence_containing(word: str) -> str | None:
+    """在 v2_sentences 中找一句包含该词（词族）的例句，候选按长度升序避免取到 merged 长句。"""
+    w = (word or "").strip().lower()
+    if not w:
+        return None
+    needle = w if " " in w or len(w) < 5 else w[: max(4, len(w) - 2)]
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT text FROM v2_sentences WHERE lower(text) LIKE ? ORDER BY length(text) LIMIT 50",
+            (f"%{needle}%",),
+        ).fetchall()
+    for row in rows:
+        if sentence_contains_word(row["text"], w):
+            return row["text"]
+    return None
 
 
 def add_context(word: str, lesson: str, sentence: str):
@@ -1288,6 +1396,8 @@ def list_v2_practice_attempt_history(
     target: str = "",
     sentence_id: Optional[int] = None,
     practice_type: str = "",
+    lesson_id: Optional[int] = None,
+    source_context: str = "",
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
@@ -1295,6 +1405,7 @@ def list_v2_practice_attempt_history(
     params: list = []
     clean_target = str(target or "").strip()
     clean_type = str(practice_type or "").strip().lower()
+    clean_context = str(source_context or "").strip()
     if clean_target:
         clauses.append("LOWER(target)=LOWER(?)")
         params.append(clean_target)
@@ -1304,6 +1415,12 @@ def list_v2_practice_attempt_history(
     if clean_type:
         clauses.append("practice_type=?")
         params.append(clean_type)
+    if lesson_id is not None:
+        clauses.append("lesson_id=?")
+        params.append(lesson_id)
+    if clean_context:
+        clauses.append("source_context=?")
+        params.append(clean_context)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     offset = (page - 1) * page_size
     with _db() as conn:
@@ -1324,6 +1441,8 @@ def list_v2_practice_attempt_history(
             "target": clean_target,
             "sentence_id": sentence_id,
             "practice_type": clean_type,
+            "lesson_id": lesson_id,
+            "source_context": clean_context,
         },
     }
 
@@ -2107,10 +2226,13 @@ def replace_v2_subtitle_segments(lesson_id: int, segments: list[dict]) -> None:
     with _db() as conn:
         conn.execute("DELETE FROM v2_subtitle_segments WHERE lesson_id=?", (lesson_id,))
         conn.executemany(
-            "INSERT INTO v2_subtitle_segments (lesson_id, idx, start, end, text, normalized)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO v2_subtitle_segments (lesson_id, idx, start, end, text, normalized, words_json)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                (lesson_id, s["index"], s["start"], s["end"], s["text"], s["text"].lower())
+                (
+                    lesson_id, s["index"], s["start"], s["end"], s["text"], s["text"].lower(),
+                    json.dumps(s["words"], ensure_ascii=False) if s.get("words") else "",
+                )
                 for s in segments
             ],
         )
@@ -2119,11 +2241,20 @@ def replace_v2_subtitle_segments(lesson_id: int, segments: list[dict]) -> None:
 def get_v2_subtitle_segments(lesson_id: int) -> list[dict]:
     with _db() as conn:
         rows = conn.execute(
-            "SELECT idx, start, end, text FROM v2_subtitle_segments"
+            "SELECT idx, start, end, text, words_json FROM v2_subtitle_segments"
             " WHERE lesson_id=? ORDER BY idx",
             (lesson_id,),
         ).fetchall()
-    return [{"index": r["idx"], "start": r["start"], "end": r["end"], "text": r["text"]} for r in rows]
+    out = []
+    for r in rows:
+        seg = {"index": r["idx"], "start": r["start"], "end": r["end"], "text": r["text"]}
+        if r["words_json"]:
+            try:
+                seg["words"] = json.loads(r["words_json"])
+            except Exception:
+                pass
+        out.append(seg)
+    return out
 
 
 def replace_v2_reading_blocks(lesson_id: int, blocks: list[dict]) -> None:

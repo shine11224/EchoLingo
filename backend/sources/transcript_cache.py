@@ -44,6 +44,8 @@ def load_transcript_cache(media_path: Path, model_name: str) -> list[Segment] | 
                 start=item.get("start"),
                 end=item.get("end"),
                 translation=str(item.get("translation") or ""),
+                # 词级时间戳必须随缓存还原，否则命中缓存的课程退化为插值断句（2026-08-07 云端吞句 bug）
+                words=item.get("words") or None,
             ))
         return segments or None
     except Exception:
@@ -72,6 +74,7 @@ def extract_segments_from_lesson_html(bvid: str, output_dir: Path) -> list[Segme
                     start=item.get("start"),
                     end=item.get("end"),
                     translation=str(item.get("translation") or ""),
+                    words=item.get("words") or None,
                 ))
             if segments:
                 return segments

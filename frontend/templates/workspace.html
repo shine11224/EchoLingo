@@ -517,6 +517,22 @@
       background: #dcfce7;
       border-color: #22c55e;
     }
+    .word-review-btn {
+      min-height: 28px;
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .word-review-btn:hover:not(:disabled) {
+      background: #dbeafe;
+      border-color: #3b82f6;
+    }
+    .word-review-btn:disabled {
+      opacity: .7;
+      cursor: default;
+    }
     .review-card {
       flex: 0 0 var(--study-collection-height, 26%);
       height: var(--study-collection-height, auto);
@@ -1303,7 +1319,7 @@
         max-height: none;
       }
       .panel-resize-handle {
-        flex-basis: 16px;
+        display: none; /* 移动端堆叠布局不需要拖拽分栏；touch-action:none 的全宽横条会阻断触屏滑动 */
       }
       .panel-resize-handle::before { top: 7px; }
      .side-column.ai-focus-mode { min-height: auto; }
@@ -1355,6 +1371,14 @@
     </a>
     <h1 id="video-title">Loading video...</h1>
     <span id="status-badge" class="status-badge">subtitles pending</span>
+    <a id="login-btn" href="/login" style="display:none; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap;">登录</a>
+    <div id="user-menu" style="display:none; position:relative;">
+      <button id="user-menu-btn" onclick="toggleUserMenu(event)" style="background:none; border:1px solid #ddd; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; white-space:nowrap;"></button>
+      <div id="user-menu-pop" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e3e3e3; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.08); min-width:120px; z-index:1000;">
+        <a href="/account" style="display:block; padding:8px 14px; font-size:13px; color:#333; text-decoration:none;">账号设置</a>
+        <button onclick="logout()" style="display:block; width:100%; text-align:left; padding:8px 14px; font-size:13px; background:none; border:none; cursor:pointer; color:#333;">退出登录</button>
+      </div>
+    </div>
   </header>
 
   <main class="main-grid">
@@ -3715,6 +3739,7 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '', dict
   const rect = anchor.getBoundingClientRect();
   const normalized = normalizeWord(word);
   const saved = savedWordSet.has(normalized);
+  const inReviewBook = reviewBookWordSet.has(normalized);
   const phoneticHtml = phonetic ? `<div class="phonetic">/${escapeHtml(phonetic)}/</div>` : '';
   // \u8bcd\u9891/\u8bcd\u5178\u6807\u6ce8\u884c\uff08COCA\u00b7\u725b\u6d25\u00b7\u67ef\u6797\u65af\uff09\u6309 may \u8981\u6c42\u4e0d\u5c55\u793a\uff1bdictMeta \u6570\u636e\u4fdd\u7559
   const sourceHtml = source === 'external' ? '<div class="lookup-source">AI \u5728\u7ebf\u8865\u5145\u91ca\u4e49</div>' : '';
@@ -3724,6 +3749,7 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '', dict
     ${sourceHtml}
     <div class="word-actions">
       <button class="word-save-btn ${saved ? 'saved' : ''}" onclick="toggleWordSave(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${saved ? '★ 已收藏' : '☆ 加入生词'}</button>
+      <button class="word-review-btn" ${inReviewBook ? 'disabled' : ''} onclick="addWordToReviewFromPopover(event, '${escapeJsAttr(normalized)}', '${escapeJsAttr(meaning || '')}')">${inReviewBook ? '✓ 已在复习本' : '＋ 加入复习本'}</button>
       <button class="word-master-btn" title="标记已掌握：移出生词本，不再高亮" onclick="masterWordFromPopover(event, '${escapeJsAttr(normalized)}')">✓ 已掌握</button>
     </div>`;
   pop.classList.add('open');
@@ -3750,7 +3776,7 @@ async function toggleWordSave(event, word, meaning) {
   event.stopPropagation();
   const normalized = normalizeWord(word);
   if (!normalized) return;
-  const currentSentence = sentenceUnits[activeSentenceIdx >= 0 ? activeSentenceIdx : 0];
+  const currentSentence = sentenceForWord(normalized);
   const saved = savedWordSet.has(normalized);
   const button = event.currentTarget;
   button.disabled = true;
@@ -3796,6 +3822,21 @@ async function toggleWordSave(event, word, meaning) {
     openWordPopover(findWordButton(normalized) || button, normalized, wordMeaningCache[normalized] || meaning);
   } finally {
     button.disabled = false;
+  }
+}
+
+async function addWordToReviewFromPopover(event, word, meaning = '') {
+  event.stopPropagation();
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = '加入中…';
+  try {
+    await activateWordReview(word, activeStudyMode === 'listening' ? 'listening' : 'reading', meaning || '');
+    button.textContent = '✓ 已在复习本';
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = '＋ 加入复习本';
+    alert(`加入复习本失败：${error.message}`);
   }
 }
 
@@ -3920,6 +3961,17 @@ readingPassageRoot?.addEventListener('scroll', () => closeReadingSelectionPopove
 const listeningSentenceRoot = document.getElementById('current-subtitle');
 listeningSentenceRoot?.addEventListener('mouseup', () => setTimeout(captureListeningSelection, 0));
 listeningSentenceRoot?.addEventListener('keyup', () => setTimeout(captureListeningSelection, 0));
+// Mobile: text is selected via long-press + drag handles, which never fires
+// mouseup. selectionchange covers it; debounce until the handles settle. The
+// native copy/share bar still shows, but our popover appears alongside it.
+let studySelectionChangeTimer = null;
+document.addEventListener('selectionchange', () => {
+  clearTimeout(studySelectionChangeTimer);
+  studySelectionChangeTimer = setTimeout(() => {
+    if (activeStudyMode === 'reading') captureReadingSelection();
+    else if (activeStudyMode === 'listening') captureListeningSelection();
+  }, 350);
+});
 window.addEventListener('scroll', closeWordPopover, true);
 window.addEventListener('resize', closeWordPopover);
 document.getElementById('reading-selection-popover')?.addEventListener('mousedown', event => event.preventDefault());
@@ -4241,6 +4293,43 @@ function findWordButton(word) {
   const normalized = normalizeWord(word);
   return [...document.querySelectorAll('.subtitle-word, .reading-word')].find(el => normalizeWord(el.dataset.word) === normalized) || null;
 }
+
+// 收藏时定位词所在句子：优先当前激活句（含该词时），否则全文找第一个含该词的句子；
+// 找不到返回 null（不拿无关句子/首句当上下文，避免词汇错配句子）
+function sentenceForWord(normalized) {
+  const needle = String(normalized || '').toLowerCase();
+  if (!needle) return null;
+  const tokensOf = text => (String(text || '').toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || []);
+  const active = activeSentenceIdx >= 0 ? sentenceUnits[activeSentenceIdx] : null;
+  if (active && tokensOf(active.text).includes(needle)) return active;
+  return (sentenceUnits || []).find(unit => tokensOf(unit.text).includes(needle)) || null;
+}
+async function initAuthBadge() {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) {
+      if (r.status === 401) document.getElementById('login-btn').style.display = '';
+      return;
+    }
+    const me = await r.json();
+    document.getElementById('user-menu-btn').textContent = '👤 ' + me.username + ' ▾';
+    document.getElementById('user-menu').style.display = '';
+  } catch (e) { /* 单用户模式忽略 */ }
+}
+async function logout() {
+  await fetch('/api/auth/logout', {method: 'POST'});
+  location.href = '/login';
+}
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const pop = document.getElementById('user-menu-pop');
+  pop.style.display = pop.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', () => {
+  const pop = document.getElementById('user-menu-pop');
+  if (pop) pop.style.display = 'none';
+});
+initAuthBadge();
 </script>
 </body>
 </html>

@@ -10,6 +10,21 @@ from webapp.runtime import ai_config
 router = APIRouter()
 
 
+def _admin_check(request: Request):
+    """AI 设置仅管理员可读写。多用户模式（中间件注入用户名）下校验 is_admin；
+    单用户/公开库（无注入或无 auth 模块）放行。未登录的 401 由中间件兜底。"""
+    username = request.scope.get("elt_username")
+    if not username:
+        return None
+    try:
+        from webapp.auth import store
+    except ImportError:
+        return None
+    if store.is_admin(username):
+        return None
+    return JSONResponse({"detail": "admin only"}, status_code=403)
+
+
 async def _parse_body(request: Request) -> dict[str, Any]:
     try:
         data = await request.json()
@@ -19,7 +34,9 @@ async def _parse_body(request: Request) -> dict[str, Any]:
 
 
 @router.get("/api/settings/ai")
-def get_ai_settings():
+def get_ai_settings(request: Request):
+    if (deny := _admin_check(request)) is not None:
+        return deny
     import os
 
     return {
@@ -36,6 +53,8 @@ def get_ai_settings():
 
 @router.post("/api/settings/ai")
 async def save_ai_settings(request: Request):
+    if (deny := _admin_check(request)) is not None:
+        return deny
     data = await _parse_body(request)
     new_key = data.get("api_key", "").strip()
     new_url = data.get("base_url", "").strip()
@@ -60,6 +79,8 @@ async def save_ai_settings(request: Request):
 
 @router.delete("/api/settings/ai")
 async def delete_ai_settings(request: Request):
+    if (deny := _admin_check(request)) is not None:
+        return deny
     data = await _parse_body(request)
     field = data.get("field", "")
 

@@ -256,16 +256,67 @@ def _transcribe_with_openai(audio_path: Path) -> list[Segment]:
     return _transcribe_via_api(client, model, audio_path)
 
 
+def _paraformer_call_with_timeout(wav_path: Path) -> "object":
+    """Recognition.call 无超时机制，websocket 卡死会永久挂住管线（2026-08-06 云端实测）。
+
+    用线程池加超时兜底：超时后放弃本次调用换新 Recognition 重试，
+    卡死线程随进程存活泄漏（偶发可接受）。超时按文件大小估算，
+    实测 18MB wav 约 111s，给 30s/MB 且下限 300s。
+    """
+    import concurrent.futures
+    from http import HTTPStatus
+
+    from dashscope.audio.asr import Recognition
+
+    timeout_s = max(
+        300.0,
+        wav_path.stat().st_size / 1024 / 1024 * 30.0,
+    )
+    timeout_s = float(os.environ.get("PARAFORMER_TIMEOUT_S", timeout_s))
+    max_attempts = int(os.environ.get("PARAFORMER_MAX_ATTEMPTS", "2"))
+
+    for attempt in range(1, max_attempts + 1):
+        recognition = Recognition(
+            model=os.environ.get("PARAFORMER_MODEL", "paraformer-realtime-v2"),
+            format="wav",
+            sample_rate=16000,
+            language_hints=["en"],  # 英语学习素材固定按英文识别，避免语种误判
+            callback=None,
+        )
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(recognition.call, str(wav_path))
+        try:
+            result = future.result(timeout=timeout_s)
+            pool.shutdown(wait=False)
+        except concurrent.futures.TimeoutError:
+            pool.shutdown(wait=False)  # 卡死线程无法强杀，放弃并换新连接重试
+            print(
+                f"[PARAFORMER_TIMEOUT] 第 {attempt}/{max_attempts} 次超过 "
+                f"{timeout_s:.0f}s 未返回，重试",
+                flush=True,
+            )
+            if attempt == max_attempts:
+                raise RuntimeError(
+                    f"Paraformer 转录超时：{max_attempts} 次尝试均超过 "
+                    f"{timeout_s:.0f}s 未返回"
+                )
+            continue
+        if result.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f"Paraformer 转录失败：{result.message}"
+                f"（request_id={result.get_request_id()}）"
+            )
+        return result
+    raise RuntimeError("Paraformer 转录失败：未知错误")  # pragma: no cover
+
+
 def _transcribe_with_paraformer(audio_path: Path) -> list[Segment]:
     """使用阿里云百炼 Paraformer 实时语音识别转录（Recognition.call 本地文件直传）。
 
     云端部署的转录兜底：Groq 屏蔽机房 IP、本地大模型跑不动时使用。
     非流式调用直接读本地文件，无需公网 URL；结果带句级 begin_time/end_time（毫秒）。
     """
-    from http import HTTPStatus
-
     import dashscope
-    from dashscope.audio.asr import Recognition
 
     dashscope.api_key = os.environ.get("DASHSCOPE_API_KEY")
     # 默认连北京 endpoint；用国际站（新加坡）Key 时设
@@ -283,20 +334,7 @@ def _transcribe_with_paraformer(audio_path: Path) -> list[Segment]:
             _find_ffmpeg(), "-y", "-i", str(audio_path),
             "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_path),
         ])
-        recognition = Recognition(
-            model=os.environ.get("PARAFORMER_MODEL", "paraformer-realtime-v2"),
-            format="wav",
-            sample_rate=16000,
-            language_hints=["en"],  # 英语学习素材固定按英文识别，避免语种误判
-            callback=None,
-        )
-        result = recognition.call(str(wav_path))
-
-    if result.status_code != HTTPStatus.OK:
-        raise RuntimeError(
-            f"Paraformer 转录失败：{result.message}"
-            f"（request_id={result.get_request_id()}）"
-        )
+        result = _paraformer_call_with_timeout(wav_path)
 
     sentences = result.get_sentence() or []
     if isinstance(sentences, dict):  # 兜底：个别版本单句结果返回 dict
@@ -312,6 +350,15 @@ def _transcribe_with_paraformer(audio_path: Path) -> list[Segment]:
                 text=text,
                 start=float(sentence.get("begin_time") or 0) / 1000.0,
                 end=float(sentence.get("end_time") or 0) / 1000.0,
+                words=[
+                    {
+                        "text": str(w.get("text") or ""),
+                        "start": float(w.get("begin_time") or 0) / 1000.0,
+                        "end": float(w.get("end_time") or 0) / 1000.0,
+                        "punctuation": str(w.get("punctuation") or ""),
+                    }
+                    for w in (sentence.get("words") or [])
+                ],
             )
         )
     print("[WHISPER_PROGRESS] 100%", flush=True)
@@ -383,6 +430,13 @@ def _transcribe_with_optional_whisper(
         print("  云端环境：改用 OpenAI Whisper API 转录…", flush=True)
         segments = _transcribe_with_openai(audio_path)
         save_transcript_cache(audio_path, whisper_model, segments)
+        return segments
+
+    # 云端已配百炼 key 时兜底 paraformer——3.6GB 小服务器跑 large-v3 会直接把机器拖死
+    if os.environ.get("ELT_DEPLOYMENT") == "cloud" and os.environ.get("DASHSCOPE_API_KEY"):
+        print("  云端环境：改用阿里云 Paraformer 语音识别转录…", flush=True)
+        segments = _transcribe_with_paraformer(audio_path)
+        save_transcript_cache(audio_path, "paraformer", segments)
         return segments
 
     try:
