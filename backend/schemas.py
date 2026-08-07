@@ -11,6 +11,8 @@ class Segment:
     start: float | None = None
     end: float | None = None
     translation: str = ""
+    # 词级时间戳（paraformer 转录）：[{text, start, end, punctuation}]，秒
+    words: list | None = None
 
 
 @dataclass

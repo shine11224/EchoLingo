@@ -9,7 +9,7 @@ from pathlib import Path
 from schemas import Segment, SourceBundle
 from sources.subtitle_parser import parse_subtitle_file
 
-_BASE_DIR = Path(__file__).parent.parent
+_BASE_DIR = Path(__file__).resolve().parents[2]  # repo 根目录（backend/sources/ 上两级）
 
 
 def _yt_proxy() -> str | None:
@@ -236,7 +236,10 @@ _extract_video_id = extract_video_id  # legacy alias
 
 def source_bundle_to_segment_dicts(bundle: SourceBundle) -> list[dict]:
     return [
-        {"index": s.index, "start": s.start, "end": s.end, "text": s.text}
+        {
+            "index": s.index, "start": s.start, "end": s.end, "text": s.text,
+            **({"words": s.words} if getattr(s, "words", None) else {}),
+        }
         for s in bundle.segments
     ]
 

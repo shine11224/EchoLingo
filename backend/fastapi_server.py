@@ -20,6 +20,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from webapp.fastapi_routes.basics import router as basics_router
 from webapp.fastapi_routes.ai import router as ai_router
+
+# 多用户认证仅存在于私有库/云端：公开库不含 webapp.auth 与 auth 路由，导入失败时静默降级为单用户模式
+try:
+    from webapp.fastapi_routes.auth import router as auth_router
+    from webapp.auth.middleware import AuthMiddleware
+except ImportError:  # pragma: no cover - 公开库路径
+    auth_router = None
+    AuthMiddleware = None
+
 from webapp.fastapi_routes.jobs import router as jobs_router
 from webapp.fastapi_routes.lessons import router as lessons_router
 from webapp.fastapi_routes.misc import router as misc_router
@@ -35,25 +44,33 @@ from webapp.storage.lessons import migrate_lessons_to_db
 
 
 def _resume_interrupted_translations() -> None:
-    """服务重启后继续被中断的句子翻译（状态停留在 translating 的课程）。"""
-    try:
-        import threading
+    """服务重启后继续被中断的句子翻译（状态停留在 translating 的课程）。
 
-        from webapp.services.v2_translation import translate_lesson_subtitles
-
-        for lesson in db.list_v2_lessons():
-            if str(lesson.get("translation_status") or "") != "translating":
-                continue
-            if not int(lesson.get("translation_requested") or 0):
-                continue
-            threading.Thread(
-                target=translate_lesson_subtitles,
-                args=(int(lesson["id"]),),
-                daemon=True,
-                name=f"resume-translate-{lesson['id']}",
-            ).start()
-    except Exception:
-        pass
+    多用户模式下遍历 resources/users/*/vocab.db 逐一恢复。"""
+    import os as _os
+    if _os.environ.get("ELT_AUTH_ENABLED") == "1":
+        users_root = Path(
+            _os.environ.get("ELT_USERS_ROOT", Path(__file__).resolve().parents[1] / "resources" / "users")
+        )
+        db_paths = list(users_root.glob("*/vocab.db"))
+    else:
+        db_paths = [db.DB_PATH]
+    for path in db_paths:
+        token = db.set_current_db_path(path)
+        try:
+            from webapp.services.v2_translation import translate_lesson_subtitles
+            for lesson in db.list_v2_lessons():
+                if str(lesson.get("translation_status") or "") != "translating":
+                    continue
+                if not int(lesson.get("translation_requested") or 0):
+                    continue
+                db.spawn_with_db_context(
+                    translate_lesson_subtitles, int(lesson["id"]),
+                    name=f"resume-translate-{lesson['id']}")
+        except Exception:
+            pass
+        finally:
+            db.reset_current_db_path(token)
 
 
 def create_app() -> FastAPI:
@@ -86,6 +103,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    if os.environ.get("ELT_AUTH_ENABLED") == "1" and AuthMiddleware is not None:
+        app.add_middleware(AuthMiddleware)
     app.mount(
         "/static",
         StaticFiles(directory=str(ai_config.BASE_DIR / "frontend" / "static")),
@@ -94,6 +113,8 @@ def create_app() -> FastAPI:
 
     # Phase 2–5: native FastAPI routes registered before Flask fallback
     app.include_router(basics_router)
+    if auth_router is not None:
+        app.include_router(auth_router)
     app.include_router(lessons_router)
     app.include_router(study_router)
     app.include_router(vocab_router)

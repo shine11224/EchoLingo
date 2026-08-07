@@ -1,6 +1,7 @@
 """Reading passage import helpers for v2 reading mode."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TypedDict
 from io import BytesIO
@@ -85,14 +86,118 @@ def extract_text_from_pdf(path: str | Path, pages: list[int] | None = None) -> s
 def _extract_pdf_text_layer_from_path(path: str | Path, pages: list[int] | None = None) -> str:
     import pdfplumber
 
-    chunks: list[str] = []
     with pdfplumber.open(str(path)) as pdf:
         selected = pages if pages is not None else list(range(len(pdf.pages)))
-        for page_index in selected:
-            text = pdf.pages[int(page_index)].extract_text() or ""
-            if text.strip():
-                chunks.append(text)
+        return _extract_pdf_pages([pdf.pages[int(i)] for i in selected])
+
+
+# ── Two-column (academic paper) aware extraction ─────────────────────
+
+_X_TOLERANCE = 1.5  # >2 starts gluing tightly-kerned academic fonts into fake words
+_PAGE_NUMBER_RE = re.compile(r"^\d{1,4}$")
+_HYPHEN_BREAK_RE = re.compile(r"([A-Za-z]{2,})-\s*\n\s*([a-z]{2,})")
+_GUTTER_CLEAN_RATIO = 0.15   # page votes for the document gutter only below this
+_GUTTER_APPLY_RATIO = 0.35   # above this a page is treated as full-width (figure/table)
+_GUTTER_AGREE_PT = 12        # candidates within ±12pt count as the same gutter
+
+
+def _join_hyphen_break(match: re.Match) -> str:
+    """Dehyphenate LaTeX line breaks: join only when the merged word is a real
+    dictionary word (ECDICT); otherwise keep the hyphen (citation-\ndriven)."""
+    merged = match.group(1) + match.group(2)
+    try:
+        from webapp.services import dicts as dict_service
+
+        if dict_service.lookup_ecdict(merged.lower()):
+            return merged
+    except Exception:
+        pass
+    return f"{match.group(1)}-{match.group(2)}"
+
+
+def _page_gutter_candidate(page) -> tuple[float, float] | None:
+    """Argmin of smoothed char coverage in the central band; returns (x, ratio).
+
+    ratio = coverage at gutter / page peak. Two-column body pages score ~0.02;
+    pages whose center is crossed by figures/titles score higher but their argmin
+    still lands on the gutter — the document-level vote filters outliers.
+    """
+    width = float(page.width)
+    height = float(page.height)
+    hist = [0.0] * (int(width) + 2)
+    total = 0
+    for ch in page.chars:
+        if not str(ch.get("text") or "").strip():
+            continue
+        if float(ch["top"]) < height * 0.25:
+            continue
+        x0 = max(0, int(float(ch["x0"])))
+        x1 = min(int(width) + 1, int(float(ch["x1"])) + 1)
+        for x in range(x0, x1):
+            hist[x] += 1
+        total += 1
+    if total < 100:
+        return None
+    peak = max(hist) or 1
+    best_x = None
+    best_v = None
+    for x in range(int(width * 0.35), int(width * 0.65)):
+        v = sum(hist[max(0, x - 3):x + 4]) / 7
+        if best_v is None or v < best_v:
+            best_v, best_x = v, x
+    if best_x is None:
+        return None
+    return (float(best_x), best_v / peak)
+
+
+def _document_gutter(pages) -> float | None:
+    """Median of per-page clean gutter candidates; needs ≥3 pages or ≥30% agreeing."""
+    votes = []
+    for page in pages:
+        candidate = _page_gutter_candidate(page)
+        if candidate and candidate[1] < _GUTTER_CLEAN_RATIO:
+            votes.append(candidate[0])
+    if not votes:
+        return None
+    votes.sort()
+    median = votes[len(votes) // 2]
+    agreeing = [v for v in votes if abs(v - median) <= _GUTTER_AGREE_PT]
+    if len(agreeing) >= max(3, int(len(pages) * 0.3)):
+        return sum(agreeing) / len(agreeing)
+    return None
+
+
+def _extract_pdf_pages(pages) -> str:
+    gutter = _document_gutter(pages)
+    chunks = []
+    for page in pages:
+        text = _extract_pdf_page_text(page, gutter)
+        if text.strip():
+            chunks.append(text)
     return "\n\n".join(chunks)
+
+
+def _extract_pdf_page_text(page, gutter: float | None) -> str:
+    """Extract one page, splitting into left/right columns when a gutter applies."""
+    use_gutter = gutter
+    if use_gutter is not None:
+        candidate = _page_gutter_candidate(page)
+        # page crossed by a full-width figure/table → fall back to single column
+        if candidate is None or candidate[1] > _GUTTER_APPLY_RATIO:
+            use_gutter = None
+    if use_gutter is None:
+        return _clean_pdf_text(page.extract_text(x_tolerance=_X_TOLERANCE) or "")
+    left = page.filter(lambda obj: (float(obj["x0"]) + float(obj["x1"])) / 2 < use_gutter)
+    right = page.filter(lambda obj: (float(obj["x0"]) + float(obj["x1"])) / 2 >= use_gutter)
+    left_text = left.extract_text(x_tolerance=_X_TOLERANCE) or ""
+    right_text = right.extract_text(x_tolerance=_X_TOLERANCE) or ""
+    return _clean_pdf_text(left_text + "\n\n" + right_text)
+
+
+def _clean_pdf_text(text: str) -> str:
+    text = _HYPHEN_BREAK_RE.sub(_join_hyphen_break, text)
+    lines = [line for line in text.splitlines() if not _PAGE_NUMBER_RE.match(line.strip())]
+    return "\n".join(lines)
 
 
 def extract_text_from_upload(filename: str, content: bytes) -> str:
@@ -150,13 +255,8 @@ def extract_text_from_pdf_bytes(content: bytes) -> str:
 def _extract_pdf_text_layer_from_bytes(content: bytes) -> str:
     import pdfplumber
 
-    chunks: list[str] = []
     with pdfplumber.open(BytesIO(content)) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text() or ""
-            if text.strip():
-                chunks.append(text)
-    return "\n\n".join(chunks)
+        return _extract_pdf_pages(list(pdf.pages))
 
 
 def _extract_pdf_with_ocr_fallback(ocr_func, *, text_error: Exception | None = None) -> str:

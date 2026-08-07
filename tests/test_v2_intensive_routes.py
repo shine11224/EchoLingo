@@ -299,7 +299,7 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     monkeypatch.setattr(
         v2_vocab,
         "load_v2_wordlist_index",
-        lambda: {"first": {"level": "ielts"}, "third": {"level": "ielts"}},
+        lambda: {"quixotic": {"level": "ielts"}, "zephyr": {"level": "ielts"}},
     )
     client = TestClient(create_app())
     lesson = db.create_v2_lesson(
@@ -311,8 +311,8 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     db.replace_v2_reading_blocks(
         lesson["id"],
         [
-            {"index": 0, "text": "First sentence. Second sentence!"},
-            {"index": 1, "text": "Third sentence?"},
+            {"index": 0, "text": "Quixotic sentence. Second sentence!"},
+            {"index": 1, "text": "Zephyr sentence?"},
         ],
     )
     saved = db.save_v2_phase_b_sentence(
@@ -320,7 +320,7 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
         segment_index=-10001,
         start_seconds=0,
         end_seconds=0,
-        text="First sentence.",
+        text="Quixotic sentence.",
     )
     db.replace_v2_sentence_tags(
         saved["sentence_id"],
@@ -332,17 +332,17 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     data = response.json()
     assert data["lesson"]["id"] == lesson["id"]
     assert [item["text"] for item in data["sentences"]] == [
-        "First sentence.",
+        "Quixotic sentence.",
         "Second sentence!",
-        "Third sentence?",
+        "Zephyr sentence?",
     ]
     assert data["sentences"][0]["key"] == -10001
     assert data["sentences"][0]["saved"] is True
     assert data["sentences"][0]["tags"][0]["name"] == "长难句"
-    assert data["sentences"][0]["highlighted_words"] == ["first"]
+    assert data["sentences"][0]["highlighted_words"] == ["quixotic"]
     assert data["sentences"][1]["saved"] is False
     assert data["sentences"][1]["highlighted_words"] == []
-    assert data["sentences"][2]["highlighted_words"] == ["third"]
+    assert data["sentences"][2]["highlighted_words"] == ["zephyr"]
 
     page = client.get(f"/workspace/{lesson['id']}/intensive")
     assert page.status_code == 200

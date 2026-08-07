@@ -46,6 +46,7 @@ vocab_log.json.bak
 
 # 敏感信息
 cookies.txt
+*_cookies.txt
 *.env
 .env
 

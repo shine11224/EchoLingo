@@ -55,13 +55,10 @@ def enqueue_reading_tts(lesson_id: int) -> bool:
         _ACTIVE_LESSONS.add(lesson_id)
     db.configure_v2_lesson_translation(lesson_id, requested=True)
     db.set_v2_lesson_status(lesson_id, subtitle_status="pending")
-    thread = threading.Thread(
-        target=_run_reading_tts,
-        args=(lesson_id,),
-        daemon=True,
+    db.spawn_with_db_context(
+        _run_reading_tts, lesson_id,
         name=f"reading-tts-{lesson_id}",
     )
-    thread.start()
     return True
 
 

@@ -224,10 +224,8 @@ def start_document_outline_generation(lesson_id: int, *, force: bool = False) ->
             "content_hash": content_hash,
         }
         _OUTLINE_JOBS[lesson_id] = pending
-    threading.Thread(
-        target=_run_document_outline_job,
-        args=(lesson_id, force, content_hash),
-        daemon=True,
+    db.spawn_with_db_context(
+        _run_document_outline_job, lesson_id, force, content_hash,
         name=f"outline-{lesson_id}",
-    ).start()
+    )
     return pending

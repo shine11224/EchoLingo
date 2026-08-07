@@ -1127,7 +1127,7 @@
     .word-card:hover { box-shadow: var(--shadow); }
     .word-header {
       position: relative;
-      display: flex; align-items: center; gap: 10px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap; row-gap: 8px;
       padding: 12px 44px 12px 16px; cursor: pointer; user-select: none;
     }
     .delete-btn {
@@ -1159,14 +1159,20 @@
     .status-dot.ok   { background: var(--green); }
     .word-text { font-size: 17px; font-weight: 700; min-width: 110px; }
     .word-ipa  { font-size: 13px; color: var(--muted); min-width: 90px; }
-    .word-meaning { font-size: 14px; flex: 1; }
-    .word-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; flex-shrink: 0; }
+    .word-meaning { font-size: 14px; flex: 1 1 240px; min-width: 0; }
+    .word-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; flex: 0 1 auto; min-width: 0; }
     .tag {
       font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600;
       background: var(--surface-alt); color: var(--muted);
     }
     .tag.due  { background: #fef2f2; color: #991b1b; }
     .tag.user { background: #eaf4ec; color: #35684e; font-weight: 500; }
+    .tag.exam { background: #fdf3e3; color: #8a5a00; font-weight: 500; }
+    .tag.frq { background: #eef2fb; color: #3b5bdb; font-weight: 500; }
+    .autoplay-btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .autoplay-loop.active { background: #eaf4ec; color: #35684e; border-color: #35684e; }
+    .word-card.auto-playing { outline: 2px solid var(--brand); box-shadow: 0 0 0 4px rgba(47,107,75,.14); }
+    .sentence-library-row.auto-playing { outline: 2px solid var(--brand); }
     .tag-edit-btn {
       font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600;
       background: var(--surface-alt); color: var(--muted); border: none; cursor: pointer;
@@ -1181,7 +1187,7 @@
     .word-card[data-assessed="true"]  .meaning-prompt { display:none; }
     .word-card[data-assessed="true"]  .self-assess-row { display:flex; }
     .meaning-prompt {
-      flex:1; color:var(--muted); font-size:12px; letter-spacing:.02em;
+      flex: 1 1 240px; min-width: 0; color:var(--muted); font-size:12px; letter-spacing:.02em;
     }
     .self-assess-row {
       display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:auto;
@@ -1195,6 +1201,16 @@
     .assess-btn.fuzzy.active   { background:#b45309; border-color:#b45309; color:#fff; }
     .assess-btn.know.active    { background:#166534; border-color:#166534; color:#fff; }
     .assess-btn.mastered-btn { background:var(--brand); color:#fff; border-color:var(--brand); }
+
+    @media (max-width: 640px) {
+      .word-header { flex-wrap: wrap; row-gap: 8px; }
+      .word-text { min-width: 0; }
+      .word-ipa { min-width: 0; }
+      .speak-btn { margin-left: auto; }
+      .word-meaning, .meaning-prompt { flex: 1 1 100%; }
+      .word-meta { flex: 1 1 100%; justify-content: flex-start; }
+      .self-assess-row { flex: 1 1 100%; margin-left: 0; }
+    }
 
     .word-details {
       border-top: 1px solid var(--line); padding: 16px 20px;
@@ -1469,6 +1485,14 @@
   <div class="header-top">
     <h1>🎧 EchoLingo</h1>
     <span class="header-stat" id="header-stat"></span>
+    <a id="login-btn" href="/login" style="display:none; margin-left:8px; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:4px 12px; font-size:13px; text-decoration:none;">登录</a>
+    <div id="user-menu" style="display:none; position:relative; margin-left:8px;">
+      <button id="user-menu-btn" onclick="toggleUserMenu(event)" style="background:none; border:1px solid #ddd; border-radius:6px; padding:4px 10px; font-size:13px; cursor:pointer;"></button>
+      <div id="user-menu-pop" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e3e3e3; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.08); min-width:120px; z-index:1000;">
+        <a href="/account" style="display:block; padding:8px 14px; font-size:13px; color:#333; text-decoration:none;">账号设置</a>
+        <button onclick="logout()" style="display:block; width:100%; text-align:left; padding:8px 14px; font-size:13px; background:none; border:none; cursor:pointer; color:#333;">退出登录</button>
+      </div>
+    </div>
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-btn-lessons" onclick="switchTab('lessons')">📺 课程</button>
@@ -1482,10 +1506,8 @@
 <div class="tab-pane active" id="tab-lessons">
 <div class="container">
 
-  <section class="home-hero" aria-labelledby="home-title">
-    <h2 id="home-title">把真实素材变成一节可继续学习的课程</h2>
-    <p>首页只保留主路径：输入或选择素材，生成课程，打开课程学习，再回到句子库与词汇工坊继续积累。</p>
-    <div class="review-entry-grid" aria-label="复习入口">
+  <section class="home-hero" aria-label="复习入口">
+    <div class="review-entry-grid">
       <a class="home-action" href="#vocab" onclick="switchTab('vocab'); return false;">
         <span><strong>📖 词汇记忆工坊</strong></span>
         <span class="home-action-mark">进入</span>
@@ -1737,12 +1759,40 @@
         <option value="used_hint">使用过提示</option>
         <option value="example_only">只看过 AI 示例但未提交</option>
       </select>
+      <select class="sort-select" id="vocab-frq-filter" onchange="setVocabFrqFilter(this.value)" aria-label="按词频档位筛选">
+        <option value="all">全部词频</option>
+        <option value="le2000">COCA ≤2000</option>
+        <option value="2001_5000">COCA 2001–5000</option>
+        <option value="gt5000">COCA &gt;5000</option>
+        <option value="none">无词频数据</option>
+      </select>
+      <select class="sort-select" id="vocab-exam-filter" onchange="setVocabExamFilter(this.value)" aria-label="按考试标签筛选">
+        <option value="all">全部考试标签</option>
+        <option value="中考">中考</option>
+        <option value="高考">高考</option>
+        <option value="四级">四级</option>
+        <option value="六级">六级</option>
+        <option value="考研">考研</option>
+        <option value="托福">托福</option>
+        <option value="雅思">雅思</option>
+        <option value="GRE">GRE</option>
+      </select>
       <input class="search-input" id="search-input" type="search" placeholder="搜索单词或短语…" oninput="setSearch(this.value)">
       <span class="spacer"></span>
       <select class="sort-select" onchange="setSort(this.value)">
+        <option value="mastery">按掌握度+词频</option>
         <option value="review">按练习优先级</option>
         <option value="recent">按最近收藏</option>
         <option value="alpha">按字母</option>
+      </select>
+      <button type="button" class="sort-select autoplay-btn" id="vocab-autoplay-btn" onclick="toggleVocabAutoPlay()">▶ 自动播放</button>
+      <button type="button" class="sort-select autoplay-loop" id="vocab-autoplay-loop" onclick="toggleVocabAutoLoop()" title="播完后自动从头循环" aria-pressed="false">🔁 循环</button>
+      <select class="sort-select rate-select" id="vocab-rate-select" aria-label="自动播放倍速" onchange="setReviewAudioRate(Number(this.value))">
+        <option value="0.6">0.6×</option>
+        <option value="0.8">0.8×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
       </select>
       <div class="export-dropdown">
         <button class="sort-select" onclick="toggleExportMenu(event)">导出 ▾</button>
@@ -1869,6 +1919,16 @@
     <div class="sentence-library-head">
       <h2 id="sentence-library-title">全部收藏句</h2>
       <span class="spacer"></span>
+      <button type="button" class="sort-select autoplay-btn" id="sentence-autoplay-btn" onclick="toggleSentenceAutoPlay()">▶ 自动播放</button>
+      <button type="button" class="sort-select autoplay-loop" id="sentence-autoplay-loop" onclick="toggleSentenceAutoLoop()" title="播完后自动从头循环" aria-pressed="false">🔁 循环</button>
+      <select class="sort-select rate-select" id="sentence-rate-select" aria-label="播放倍速" onchange="setReviewAudioRate(Number(this.value))">
+        <option value="0.6">0.6×</option>
+        <option value="0.8">0.8×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+      </select>
+      <button type="button" class="sort-select" id="sentence-hide-all-btn" onclick="toggleAllSentenceOriginals()">🙈 隐藏原文</button>
       <input id="sentence-review-search" type="search" placeholder="搜索句子…" aria-label="搜索收藏句">
       <select id="sentence-review-time-filter" aria-label="按收藏时间筛选">
         <option value="all">全部收藏</option>
@@ -1968,7 +2028,7 @@
 
       <div id="resource-status" style="margin-top: 20px; font-weight: 600; color: var(--brand);"></div>
 
-      <div class="resource-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
+      <div class="resource-section" id="ai-settings-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🤖 第三方 AI API 设置</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
           配置支持 OpenAI 协议的 API（如 DeepSeek, OpenAI, Groq 或本地的 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
@@ -2039,7 +2099,7 @@
 <!-- ══════════════════════════════════════════════
      JAVASCRIPT
 ══════════════════════════════════════════════ -->
-<script src="/static/natural-tts.js?v=20260801-1"></script>
+<script src="/static/natural-tts.js?v=20260805-1"></script>
 <script>
 // ── Tab Routing ───────────────────────────────
 let _vocabLoaded = false;
@@ -2055,6 +2115,8 @@ let _sentenceRetellRecorder = null;
 let _sentenceRetellStream = null;
 let _sentencePage = 1;
 let _vocabPracticeFilter = 'all';
+let _vocabFrqFilter = 'all';
+let _vocabExamFilter = 'all';
 const SENTENCE_PAGE_SIZE = 30;
 
 function switchTab(name) {
@@ -4008,6 +4070,11 @@ function renderSentenceReviewList() {
         </div>
       </article>`;
   }).join('') : '<div class="empty-state"><p>没有符合条件的收藏句。</p></div>';
+  const hideAllBtn = document.getElementById('sentence-hide-all-btn');
+  if (hideAllBtn) {
+    const allHidden = rows.length > 0 && rows.every(s => _sentenceHiddenOriginals.has(Number(s.id)));
+    hideAllBtn.textContent = allHidden ? '📖 显示全文' : '🙈 隐藏原文';
+  }
   const pagination = document.getElementById('sentence-pagination');
   if (pagination) pagination.innerHTML = rows.length > SENTENCE_PAGE_SIZE ? `
     <button type="button" onclick="changeSentencePage(-1)" ${_sentencePage <= 1 ? 'disabled' : ''}>← 上一页</button>
@@ -4093,6 +4160,19 @@ function toggleSentenceOriginal(sentenceId) {
   const id = Number(sentenceId);
   if (_sentenceHiddenOriginals.has(id)) _sentenceHiddenOriginals.delete(id);
   else _sentenceHiddenOriginals.add(id);
+  renderSentenceReviewList();
+}
+
+// 一键隐藏/显示：作用于当前筛选结果；全部已隐藏时再点则全部恢复显示
+function toggleAllSentenceOriginals() {
+  const rows = filteredSentenceReviewData();
+  if (!rows.length) return;
+  const allHidden = rows.every(s => _sentenceHiddenOriginals.has(Number(s.id)));
+  rows.forEach(s => {
+    const id = Number(s.id);
+    if (allHidden) _sentenceHiddenOriginals.delete(id);
+    else _sentenceHiddenOriginals.add(id);
+  });
   renderSentenceReviewList();
 }
 
@@ -4514,10 +4594,12 @@ async function submitSentencePatternExample(sentenceId) {
 let _reviewAudioEl = null;
 let _reviewAudioStopAt = null;
 let _reviewAudioRate = 1.0;
+let _reviewAudioOnDone = null;
 let _reviewYouTubePlayer = null;
 let _reviewYouTubeReady = false;
 let _reviewYouTubePending = null;
 let _reviewYouTubeStopTimer = null;
+let _reviewYouTubeOnDone = null;
 
 function setReviewAudioRate(rate) {
   _reviewAudioRate = rate;
@@ -4528,18 +4610,32 @@ function setReviewAudioRate(rate) {
   document.querySelectorAll('.sentence-rate-btn').forEach(btn => {
     btn.classList.toggle('active', Math.abs(parseFloat(btn.dataset.rate) - rate) < 0.001);
   });
+  // 同步所有倍速下拉（行内 + 词汇/句子库头部），无匹配档位时保持原值
+  document.querySelectorAll('.sentence-library-rate, .rate-select').forEach(sel => {
+    const v = String(rate);
+    if ([...sel.options].some(o => o.value === v)) sel.value = v;
+  });
 }
 
-function _playReviewAudio(src, start, stopAt) {
+function _fireReviewAudioDone() {
+  const cb = _reviewAudioOnDone;
+  _reviewAudioOnDone = null;
+  if (typeof cb === 'function') cb();
+}
+
+function _playReviewAudio(src, start, stopAt, onDone) {
   stopReviewYouTubeAudio();
+  _reviewAudioOnDone = typeof onDone === 'function' ? onDone : null;
   if (!_reviewAudioEl) {
     _reviewAudioEl = new Audio();
     _reviewAudioEl.preload = 'auto';
     _reviewAudioEl.addEventListener('timeupdate', () => {
       if (_reviewAudioStopAt !== null && _reviewAudioEl.currentTime >= _reviewAudioStopAt) {
         _reviewAudioEl.pause();
+        _fireReviewAudioDone();
       }
     });
+    _reviewAudioEl.addEventListener('ended', _fireReviewAudioDone);
   }
   _reviewAudioStopAt = stopAt;
   _reviewAudioEl.playbackRate = _reviewAudioRate;
@@ -4570,8 +4666,9 @@ function stopReviewYouTubeAudio() {
 
 function startPendingReviewYouTubeAudio() {
   if (!_reviewYouTubeReady || !_reviewYouTubePending) return;
-  const {videoId, start, end} = _reviewYouTubePending;
+  const {videoId, start, end, onDone} = _reviewYouTubePending;
   _reviewYouTubePending = null;
+  _reviewYouTubeOnDone = typeof onDone === 'function' ? onDone : null;
   _reviewAudioEl?.pause();
   _reviewYouTubePlayer.setPlaybackRate(_reviewAudioRate);
   _reviewYouTubePlayer.loadVideoById({videoId, startSeconds:start});
@@ -4579,7 +4676,12 @@ function startPendingReviewYouTubeAudio() {
   if (_reviewYouTubeStopTimer) clearInterval(_reviewYouTubeStopTimer);
   _reviewYouTubeStopTimer = setInterval(() => {
     const current = Number(_reviewYouTubePlayer?.getCurrentTime?.() || 0);
-    if (current >= end) stopReviewYouTubeAudio();
+    if (current >= end) {
+      stopReviewYouTubeAudio();
+      const done = _reviewYouTubeOnDone;
+      _reviewYouTubeOnDone = null;
+      if (typeof done === 'function') done();
+    }
   }, 100);
 }
 
@@ -4610,11 +4712,11 @@ function ensureReviewYouTubePlayer() {
   }
 }
 
-function playReviewYouTubeAudio(audio) {
+function playReviewYouTubeAudio(audio, onDone) {
   const start = Number(audio.start) || 0;
   const end = Number(audio.end) || start;
   if (!audio.video_id || end <= start) return false;
-  _reviewYouTubePending = {videoId:audio.video_id, start, end};
+  _reviewYouTubePending = {videoId:audio.video_id, start, end, onDone};
   ensureReviewYouTubePlayer();
   startPendingReviewYouTubeAudio();
   return true;
@@ -4627,23 +4729,29 @@ function speakReviewSentenceWithBrowserTts(text) {
   NaturalTTS.speak(text, {lang:'en-US', rate:Math.max(0.7, Math.min(1.15, _reviewAudioRate * 0.95))});
 }
 
-function speakReviewSentence(sentenceId) {
+function speakReviewSentence(sentenceId, onDone) {
   const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
-  if (!sentence) return;
+  if (!sentence) { if (typeof onDone === 'function') onDone(); return; }
   const audio = sentence.audio;
-  if (audio && audio.kind === 'youtube' && playReviewYouTubeAudio(audio)) return;
+  if (audio && audio.kind === 'youtube' && playReviewYouTubeAudio(audio, onDone)) return;
   if (audio && audio.url) {
     const start = Number(audio.start) || 0;
     const stopAt = Number(audio.end) > start ? Number(audio.end) : null;
-    _playReviewAudio(audio.url, start, stopAt);
+    _playReviewAudio(audio.url, start, stopAt, onDone);
+    return;
+  }
+  if (typeof onDone === 'function') {
+    stopReviewYouTubeAudio();
+    _reviewAudioEl?.pause();
+    NaturalTTS.speak(sentence.text, {lang:'en-US', rate:Math.max(0.7, Math.min(1.15, _reviewAudioRate * 0.95)), onEnd:onDone});
     return;
   }
   speakReviewSentenceWithBrowserTts(sentence.text);
 }
 
-document.getElementById('sentence-review-search')?.addEventListener('input', () => { _sentencePage = 1; renderSentenceReviewList(); });
+document.getElementById('sentence-review-search')?.addEventListener('input', () => { stopSentenceAutoPlay(); _sentencePage = 1; renderSentenceReviewList(); });
 ['sentence-review-time-filter','sentence-listening-result-filter','sentence-pattern-filter','sentence-archive-filter'].forEach(id => {
-  document.getElementById(id)?.addEventListener('change', () => { _sentencePage = 1; renderSentenceReview(); });
+  document.getElementById(id)?.addEventListener('change', () => { stopSentenceAutoPlay(); _sentencePage = 1; renderSentenceReview(); });
 });
 
 function updateHomeLessonAction(lesson) {
@@ -4663,7 +4771,7 @@ function updateHomeLessonAction(lesson) {
 
 // ── Vocab: Data & State ───────────────────────
 let vocabData = {};
-let currentFilters = new Set(), currentSort = 'review', currentSearch = '';
+let currentFilters = new Set(), currentSort = 'mastery', currentSearch = '';
 let _vocabWordlists = [];
 let currentVocabPage = 1;
 const VOCAB_PAGE_SIZE = 30;
@@ -4819,8 +4927,7 @@ async function loadHomeReviewNote() {
 }
 
 // ── Vocab: Render ─────────────────────────────
-function renderVocabList() {
-  const list = document.getElementById('word-list');
+function getFilteredVocabEntries() {
   let entries = Object.entries(vocabData).filter(([w])=>!w.startsWith('__'));
 
   if (currentFilters.size === 0) {
@@ -4855,12 +4962,38 @@ function renderVocabList() {
       return true;
     });
   }
+  if (_vocabFrqFilter !== 'all') {
+    entries = entries.filter(([,e]) => {
+      const frq = Number(e.frq) || 0;
+      if (_vocabFrqFilter === 'none') return !frq;
+      if (_vocabFrqFilter === 'le2000') return frq > 0 && frq <= 2000;
+      if (_vocabFrqFilter === '2001_5000') return frq > 2000 && frq <= 5000;
+      if (_vocabFrqFilter === 'gt5000') return frq > 5000;
+      return true;
+    });
+  }
+  if (_vocabExamFilter !== 'all') {
+    entries = entries.filter(([,e]) => (e.exam_tags || []).includes(_vocabExamFilter));
+  }
   entries.sort(([wa,ea],[wb,eb])=>{
+    if (currentSort==='mastery') {
+      const famRank = {unknown:0, fuzzy:1, unrated:2};
+      const ra = famRank[ea.familiarity] ?? 3, rb = famRank[eb.familiarity] ?? 3;
+      if (ra !== rb) return ra - rb;
+      const fa = Number(ea.frq) || 999999, fb = Number(eb.frq) || 999999;
+      return fa !== fb ? fa - fb : (wa < wb ? -1 : 1);
+    }
     if (currentSort==='review') { const sa=reviewStatus(ea).order, sb=reviewStatus(eb).order; return sa!==sb?sa-sb:wb>wa?-1:1; }
     if (currentSort==='count')  return eb.count-ea.count;
     if (currentSort==='recent') return (eb.last_studied||'')>(ea.last_studied||'')?1:-1;
     return wa<wb?-1:1;
   });
+  return entries;
+}
+
+function renderVocabList() {
+  const list = document.getElementById('word-list');
+  const entries = getFilteredVocabEntries();
 
   const totalPages = Math.max(1, Math.ceil(entries.length / VOCAB_PAGE_SIZE));
   currentVocabPage = Math.min(Math.max(1, currentVocabPage), totalPages);
@@ -4887,6 +5020,183 @@ function changeVocabPage(delta) {
   document.getElementById('word-list')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+// ── Auto-play（词汇 + 句子库共用音频原语）─────────────
+const AUTOPLAY_GAP_MS = 1500;
+
+function _autoplayOnce(fn) {
+  let called = false;
+  return () => { if (!called) { called = true; fn(); } };
+}
+
+function _stopSharedAudio() {
+  NaturalTTS.stop();
+  _reviewAudioEl?.pause();
+  stopReviewYouTubeAudio();
+  _reviewAudioOnDone = null;
+  _reviewYouTubeOnDone = null;
+}
+
+function _playContextAuto(audio, text, onDone) {
+  const done = _autoplayOnce(onDone);
+  if (audio && audio.kind === 'youtube' && playReviewYouTubeAudio(audio, done)) return;
+  const start = Number(audio?.start) || 0;
+  const end = Number(audio?.end) || 0;
+  if (audio && audio.url && end > start) {
+    _playReviewAudio(audio.url, start, end, done);
+    return;
+  }
+  // TTS 兜底：watchdog 防止 onEnd 丢失导致卡死；倍速跟随全局 _reviewAudioRate
+  const watchdog = setTimeout(done, Math.max(5000, String(text || '').length * 110));
+  const ttsRate = Math.max(0.6, Math.min(1.5, 0.94 * _reviewAudioRate));
+  NaturalTTS.speak(text, {lang:'en-US', rate:ttsRate, onEnd:() => { clearTimeout(watchdog); done(); }});
+}
+
+let _vocabAutoPlay = {active:false, loop:false, queue:[], index:0, timer:null, session:0};
+
+function toggleVocabAutoLoop() {
+  _vocabAutoPlay.loop = !_vocabAutoPlay.loop;
+  const btn = document.getElementById('vocab-autoplay-loop');
+  btn?.classList.toggle('active', _vocabAutoPlay.loop);
+  btn?.setAttribute('aria-pressed', String(_vocabAutoPlay.loop));
+}
+
+function toggleVocabAutoPlay() {
+  if (_vocabAutoPlay.active) { stopVocabAutoPlay(); return; }
+  const queue = getFilteredVocabEntries();
+  if (!queue.length) return;
+  stopSentenceAutoPlay();
+  _vocabAutoPlay.active = true;
+  _vocabAutoPlay.queue = queue;
+  _vocabAutoPlay.index = 0;
+  _vocabAutoPlay.session++;
+  const btn = document.getElementById('vocab-autoplay-btn');
+  if (btn) { btn.textContent = '⏹ 停止播放'; btn.classList.add('active'); }
+  vocabAutoPlayStep();
+}
+
+function stopVocabAutoPlay() {
+  const ap = _vocabAutoPlay;
+  if (!ap.active && !ap.timer) return;
+  ap.session++;
+  ap.active = false;
+  clearTimeout(ap.timer);
+  ap.timer = null;
+  _stopSharedAudio();
+  document.querySelectorAll('#word-list .word-card.auto-playing').forEach(c => c.classList.remove('auto-playing'));
+  const btn = document.getElementById('vocab-autoplay-btn');
+  if (btn) { btn.textContent = '▶ 自动播放'; btn.classList.remove('active'); }
+}
+
+function vocabAutoPlayStep() {
+  const ap = _vocabAutoPlay;
+  if (!ap.active) return;
+  if (ap.index >= ap.queue.length) {
+    if (ap.loop) { ap.index = 0; } else { stopVocabAutoPlay(); return; }
+  }
+  const session = ap.session;
+  const alive = () => ap.active && ap.session === session;
+  const [word, entry] = ap.queue[ap.index];
+  const page = Math.floor(ap.index / VOCAB_PAGE_SIZE) + 1;
+  if (page !== currentVocabPage) { currentVocabPage = page; renderVocabList(); }
+  document.querySelectorAll('#word-list .word-card.auto-playing').forEach(c => c.classList.remove('auto-playing'));
+  const card = document.querySelector(`#word-list .word-card[data-word="${CSS.escape(word)}"]`);
+  card?.classList.add('auto-playing');
+  card?.scrollIntoView({behavior:'smooth', block:'center'});
+  const contexts = entry.contexts || [];
+  const context = contexts[Math.min(Number(entry._active_context_index || 0), Math.max(0, contexts.length - 1))] || {};
+  const text = resolveVocabContextSentence(entry, context, entry.cached_analysis || {});
+  const audio = context.audio || {};
+  const advance = () => {
+    if (!alive()) return;
+    ap.timer = setTimeout(() => {
+      if (!alive()) return;
+      ap.index += 1;
+      vocabAutoPlayStep();
+    }, AUTOPLAY_GAP_MS);
+  };
+  const wordDone = _autoplayOnce(() => {
+    if (!alive()) return;
+    ap.timer = setTimeout(() => {
+      if (!alive()) return;
+      // 无真实语境时跳过例句步骤（避免把中文占位文本读出来）
+      if (!text || /[一-鿿]/.test(text)) { advance(); return; }
+      _playContextAuto(audio, text, advance);
+    }, 350);
+  });
+  const wordWatchdog = setTimeout(wordDone, 5000);
+  const wordRate = Math.max(0.6, Math.min(1.5, 0.9 * _reviewAudioRate));
+  NaturalTTS.speak(word, {lang:'en-US', rate:wordRate, onEnd:() => { clearTimeout(wordWatchdog); wordDone(); }});
+}
+
+let _sentenceAutoPlay = {active:false, loop:false, queue:[], index:0, timer:null, session:0};
+
+function toggleSentenceAutoLoop() {
+  _sentenceAutoPlay.loop = !_sentenceAutoPlay.loop;
+  const btn = document.getElementById('sentence-autoplay-loop');
+  btn?.classList.toggle('active', _sentenceAutoPlay.loop);
+  btn?.setAttribute('aria-pressed', String(_sentenceAutoPlay.loop));
+}
+
+function toggleSentenceAutoPlay() {
+  if (_sentenceAutoPlay.active) { stopSentenceAutoPlay(); return; }
+  const queue = filteredSentenceReviewData();
+  if (!queue.length) return;
+  stopVocabAutoPlay();
+  _sentenceAutoPlay.active = true;
+  _sentenceAutoPlay.queue = queue;
+  _sentenceAutoPlay.index = 0;
+  _sentenceAutoPlay.session++;
+  const btn = document.getElementById('sentence-autoplay-btn');
+  if (btn) { btn.textContent = '⏹ 停止播放'; btn.classList.add('active'); }
+  sentenceAutoPlayStep();
+}
+
+function stopSentenceAutoPlay() {
+  const ap = _sentenceAutoPlay;
+  if (!ap.active && !ap.timer) return;
+  ap.session++;
+  ap.active = false;
+  clearTimeout(ap.timer);
+  ap.timer = null;
+  _stopSharedAudio();
+  document.querySelectorAll('.sentence-library-row.auto-playing').forEach(c => c.classList.remove('auto-playing'));
+  const btn = document.getElementById('sentence-autoplay-btn');
+  if (btn) { btn.textContent = '▶ 自动播放'; btn.classList.remove('active'); }
+}
+
+function sentenceAutoPlayStep() {
+  const ap = _sentenceAutoPlay;
+  if (!ap.active) return;
+  if (ap.index >= ap.queue.length) {
+    if (ap.loop) { ap.index = 0; } else { stopSentenceAutoPlay(); return; }
+  }
+  const session = ap.session;
+  const alive = () => ap.active && ap.session === session;
+  const sentence = ap.queue[ap.index];
+  const page = Math.floor(ap.index / SENTENCE_PAGE_SIZE) + 1;
+  if (page !== _sentencePage) { _sentencePage = page; renderSentenceReviewList(); }
+  document.querySelectorAll('.sentence-library-row.auto-playing').forEach(c => c.classList.remove('auto-playing'));
+  const row = document.querySelector(`.sentence-library-row[data-sentence-id="${sentence.id}"]`);
+  row?.classList.add('auto-playing');
+  row?.scrollIntoView({behavior:'smooth', block:'center'});
+  const advance = _autoplayOnce(() => {
+    if (!alive()) return;
+    ap.timer = setTimeout(() => {
+      if (!alive()) return;
+      ap.index += 1;
+      sentenceAutoPlayStep();
+    }, AUTOPLAY_GAP_MS);
+  });
+  const audio = sentence.audio || {};
+  const start = Number(audio.start) || 0;
+  const end = Number(audio.end) || 0;
+  const estimateMs = end > start
+    ? ((end - start) / Math.max(0.5, _reviewAudioRate)) * 1000 + 5000
+    : Math.max(5000, String(sentence.text || '').length * 110);
+  const watchdog = setTimeout(advance, estimateMs);
+  speakReviewSentence(sentence.id, () => { clearTimeout(watchdog); advance(); });
+}
+
 function resolveVocabContextSentence(entry, context, analysis) {
   const courseSentence = context.sentence || entry.sentence;
   if (courseSentence) return courseSentence;
@@ -4900,7 +5210,10 @@ function buildVocabCard(word, entry) {
   const st  = reviewStatus(entry);
   const an  = entry.cached_analysis || {};
   const ipa = an.ipa || '';
-  const level = (entry.level||'').replace('cefr_','').toUpperCase();
+  const rawLevel = (entry.level||'').replace('cefr_','').toUpperCase();
+  const level = /^(A1|A2|B1|B2|C1|C2)$/.test(rawLevel) ? rawLevel : '';
+  const examTags = entry.exam_tags || [];
+  const frqLabel = entry.frq ? `COCA #${entry.frq}` : '';
   const assessed = _assessedWords.has(word) ? 'true' : 'false';
   const encodedWord = encodeURIComponent(word).replace(/'/g, '%27');
   const contexts = entry.contexts || [];
@@ -4919,7 +5232,9 @@ function buildVocabCard(word, entry) {
     an.en_definition || (an.collocations||[]).length || (an.synonyms||[]).length
     || (an.examples||[]).length || an.usage || an.ielts_note
   );
-  const contextItems = contexts.map((c,index)=>`<div class="context-item${index === contextIndex ? ' active' : ''}" role="button" tabindex="0" onclick="selectVocabContext(event,decodeURIComponent('${encodedWord}'),${index})" onkeydown="if(event.key==='Enter'){selectVocabContext(event,decodeURIComponent('${encodedWord}'),${index});}"><span class="context-lesson">${esc(c.lesson||'收藏语境')}</span>${highlightVocabTarget(c.sentence||'',word)}</div>`).join('');
+  const contextItems = contexts.map((c,index)=>{
+    return `<div class="context-item${index === contextIndex ? ' active' : ''}" role="button" tabindex="0" onclick="selectVocabContext(event,decodeURIComponent('${encodedWord}'),${index})" onkeydown="if(event.key==='Enter'){selectVocabContext(event,decodeURIComponent('${encodedWord}'),${index});}"><span class="context-lesson">${esc(c.lesson||'收藏语境')}</span>${highlightVocabTarget(c.sentence||'',word)}</div>`;
+  }).join('');
   const ielts = an.ielts_note?`<div class="detail-section"><div class="detail-label">雅思注释</div><div class="ielts-note">${renderVocabReadingText(an.ielts_note)}</div></div>`:'';
   const usage = an.usage?`<div class="detail-section"><div class="detail-label">用法</div><div class="detail-value">${renderVocabReadingText(an.usage)}</div></div>`:'';
   const derivedReturnUrl = context.lesson_id
@@ -4940,6 +5255,8 @@ function buildVocabCard(word, entry) {
       <span class="meaning-prompt" aria-live="polite">自评后显示释义</span>
       <div class="word-meta">
         ${level?`<span class="tag">${esc(level)}</span>`:''}
+        ${examTags.map(tag => `<span class="tag exam">${esc(tag)}</span>`).join('')}
+        ${frqLabel?`<span class="tag frq">${esc(frqLabel)}</span>`:''}
         <span class="tag">${targetType}</span>
         ${userTags.map(tag => `<span class="tag user"># ${esc(tag)}</span>`).join('')}
         ${hiddenTagCount ? `<span class="tag user">+${hiddenTagCount}</span>` : ''}
@@ -4959,7 +5276,7 @@ function buildVocabCard(word, entry) {
         <button type="button" data-toggle-vocab-card>展开词卡</button>
         <button type="button" onclick="startVocabSentenceMaking(event,decodeURIComponent('${encodedWord}'))">情景造句练习</button>
         <button type="button" onclick="focusAdjacentVocabCard(event,1)">下一个 →</button>
-        ${returnUrl ? `<a href="${esc(returnUrl)}">← 返回原句</a>` : '<button type="button" data-toggle-vocab-card>查看收藏例句</button>'}
+        ${returnUrl ? `<a href="${esc(returnUrl)}">← 返回原句</a>` : ''}
       </div>
     </div>
     <div class="word-details">
@@ -5061,7 +5378,22 @@ function focusAdjacentVocabCard(event, offset) {
 }
 
 function setPracticeFilter(value) {
+  stopVocabAutoPlay();
   _vocabPracticeFilter = value || 'all';
+  currentVocabPage = 1;
+  renderVocabList();
+}
+
+function setVocabFrqFilter(value) {
+  stopVocabAutoPlay();
+  _vocabFrqFilter = value || 'all';
+  currentVocabPage = 1;
+  renderVocabList();
+}
+
+function setVocabExamFilter(value) {
+  stopVocabAutoPlay();
+  _vocabExamFilter = value || 'all';
   currentVocabPage = 1;
   renderVocabList();
 }
@@ -6105,6 +6437,7 @@ function stopSpeech() { stopStorySpeech(); }
 
 // ── Vocab: Filter/Sort ────────────────────────
 function setFilter(val) {
+  stopVocabAutoPlay();
   currentVocabPage = 1;
   if (val === 'all') { currentFilters.clear(); }
   else { currentFilters.has(val) ? currentFilters.delete(val) : currentFilters.add(val); }
@@ -6114,7 +6447,7 @@ function setFilter(val) {
   });
   renderVocabList();
 }
-function setSort(val) { currentSort=val; currentVocabPage=1; renderVocabList(); }
+function setSort(val) { stopVocabAutoPlay(); currentSort=val; currentVocabPage=1; renderVocabList(); }
 
 function toggleExportMenu(e) {
   e.stopPropagation();
@@ -6159,7 +6492,7 @@ function exportVocab(format) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
-function setSearch(val) { currentSearch=val.trim(); currentVocabPage=1; renderVocabList(); }
+function setSearch(val) { stopVocabAutoPlay(); currentSearch=val.trim(); currentVocabPage=1; renderVocabList(); }
 
 // ── Vocab: Practice ───────────────────────────
 async function genVocabHint(word) {
@@ -6693,6 +7026,42 @@ async function autoResumeJob() {
     _pollStatus(jobId);
   } catch (_) {}
 }
+async function initAuthBadge() {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) {
+      // 未登录：右上角显示登录入口（本地单用户模式接口不存在时同样静默）
+      if (r.status === 401) document.getElementById('login-btn').style.display = '';
+      return;
+    }
+    const me = await r.json();
+    document.getElementById('user-menu-btn').textContent = '👤 ' + me.username + ' ▾';
+    document.getElementById('user-menu').style.display = '';
+    // 非管理员：隐藏 API 配置区与建课页的 key 缺失提示（配置仅管理员可改）
+    if (!me.is_admin) {
+      const sec = document.getElementById('ai-settings-section');
+      if (sec) sec.style.display = 'none';
+      ['groq-key-warn', 'dashscope-key-warn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+    }
+  } catch (e) { /* 单用户模式忽略 */ }
+}
+async function logout() {
+  await fetch('/api/auth/logout', {method: 'POST'});
+  location.href = '/login';
+}
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const pop = document.getElementById('user-menu-pop');
+  pop.style.display = pop.style.display === 'none' ? '' : 'none';
+}
+document.addEventListener('click', () => {
+  const pop = document.getElementById('user-menu-pop');
+  if (pop) pop.style.display = 'none';
+});
+initAuthBadge();
 </script>
 <div id="review-popover">
   <span>调整复习：</span>

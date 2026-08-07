@@ -35,3 +35,19 @@ def intensive_workspace(request: Request, lesson_id: int):
             "Pragma": "no-cache",
         },
     )
+
+
+# 账号相关模板仅存在于私有库/云端：公开库不含这些模板时对应路由不注册（404 而非 500）
+if (ai_config.BASE_DIR / "frontend" / "templates" / "login.html").exists():
+
+    @router.get("/login")
+    def login_page(request: Request):
+        return templates.TemplateResponse(request, "login.html")
+
+    @router.get("/register")
+    def register_page(request: Request):
+        return templates.TemplateResponse(request, "register.html")
+
+    @router.get("/account")
+    def account_page(request: Request):
+        return templates.TemplateResponse(request, "account.html")

@@ -137,6 +137,13 @@ def load_default_intermediate_words() -> set[str]:
 
 def _load_compiled_word_set(filename: str) -> set[str]:
     path = _COMPILED_DIR / filename
+    if filename.startswith("user_"):
+        # 多用户模式下上传词表按用户隔离存储
+        try:
+            from webapp.storage import wordlists as _wl
+            path = _wl.resolve_compiled_path(filename[:-5] if filename.endswith(".json") else filename)
+        except Exception:
+            pass
     if not path.exists():
         return set()
     try:
@@ -200,10 +207,6 @@ def load_v2_wordlist_index() -> dict[str, dict]:
     words: dict[str, dict] = {}
     for word in load_default_intermediate_words():
         words[word] = {"word": word, "level": "ielts"}
-    for word in _load_compiled_word_set("domain_academic.json"):
-        words.setdefault(word, {"word": word, "level": "academic"})
-    for word in _load_compiled_word_set("cefr_b1.json"):
-        words.setdefault(word, {"word": word, "level": "b1"})
     _V2_WORDLIST_INDEX = words
     return _V2_WORDLIST_INDEX
 

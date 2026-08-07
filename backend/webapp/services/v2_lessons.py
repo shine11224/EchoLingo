@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import threading
 import hashlib
@@ -13,7 +15,7 @@ from urllib.request import url2pathname
 import db
 from sources.baidu import build_local_video_lesson
 from sources.bilibili import build_bilibili_lesson
-from sources.youtube import extract_video_id, fetch_youtube_subtitles, source_bundle_to_segment_dicts
+from sources.youtube import download_youtube_audio, extract_video_id, fetch_youtube_subtitles, source_bundle_to_segment_dicts
 from webapp.services.media_reading import build_media_reading_blocks
 from webapp.services.reading_import import build_reading_blocks_from_text, extract_text_from_pdf, extract_text_from_upload
 from webapp.services.v2_translation import translate_lesson_subtitles
@@ -149,13 +151,11 @@ def start_reading_upload_lesson(filename: str, content: bytes, *, tts: bool = Fa
                 "workspace_url": "",
             }
             _READING_UPLOAD_INFLIGHT[source_url] = job_id
-        thread = threading.Thread(
-            target=_run_reading_upload,
-            args=(job_id, filename, content, source_url, tts),
-            daemon=True,
+        thread = db.spawn_with_db_context(
+            _run_reading_upload,
+            job_id, filename, content, source_url, tts,
             name=f"reading-import-{job_id[:8]}",
         )
-        thread.start()
     except Exception:
         _READING_UPLOAD_SLOTS.release()
         raise
@@ -225,8 +225,7 @@ def _run_reading_upload(job_id: str, filename: str, content: bytes, source_url: 
 
 
 def enqueue_subtitle_fetch(lesson_id: int, url: str, *, translate: bool = False) -> None:
-    t = threading.Thread(target=_fetch_and_store_subtitles, args=(lesson_id, url, translate), daemon=True)
-    t.start()
+    db.spawn_with_db_context(_fetch_and_store_subtitles, lesson_id, url, translate)
 
 
 def _store_media_segments(lesson_id: int, segments: list[dict]) -> None:
@@ -275,10 +274,56 @@ def ensure_media_reading_blocks(lesson_id: int, lesson: dict) -> list[dict]:
     return blocks
 
 
+_SENTENCE_END_RE = re.compile(r"[.!?][\"')\]]?$")
+# 自动字幕几乎无句末标点；低于此比例判定为"无标点字幕"，改用 whisper 转录
+_MIN_PUNCTUATION_RATIO = 0.25
+
+
+def _segments_punctuation_ratio(segments: list[dict]) -> float:
+    texts = [str(s.get("text") or "").strip() for s in segments]
+    texts = [t for t in texts if t]
+    if not texts:
+        return 0.0
+    hits = sum(1 for t in texts if _SENTENCE_END_RE.search(t))
+    return hits / len(texts)
+
+
+def _transcribe_youtube_segments(url: str) -> list[dict]:
+    """Download audio and transcribe (paraformer/openai/groq/faster-whisper cascade)
+    for punctuation-free auto-captions; whisper output carries sentence punctuation
+    so downstream rule-based segmentation works."""
+    from sources.baidu import _transcribe_with_optional_whisper
+
+    model = os.environ.get("YOUTUBE_TRANSCRIBE_MODEL", "").strip() or (
+        "paraformer" if os.environ.get("DASHSCOPE_API_KEY") else "large-v3"
+    )
+    audio_path = download_youtube_audio(url)
+    segments = _transcribe_with_optional_whisper(Path(audio_path), model, output_dir=OUTPUT_DIR)
+    return [
+        {"index": i + 1, "start": float(s.start), "end": float(s.end), "text": s.text}
+        for i, s in enumerate(segments)
+        if str(s.text or "").strip()
+    ]
+
+
 def _fetch_and_store_subtitles(lesson_id: int, url: str, translate: bool = False) -> None:
     try:
         bundle = fetch_youtube_subtitles(url)
-        _store_media_segments(lesson_id, source_bundle_to_segment_dicts(bundle))
+        segments = source_bundle_to_segment_dicts(bundle)
+        ratio = _segments_punctuation_ratio(segments)
+        if segments and ratio < _MIN_PUNCTUATION_RATIO:
+            print(
+                f"[v2] lesson {lesson_id}: 字幕标点率 {ratio:.0%}（疑似自动字幕），改用 whisper 转录",
+                flush=True,
+            )
+            try:
+                transcribed = _transcribe_youtube_segments(url)
+                if transcribed:
+                    segments = transcribed
+            except Exception as exc:
+                # 转录失败保留原字幕，课程仍可用（断句质量差但不阻断导入）
+                print(f"[v2] lesson {lesson_id}: whisper 转录失败，保留原字幕：{exc}", flush=True)
+        _store_media_segments(lesson_id, segments)
         db.set_v2_lesson_status(lesson_id, subtitle_status="ready")
         _enqueue_media_alignment(lesson_id)
         if translate:
@@ -294,22 +339,14 @@ def _fetch_and_store_subtitles(lesson_id: int, url: str, translate: bool = False
 
 def enqueue_local_import(lesson_id: int, media_path: str, *, transcript_path: str | None = None,
                          whisper_model: str = "large-v3", translate: bool = False) -> None:
-    t = threading.Thread(
-        target=_import_local_media,
-        args=(lesson_id, media_path, transcript_path, whisper_model, translate),
-        daemon=True,
-    )
-    t.start()
+    db.spawn_with_db_context(
+        _import_local_media, lesson_id, media_path, transcript_path, whisper_model, translate)
 
 
 def enqueue_bilibili_import(lesson_id: int, url: str, *, download_video: bool = False,
                             whisper_model: str = "large-v3", translate: bool = False) -> None:
-    t = threading.Thread(
-        target=_import_bilibili_media,
-        args=(lesson_id, url, download_video, whisper_model, translate),
-        daemon=True,
-    )
-    t.start()
+    db.spawn_with_db_context(
+        _import_bilibili_media, lesson_id, url, download_video, whisper_model, translate)
 
 
 def _import_local_media(lesson_id: int, media_path: str, transcript_path: str | None,

@@ -17,3 +17,4 @@ openpyxl
 playwright
 edge-tts==7.2.8
 dashscope>=1.20.0
+eng-to-ipa

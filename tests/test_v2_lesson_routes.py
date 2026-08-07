@@ -1118,7 +1118,8 @@ def test_word_meaning_route_returns_lookup_without_activating_review(tmp_path, m
     assert data["found"] is True
     assert isinstance(data.get("phonetic"), str) and len(data["phonetic"]) > 0
     assert "COCA #1523" in data["dict_meta"]
-    assert "四级" in data["dict_meta"]
+    # 考试标签按 may 要求不在 dict_meta 展示（format_ecdict_meta 刻意排除）
+    assert "四级" not in data["dict_meta"]
     assert data["in_review_book"] is False
     assert db.is_word_in_review("complex") is False
 

@@ -1461,7 +1461,7 @@
 
   {% if source_type == "youtube" %}
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="/static/natural-tts.js?v=20260801-1"></script>
+  <script src="/static/natural-tts.js?v=20260805-1"></script>
   {% endif %}
   <script>
     const segments = {{ segments_json | tojson }};
@@ -2062,7 +2062,7 @@
           .filter(c => c.type === 'exclude')
           .map(c => c.id || getWordlistKey(c));
         const requests = [
-          ...(excludeNames.length ? excludeNames : ['exclude_a1a2', 'builtin_coca_2000']).map(listName =>
+          ...(excludeNames.length ? excludeNames : ['builtin_coca_2000']).map(listName =>
             fetch(apiUrl(`/wordlists/${listName}`))
               .then(r => r.ok ? r.json() : {words: []})
               .catch(() => ({words: []}))

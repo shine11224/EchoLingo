@@ -14,6 +14,35 @@ for d in [COMPILED_DIR, PATTERNS_DIR, USER_DIR]:
 
 WORD_RE = re.compile(r"^[a-z][a-z'\-]{1,}$")
 REQUIRED_PATTERN_FIELDS = ("id", "name", "template", "triggers", "explanation_cn", "example", "ielts_tip")
+
+
+def _user_dirs() -> tuple[Path, Path]:
+    """当前请求的上传词表 (源目录, 编译目录)：多用户按用户隔离，单用户回落共享目录。"""
+    import db
+    root = db.current_user_root()
+    if root is not None:
+        base = root / "wordlists" / "wordlists"
+        return base / "user", base / "compiled"
+    return USER_DIR, COMPILED_DIR
+
+
+def user_source_dir() -> Path:
+    d = _user_dirs()[0]
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def user_compiled_dir() -> Path:
+    d = _user_dirs()[1]
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def resolve_compiled_path(stem: str) -> Path:
+    """user_* 词表按当前用户解析编译产物；内置/共享词表始终走共享 compiled。"""
+    if stem.startswith("user_"):
+        return user_compiled_dir() / f"{stem}.json"
+    return COMPILED_DIR / f"{stem}.json"
 PATTERN_UPLOAD_SUFFIXES = {".json", ".csv", ".xlsx"}
 ECDICT_DB = BASE_DIR / "resources" / "ecdict" / "ecdict.db"
 
@@ -214,7 +243,7 @@ def _safe_stem(stem: str) -> str:
     return re.sub(r"[^a-z0-9_]", "_", stem.lower()).strip("_") or "custom"
 
 def _user_compiled_path(source: Path) -> Path:
-    return COMPILED_DIR / f"user_{_safe_stem(source.stem)}.json"
+    return user_compiled_dir() / f"user_{_safe_stem(source.stem)}.json"
 
 def _pattern_meta_path(path: Path) -> Path:
     return path.with_name(path.name + ".meta")
@@ -272,7 +301,7 @@ def _safe_existing_child(directory: Path, filename: str) -> Path | None:
 
 def list_uploaded_resources():
     wordlists = []
-    for source in sorted(USER_DIR.glob("*")):
+    for source in sorted(user_source_dir().glob("*")):
         if not source.is_file() or source.name == ".gitkeep":
             continue
         compiled = _user_compiled_path(source)
@@ -323,7 +352,7 @@ def list_uploaded_resources():
     return {"wordlists": wordlists, "patterns": patterns}
 
 def update_uploaded_wordlist_metadata(filename: str, name: str | None = None, tag: str | None = None):
-    source = _safe_existing_child(USER_DIR, filename)
+    source = _safe_existing_child(user_source_dir(), filename)
     if not source:
         return False, "wordlist not found", {}
 
@@ -392,7 +421,7 @@ def update_uploaded_pattern_metadata(filename: str, name: str | None = None):
     }
 
 def delete_uploaded_wordlist(filename: str):
-    source = _safe_existing_child(USER_DIR, filename)
+    source = _safe_existing_child(user_source_dir(), filename)
     if not source:
         return False, "词表文件不存在。"
     compiled = _user_compiled_path(source)
@@ -410,61 +439,73 @@ def delete_uploaded_pattern(filename: str):
     _pattern_meta_path(path).unlink(missing_ok=True)
     return True, ""
 
-# 默认配置，如果文件没有元数据则使用这些
-DEFAULT_CONFIG = {
-    "exclude_a1a2": {"name": "排除常用词", "type": "exclude", "key": "exclude"},
-    "cefr_b1": {"name": "中级 (B1)", "type": "level", "key": "b1", "color": "level-b1", "tag": "B1"},
-    "cefr_b2": {"name": "中高级 (B2)", "type": "level", "key": "b2", "color": "level-b2", "tag": "B2"},
-    "cefr_c1": {"name": "高级 (C1)", "type": "level", "key": "c1", "color": "level-c1", "tag": "C1"},
-    "domain_business": {"name": "商务", "type": "domain", "key": "business", "color": "domain-business", "tag": "商务"},
-    "domain_academic": {"name": "学术", "type": "domain", "key": "academic", "color": "domain-academic", "tag": "学术"},
-    "domain_fitness": {"name": "健身", "type": "domain", "key": "fitness", "color": "domain-fitness", "tag": "健身"},
-    "domain_medical": {"name": "医学", "type": "domain", "key": "medical", "color": "domain-medical", "tag": "医学"},
-}
+# 旧 BNC 管线（cefr/domain/exclude_a1a2）已于 2026-08-07 移除，内置词表统一由
+# build_ecdict.py 生成 builtin_*.json（文件自带 metadata，无需默认配置表）
+def _scan_compiled_file(f: Path):
+    """解析单个 compiled 词表 JSON 为配置 dict；失败返回 None。"""
+    stem = f.stem
+    config = {
+        "name": stem.replace("_", " ").title(),
+        "type": "domain" if "domain" in stem else "level",
+        "key": stem.split("_")[-1],
+        "color": f"domain-{stem.split('_')[-1]}",
+        "tag": stem.split("_")[-1].upper()
+    }.copy()
+
+    try:
+        with open(f, "r", encoding="utf-8") as jf:
+            data = json.load(jf)
+            # 如果文件自带 metadata 则覆盖默认
+            if "metadata" in data:
+                config.update(data["metadata"])
+            if stem.startswith("user_"):
+                display_name = config.get("name") or stem[5:].replace("_", " ").title()
+                config.update({
+                    "name": display_name,
+                    "type": "domain",
+                    "key": stem,
+                    "color": config.get("color") or "domain-user",
+                    "tag": display_name[:10] if config.get("tag") in {"", "USER", None} else config.get("tag"),
+                    "tag_class": config.get("tag_class") or "user-tag",
+                })
+
+            config["id"] = stem
+            config["count"] = len(data.get("words", []))
+            return config
+    except Exception:
+        return None
+
 
 def scan_wordlists():
-    """扫描 compiled 目录下的所有词表 JSON 文件并提取元数据。"""
+    """扫描 compiled 目录下的所有词表 JSON 文件并提取元数据。
+
+    多用户模式：共享 compiled 里的 user_*（历史全局上传）不注入，只扫当前用户的
+    独立 compiled 目录；单用户模式行为不变。
+    """
+    import db
+    multiuser = db.current_user_root() is not None
+
     if not COMPILED_DIR.exists():
         COMPILED_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     results = []
     # 优先扫描 compiled 目录
     for f in COMPILED_DIR.glob("*.json"):
         if f.name == "sentence_patterns.json":
             continue
-        
-        stem = f.stem
-        config = DEFAULT_CONFIG.get(stem, {
-            "name": stem.replace("_", " ").title(),
-            "type": "domain" if "domain" in stem else "level",
-            "key": stem.split("_")[-1],
-            "color": f"domain-{stem.split('_')[-1]}",
-            "tag": stem.split("_")[-1].upper()
-        })
-        
-        try:
-            with open(f, "r", encoding="utf-8") as jf:
-                data = json.load(jf)
-                # 如果文件自带 metadata 则覆盖默认
-                if "metadata" in data:
-                    config.update(data["metadata"])
-                if stem.startswith("user_"):
-                    display_name = config.get("name") or stem[5:].replace("_", " ").title()
-                    config.update({
-                        "name": display_name,
-                        "type": "domain",
-                        "key": stem,
-                        "color": config.get("color") or "domain-user",
-                        "tag": display_name[:10] if config.get("tag") in {"", "USER", None} else config.get("tag"),
-                        "tag_class": config.get("tag_class") or "user-tag",
-                    })
-                
-                config["id"] = stem
-                config["count"] = len(data.get("words", []))
-                results.append(config)
-        except Exception:
+        if multiuser and f.stem.startswith("user_"):
             continue
-            
+        config = _scan_compiled_file(f)
+        if config:
+            results.append(config)
+
+    if multiuser:
+        user_dir = user_compiled_dir()
+        for f in user_dir.glob("*.json"):
+            config = _scan_compiled_file(f)
+            if config:
+                results.append(config)
+
     return sorted(results, key=lambda x: (x["type"] != "exclude", x["type"] != "level", x.get("id", "")))
 
 def get_combined_patterns():

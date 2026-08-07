@@ -196,21 +196,20 @@ def test_load_v2_wordlist_index_is_cached_until_cleared(monkeypatch):
     v2_vocab.clear_vocab_caches()
     calls = {"count": 0}
 
-    def fake_load(filename):
+    def fake_intermediate():
         calls["count"] += 1
-        return {"academic"} if filename == "domain_academic.json" else set()
+        return {"urban"}
 
-    monkeypatch.setattr(v2_vocab, "load_default_intermediate_words", lambda: {"urban"})
-    monkeypatch.setattr(v2_vocab, "_load_compiled_word_set", fake_load)
+    monkeypatch.setattr(v2_vocab, "load_default_intermediate_words", fake_intermediate)
 
     first = v2_vocab.load_v2_wordlist_index()
     second = v2_vocab.load_v2_wordlist_index()
 
     assert first is second
-    assert calls["count"] == 2
+    assert calls["count"] == 1
 
     v2_vocab.clear_vocab_caches()
     refreshed = v2_vocab.load_v2_wordlist_index()
     assert refreshed is not first
-    assert calls["count"] == 4
+    assert calls["count"] == 2
     v2_vocab.clear_vocab_caches()

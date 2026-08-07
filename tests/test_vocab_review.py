@@ -634,6 +634,8 @@ def test_practice_history_returns_complete_correction_record(tmp_path, monkeypat
         "target": "analogy",
         "sentence_id": sentence["id"],
         "practice_type": "word",
+        "lesson_id": None,
+        "source_context": "",
     }
     item = payload["items"][0]
     assert item["target"] == "analogy"

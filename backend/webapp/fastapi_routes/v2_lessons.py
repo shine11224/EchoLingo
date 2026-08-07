@@ -1003,7 +1003,12 @@ def save_word(lesson_id: int, body: WordSaveBody):
     analysis = {"basic_meaning": meaning} if meaning else None
     today = datetime.date.today().isoformat()
     count, is_new = db.upsert_word(word, today, level="v2", analysis=analysis)
-    db.save_v2_lesson_word(lesson_id, word, body.sentence)
+    # 词句对应守卫：前端句子来自对齐数据，错位课程会传不含该词的句子（2026-08-06 bug3）。
+    # 不含词时改用 v2_sentences 中真正含该词的句子，找不到则不写语境，避免脏数据入 contexts。
+    context_sentence = str(body.sentence or "")
+    if context_sentence and not db.sentence_contains_word(context_sentence, word):
+        context_sentence = db.find_v2_sentence_containing(word) or ""
+    db.save_v2_lesson_word(lesson_id, word, context_sentence)
     db.activate_word_review(
         word,
         source=body.source if body.source in {
@@ -1016,8 +1021,8 @@ def save_word(lesson_id: int, body: WordSaveBody):
         display_text=body.display_text or body.word,
     )
     remember_word_meaning(word, meaning)
-    if body.sentence:
-        db.add_context(word, lesson.get("title") or "v2 workspace", body.sentence)
+    if context_sentence:
+        db.add_context(word, lesson.get("title") or "v2 workspace", context_sentence)
     return {"ok": True, "word": word, "saved": True, "count": count, "is_new": is_new, "meaning": meaning}
 
 
