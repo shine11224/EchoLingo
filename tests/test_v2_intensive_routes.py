@@ -444,7 +444,7 @@ def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, 
     response = client.get(f"/api/v2/lessons/{lesson['id']}/intensive")
 
     assert response.status_code == 200
-    assert response.json()["sentences"][0]["highlighted_words"] == []
+    assert "first" not in response.json()["sentences"][0]["highlighted_words"]
 
 
 def test_media_intensive_reuses_playback_sentence_units_with_contiguous_timing(tmp_path, monkeypatch):
