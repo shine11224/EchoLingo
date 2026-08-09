@@ -51,6 +51,28 @@ def test_highlight_segments_skips_lesson_hidden_words(monkeypatch):
     assert result[0]["word_meanings"] == {"analyzed": "分析"}
 
 
+def test_reading_highlight_uses_surface_word_for_mastered_state():
+    from webapp.services.v2_vocab import highlight_reading_blocks
+
+    sentence = "It also hoped that the riverside can be used for other purposes."
+    kwargs = {
+        "include_meanings": False,
+        "source_words": {"hop"},
+        "source_lists": [("user_bnc_4k_6k", {"hop"})],
+    }
+
+    visible = highlight_reading_blocks([{"text": sentence}], **kwargs)
+    highlight = visible["blocks"][0]["highlights"][0]
+    assert highlight["word"] == "hoped"
+    assert highlight["normalized"] == "hop"
+    assert highlight["list_key"] == "user_bnc_4k_6k"
+
+    hidden = highlight_reading_blocks(
+        [{"text": sentence}], hidden_words={"hoped"}, **kwargs
+    )
+    assert hidden["blocks"][0]["highlights"] == []
+
+
 def test_lookup_word_meaning_uses_loaded_meanings(monkeypatch):
     from webapp.services import v2_vocab
 

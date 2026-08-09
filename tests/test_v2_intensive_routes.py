@@ -8,6 +8,42 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from fastapi.testclient import TestClient
 
 
+def test_reading_split_recovers_missing_punctuation_at_capitals_but_not_i():
+    from webapp.services.v2_intensive import _split_reading_text
+
+    text = (
+        "But people also used the river for fishing, as the water then was relatively clean, "
+        "and they would also go on boat trips up and down the river just for pleasure, as a "
+        "relaxing escape from the noise and bustle of the city streets But as industries "
+        "developed and populations increased city rivers suffered The rising number of people "
+        "meant there was a huge increase in the amount of sewage discharged into the rivers "
+        "Rivers had always been used for this purpose, but when the number of inhabitants was "
+        "so small, that wasn't such a problem."
+    )
+
+    assert _split_reading_text(text) == [
+        "But people also used the river for fishing, as the water then was relatively clean, "
+        "and they would also go on boat trips up and down the river just for pleasure, as a "
+        "relaxing escape from the noise and bustle of the city streets",
+        "But as industries developed and populations increased city rivers suffered",
+        "The rising number of people meant there was a huge increase in the amount of sewage "
+        "discharged into the rivers",
+        "Rivers had always been used for this purpose, but when the number of inhabitants was "
+        "so small, that wasn't such a problem.",
+    ]
+    assert _split_reading_text(
+        "People often say that learning takes time and I agree with them Today we practise."
+    ) == [
+        "People often say that learning takes time and I agree with them",
+        "Today we practise.",
+    ]
+    assert _split_reading_text(
+        "The long journey continued for many hours before New York finally appeared."
+    ) == [
+        "The long journey continued for many hours before New York finally appeared."
+    ]
+
+
 def test_oral_analysis_is_persisted_and_reused_by_intensive_and_sentence_library(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
@@ -410,6 +446,9 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     assert "generateOralAnalysis" in page.text
     assert "generatePracticeHint" in page.text
     assert "vocab: practiceWords(sentence)" in page.text
+    assert "data.example_sentence || data.corrected" in page.text
+    assert "action: isExample ? 'example' : 'correct'" in page.text
+    assert "user_answer: userAnswer" in page.text
     assert "submitPractice" in page.text
     assert "/api/phonetics" in page.text
     assert "/api/oral-analysis" in page.text
@@ -557,3 +596,36 @@ def test_intensive_export_writes_homepage_html_and_lesson_metadata(tmp_path, mon
 
     homepage_lessons = client.get("/api/lessons").json()
     assert all(item["filename"] != exported.name for item in homepage_lessons)
+
+
+def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:mastered-intensive",
+        title="Mastered Intensive",
+        lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(
+        lesson["id"],
+        [{"index": 0, "text": "First sentence."}],
+    )
+    db.activate_word_review(
+        word="first",
+        source="manual",
+        lemma="first",
+        display_text="first",
+        target_type="word",
+    )
+    db.set_review_word_lifecycle("first", mastered=True)
+
+    response = client.get(f"/api/v2/lessons/{lesson['id']}/intensive")
+
+    assert response.status_code == 200
+    highlighted_words = response.json()["sentences"][0]["highlighted_words"]
+    assert "first" not in highlighted_words
+    assert "sentence" in highlighted_words
