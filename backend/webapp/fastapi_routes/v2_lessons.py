@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import json
 import shutil
+import typing
 from pathlib import Path
 import re
 
@@ -103,7 +104,9 @@ class ReadingSentenceBody(BaseModel):
     start_seconds: float = 0
     end_seconds: float = 0
     mode: str = "reading"
-    source: str = ""
+    # 前端会把 source 作为对象上送（lesson_id/mode/block_index 等上下文）；
+    # 后端当前不消费该字段，Any 兼容对象与字符串两种形态（2026-08-07 422 修复）
+    source: typing.Any = ""
 
 
 class TagBody(BaseModel):

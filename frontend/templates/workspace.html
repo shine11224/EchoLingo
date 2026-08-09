@@ -2175,8 +2175,11 @@ async function loadSavedWords() {
 function refreshReadingWordStates() {
   document.querySelectorAll('#reading-passage .reading-word').forEach(button => {
     const normalized = normalizeWord(button.dataset.word);
+    const surface = normalizeWord(button.dataset.query || button.textContent);
     button.classList.toggle('saved-word', savedWordSet.has(normalized));
-    if (readingHiddenWordSet.has(normalized)) button.classList.remove('highlight-word');
+    if (readingHiddenWordSet.has(normalized) || readingHiddenWordSet.has(surface)) {
+      button.classList.remove('highlight-word');
+    }
   });
 }
 
@@ -2804,8 +2807,10 @@ function renderReadingTextRange(block, startOffset, endOffset) {
     if (localStart > cursor) pieces.push(escapeHtml(visibleText.slice(cursor, localStart)));
     const highlight = highlights.get(`${start}:${end}`);
     const normalized = normalizeWord(highlight?.normalized || token);
+    const surface = normalizeWord(token);
+    const isHidden = readingHiddenWordSet.has(normalized) || readingHiddenWordSet.has(surface);
     const classes = ['reading-word'];
-    if (highlight && !readingHiddenWordSet.has(normalized)) classes.push('highlight-word');
+    if (highlight && !isHidden) classes.push('highlight-word');
     if (savedWordSet.has(normalized)) classes.push('saved-word');
     // 按词表优先级着色（默认模式无映射时保持原色）
     const wlColor = (highlight && wordlistColorMap) ? (wordlistColorMap[highlight.list_key] || '') : '';
@@ -2816,7 +2821,7 @@ function renderReadingTextRange(block, startOffset, endOffset) {
     const cachedGloss = wordMeaningCache[normalized];
     const savedGloss = typeof cachedGloss === 'string' ? cachedGloss : (cachedGloss?.meaning || '');
     const popoverMeaning = String(highlight?.meaning || savedGloss || '').trim();
-    const gloss = mode === 'lookup' && isSavedWord && !readingHiddenWordSet.has(normalized)
+    const gloss = mode === 'lookup' && isSavedWord && !isHidden
       ? popoverMeaning
       : '';
     const buttonHtml = `<button type="button" class="${classes.join(' ')}"${colorAttr} data-word="${escapeHtml(normalized)}" data-query="${escapeHtml(token)}" data-meaning="${escapeHtml(popoverMeaning)}" onclick="showWordMeaning(event)">${escapeHtml(token)}</button>`;

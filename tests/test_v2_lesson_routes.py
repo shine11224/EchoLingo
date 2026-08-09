@@ -1693,3 +1693,42 @@ def test_active_words_returns_saved_meanings(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert "complex" in resp.json()["words"]
     assert resp.json()["meanings"]["complex"] == "复杂的"
+
+
+def test_reading_saved_sentence_accepts_frontend_payload_shape(tmp_path, monkeypatch):
+    """回归：前端整句收藏把 source 作为对象上送，模型曾声明 source: str 导致 422。"""
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="reading://save-shape",
+        title="Reading save shape",
+        lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [{"index": 0, "text": "A paragraph. Another sentence."}])
+
+    response = client.post(
+        f"/api/v2/lessons/{lesson['id']}/reading/saved-sentences",
+        json={
+            "block_index": -10001,
+            "text": "A paragraph.",
+            "start_seconds": 0,
+            "end_seconds": 0,
+            "lesson_id": lesson["id"],
+            "mode": "reading",
+            "sentence_key": "-10001",
+            "source": {
+                "lesson_id": lesson["id"],
+                "mode": "reading",
+                "block_index": 0,
+                "start_seconds": None,
+                "end_seconds": None,
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
