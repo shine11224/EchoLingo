@@ -517,14 +517,15 @@ def highlight_reading_blocks(
             highlighted = _reading_highlight_match(word, word_index)
             if not highlighted:
                 continue
-            normalized, meta = highlighted
-            if normalized in hidden:
+            matched_word, meta = highlighted
+            surface = re.sub(r"[^a-zA-Z']", "", word).lower().strip("'")
+            if surface in hidden or matched_word in hidden:
                 continue
-            if normalized not in gloss_cache:
+            if matched_word not in gloss_cache:
                 if not include_meanings:
-                    gloss_cache[normalized] = ""
+                    gloss_cache[matched_word] = ""
                 else:
-                    candidates = _lookup_candidates(normalized)
+                    candidates = _lookup_candidates(matched_word)
                     gloss = ""
                     for candidate in candidates:
                         for meaning in (meanings.get(candidate, ""), _COMMON_MEANINGS.get(candidate, "")):
@@ -535,12 +536,12 @@ def highlight_reading_blocks(
                             break
                     if not gloss:
                         gloss = _concise_gloss(_lookup_local_dict_meaning(candidates))
-                    gloss_cache[normalized] = gloss
+                    gloss_cache[matched_word] = gloss
             item = {
                 "word": word,
-                "normalized": normalized,
+                "normalized": matched_word,
                 "level": meta.get("level", "ielts"),
-                "meaning": gloss_cache[normalized],
+                "meaning": gloss_cache[matched_word],
                 "start": match.start(),
                 "end": match.end(),
             }
@@ -550,7 +551,7 @@ def highlight_reading_blocks(
                     (
                         key
                         for key, list_words in source_lists
-                        if any(candidate in list_words for candidate in _lookup_candidates(normalized))
+                        if matched_word in list_words
                     ),
                     "",
                 )

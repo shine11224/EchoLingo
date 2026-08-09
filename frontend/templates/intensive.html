@@ -1499,7 +1499,7 @@
     }
 
     function renderPracticeResult(data = {}) {
-      const main = data.corrected || data.standard || '';
+      const main = data.example_sentence || data.corrected || data.standard || '';
       const secondary = data.variant || '';
       const feedback = Array.isArray(data.feedback) ? data.feedback : [];
       const points = Array.isArray(data.key_points) ? data.key_points : [];
@@ -1514,15 +1514,18 @@
       let hint = practiceHintCache.get(Number(key)) || '';
       if (!hint) hint = await generatePracticeHint(key);
       if (!hint) return;
+      const userAnswer = input.value.trim();
+      const isExample = !userAnswer;
       result.classList.add('open');
-      result.textContent = input.value.trim() ? 'AI 正在批改你的表达…' : 'AI 正在生成自然范例…';
+      result.textContent = isExample ? 'AI 正在生成自然范例…' : 'AI 正在批改你的表达…';
       const oral = oralAnalysisCache.get(Number(key)) || {};
       try {
         const response = await fetch('/api/practice', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
+            action: isExample ? 'example' : 'correct',
             hint_cn: hint,
-            user_answer: input.value.trim(),
+            user_answer: userAnswer,
             english: sentence.text,
             pattern_template: oral.template || '',
             vocab: practiceWords(sentence),

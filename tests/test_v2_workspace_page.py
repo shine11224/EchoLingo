@@ -53,7 +53,7 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "formatReadingGloss(gloss)" in resp.text
     assert "const isSaved = savedWordSet.has(lower);" in resp.text
     assert "const savedMeaning = typeof cachedMeaning === 'string'" in resp.text
-    assert "mode === 'lookup' && isSavedWord && !readingHiddenWordSet.has(normalized)" in resp.text
+    assert "mode === 'lookup' && isSavedWord && !isHidden" in resp.text
     assert "chipsEl.innerHTML = '';" in resp.text
     assert "max-height: calc(100vh - 24px)" in resp.text
     assert "overscroll-behavior: contain" in resp.text
@@ -158,6 +158,8 @@ def test_workspace_contains_reading_mode_mount_points(tmp_path, monkeypatch):
     assert "background: transparent;" in resp.text
     assert "/api/v2/lessons/${LESSON_ID}/words" in resp.text
     assert "readingHiddenWordSet.has(normalized)" in resp.text
+    assert "const surface = normalizeWord(button.dataset.query || button.textContent);" in resp.text
+    assert "const isHidden = readingHiddenWordSet.has(normalized) || readingHiddenWordSet.has(surface);" in resp.text
     assert 'id="reading-selection-popover"' in resp.text
     assert 'data-action="save-target"' in resp.text
     assert 'data-action="translate"' in resp.text
