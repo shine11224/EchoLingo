@@ -2,7 +2,22 @@ import os
 import sys
 import wave
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+
+
+@pytest.fixture(autouse=True)
+def _clean_tts_state():
+    """模块级 active/cancel 集合按 (scope, lesson_id) 计，测试间 lesson id 重复会互相污染。"""
+    from webapp.services import v2_tts
+    with v2_tts._ACTIVE_LOCK:
+        v2_tts._ACTIVE_LESSONS.clear()
+        v2_tts._CANCEL_REQUESTED.clear()
+    yield
+    with v2_tts._ACTIVE_LOCK:
+        v2_tts._ACTIVE_LESSONS.clear()
+        v2_tts._CANCEL_REQUESTED.clear()
 
 
 def test_build_reading_tts_creates_course_audio_and_timed_subtitles(tmp_path, monkeypatch):
@@ -280,6 +295,110 @@ def test_build_reading_tts_synthesizes_once_per_block(tmp_path, monkeypatch):
         (0.0, 0.05),
         (0.1, 0.15000000000000002),
     ]
+
+
+def test_cancel_reading_tts_restores_no_audio_state(tmp_path, monkeypatch):
+    """生成中取消：撤销未开始的块，课程回到未申请 TTS 状态（无错误、无精听入口）。"""
+    import db
+    from webapp.services import v2_lessons, v2_tts
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(v2_tts, "OUTPUT_DIR", tmp_path / "output")
+    monkeypatch.setattr(v2_tts, "_TTS_WORKERS", 1)
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:tts-cancel",
+        title="TTS Cancel",
+        lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [
+        {"index": 1, "text": "Alpha one."},
+        {"index": 2, "text": "Beta two."},
+        {"index": 3, "text": "Gamma three."},
+    ])
+    monkeypatch.setattr(db, "spawn_with_db_context", lambda *a, **k: None)
+    assert v2_tts.enqueue_reading_tts(lesson["id"]) is True
+
+    calls = []
+
+    def fake(text, output_path):
+        calls.append(text)
+        _make_wav(output_path)
+        assert v2_tts.cancel_reading_tts(lesson["id"]) is True  # 首块合成后用户取消
+        return [{"text": text.split()[0], "offset": 0.0, "duration": 0.05}]
+
+    monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", fake)
+    monkeypatch.setattr(v2_tts, "translate_lesson_subtitles", lambda lid: {"status": "ready"})
+
+    v2_tts._run_reading_tts(lesson["id"])
+
+    assert calls == ["Alpha one."]  # 取消后未开始的块被撤销
+    updated = db.get_v2_lesson(lesson["id"])
+    assert updated["subtitle_status"] == ""
+    assert not updated["subtitle_error"]
+    assert updated["media_kind"] == ""
+    assert v2_lessons.get_lesson_capabilities(updated)["can_listen"] is False
+
+
+def test_cancel_reading_tts_without_active_job_leaves_no_flag(tmp_path, monkeypatch):
+    """无进行中任务时取消是 no-op 且不留标记：随后重新入队能正常合成。"""
+    import db
+    from webapp.services import v2_tts
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(v2_tts, "OUTPUT_DIR", tmp_path / "output")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:tts-cancel-noop",
+        title="TTS Cancel Noop",
+        lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [{"index": 1, "text": "Only block."}])
+
+    assert v2_tts.cancel_reading_tts(lesson["id"]) is False
+
+    monkeypatch.setattr(db, "spawn_with_db_context", lambda *a, **k: None)
+    assert v2_tts.enqueue_reading_tts(lesson["id"]) is True
+
+    def fake(text, output_path):
+        _make_wav(output_path)
+        return [{"text": "Only", "offset": 0.0, "duration": 0.05}]
+
+    monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", fake)
+    monkeypatch.setattr(v2_tts, "translate_lesson_subtitles", lambda lid: {"status": "ready"})
+
+    v2_tts._run_reading_tts(lesson["id"])
+
+    updated = db.get_v2_lesson(lesson["id"])
+    assert updated["subtitle_status"] == "ready"
+    assert updated["media_kind"] == "generated_audio"
+
+
+def test_reading_tts_cancel_route(tmp_path, monkeypatch):
+    import db
+    from fastapi.testclient import TestClient
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:tts-cancel-route",
+        title="TTS Cancel Route",
+        lesson_mode="reading",
+    )
+
+    response = client.post(f"/api/v2/lessons/{lesson['id']}/reading/tts/cancel")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "lesson_id": lesson["id"],
+        "cancel_requested": True,
+        "was_running": False,
+    }
+    assert client.post("/api/v2/lessons/99999/reading/tts/cancel").status_code == 404
 
 
 def test_run_reading_tts_failure_clears_generated_audio(tmp_path, monkeypatch):

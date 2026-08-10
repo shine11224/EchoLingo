@@ -8,15 +8,24 @@ import typing
 from pathlib import Path
 import re
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import db
 from prompts import PATTERN_EXTRACTION_PROMPT, PATTERN_SCENARIO_PROMPT
 from webapp.runtime import ai_config
+from webapp.runtime import credit_meter
+from webapp.runtime.access import require_admin
+
+try:  # 公开库无 webapp.auth 时静默降级（积分路径整体 no-op）
+    from webapp.auth.credits import InsufficientCredits
+except ImportError:  # pragma: no cover
+    class InsufficientCredits(Exception):
+        pass
 from webapp.services import dicts as dict_service
 from webapp.services import v2_lessons as service
+from webapp.storage import user_assets
 from webapp.storage.lessons import OUTPUT_DIR
 from webapp.services.v2_intensive import build_intensive_document
 from webapp.services.v2_intensive_export import export_intensive_html
@@ -26,6 +35,7 @@ from webapp.services.document_outline import (
 )
 from webapp.services.v2_review_export import export_review_html, synthesize_sentence_audio
 from webapp.services.natural_tts import is_current_tts_audio
+from webapp.services.v2_tts import cancel_reading_tts
 from webapp.services.v2_vocab import (
     forget_word_meaning_cache,
     highlight_reading_blocks,
@@ -64,6 +74,7 @@ class StartLessonBody(BaseModel):
     source_type: str
     url: str = ""
     local_path: str = ""
+    upload_id: str = ""
     transcript_path: str = ""
     download_mode: str = "audio"
     bilibili_page: str = ""
@@ -189,8 +200,12 @@ def _sync_highlighted_words_to_lesson(lesson: dict, items: list[tuple[str, str, 
 
 
 @router.post("/start")
-def start_lesson(body: StartLessonBody):
+def start_lesson(body: StartLessonBody, request: Request):
     source_type = (body.source_type or "").lower()
+    # 平台链接与服务器本地路径建课仅管理员可用（多用户模式非管理员 404）；
+    # 普通用户走浏览器上传（uploaded_media）或文本课程
+    if source_type in {"youtube", "bilibili", "local", "local_audio", "local_video", "reading_pdf"}:
+        require_admin(request)
     if source_type == "youtube":
         result = service.start_youtube_lesson(url=body.url, translate=True)
         service.enqueue_subtitle_fetch(result["lesson"]["id"], body.url, translate=True)
@@ -224,28 +239,118 @@ def start_lesson(body: StartLessonBody):
     if source_type == "reading_text":
         if not body.text.strip():
             raise HTTPException(status_code=400, detail="Reading text is required")
-        return service.start_reading_text_lesson(
-            title=body.title or "Reading Passage", text=body.text, tts=body.tts
-        )
+        try:
+            return service.start_reading_text_lesson(
+                title=body.title or "Reading Passage", text=body.text, tts=body.tts,
+                username=str(request.scope.get("elt_username") or ""),
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
+            )
+        except InsufficientCredits as e:
+            raise HTTPException(status_code=402,
+                                detail=credit_meter.insufficient_payload(e))
+        except credit_meter.OperationConflictError as e:
+            raise HTTPException(status_code=409, detail=e.detail or str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     if source_type == "reading_pdf":
         path = body.local_path or body.url
         if not path:
             raise HTTPException(status_code=400, detail="Reading PDF path required")
         try:
-            return service.start_reading_pdf_lesson(path, title=body.title or "", tts=body.tts)
+            return service.start_reading_pdf_lesson(
+                path, title=body.title or "", tts=body.tts,
+                username=str(request.scope.get("elt_username") or ""),
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
+            )
+        except InsufficientCredits as e:
+            raise HTTPException(status_code=402,
+                                detail=credit_meter.insufficient_payload(e))
+        except credit_meter.OperationConflictError as e:
+            raise HTTPException(status_code=409, detail=e.detail or str(e))
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    if source_type == "uploaded_media":
+        # 普通用户浏览器上传建课：只认 upload_id，忽略任何 local_path/url 字段；
+        # 上传记录在当前用户 DB，跨用户 upload_id 自然 404。
+        if not body.upload_id.strip():
+            raise HTTPException(status_code=400, detail="upload_id required")
+        try:
+            if credit_meter.mode() in ("shadow", "enforce"):
+                # 多用户计费链路（Task 7）：服务端按 upload 时长报价 →
+                # reserve（enforce 原子占位）→ 消费/建课/后台管线 settle/release。
+                # Idempotency-Key 重放返回已有课程，不重复建课、不重复扣费。
+                return service.start_uploaded_media_lesson_billed(
+                    body.upload_id.strip(),
+                    whisper_model=body.whisper_model,
+                    translate=True,
+                    username=str(request.scope.get("elt_username") or ""),
+                    idempotency_key=request.headers.get("Idempotency-Key", ""),
+                )
+            return service.start_uploaded_media_lesson(
+                body.upload_id.strip(),
+                whisper_model=body.whisper_model,
+                translate=True,
+            )
+        except InsufficientCredits as e:
+            raise HTTPException(status_code=402,
+                                detail=credit_meter.insufficient_payload(e))
+        except credit_meter.OperationConflictError as e:
+            # 幂等语义冲突（跨操作类型/跨 upload 复用、并发败者）：显式 409
+            raise HTTPException(status_code=409, detail=e.detail or str(e))
+        except service.MissingIdempotencyKeyError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except service.CreditOperationReleasedError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
     raise HTTPException(status_code=400, detail=f"Unsupported v2 source type: {body.source_type}")
 
 
+@router.post("/media-uploads")
+def create_media_upload(file: UploadFile = File(...)):
+    """普通用户浏览器音视频分块上传：大小限制 + 扩展名/ffprobe 双重校验。
+
+    同步 def：FastAPI 放入线程池执行，stream.read/磁盘写/ffprobe 不阻塞事件循环。
+    """
+    try:
+        return service.save_media_upload(file.filename or "", file.file)
+    except service.MediaUploadTooLargeError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except service.MediaUploadError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/media-uploads/{upload_id}")
+def delete_media_upload(upload_id: str):
+    try:
+        service.delete_media_upload(upload_id)
+        return {"ok": True}
+    except service.MediaUploadError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.post("/reading/upload")
-async def upload_reading_file(file: UploadFile = File(...), tts: bool = Form(False)):
+async def upload_reading_file(request: Request, file: UploadFile = File(...),
+                              tts: bool = Form(False)):
     filename = file.filename or ""
     try:
         content = await file.read()
-        return service.start_reading_upload_lesson(filename, content, tts=tts)
+        return service.start_reading_upload_lesson(
+            filename, content, tts=tts,
+            username=str(request.scope.get("elt_username") or ""),
+            idempotency_key=request.headers.get("Idempotency-Key", ""),
+        )
+    except InsufficientCredits as e:
+        raise HTTPException(status_code=402,
+                            detail=credit_meter.insufficient_payload(e))
+    except credit_meter.OperationConflictError as e:
+        raise HTTPException(status_code=409, detail=e.detail or str(e))
     except service.ReadingUploadBusyError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
@@ -289,7 +394,7 @@ def delete_course_library_item(lesson_id: int):
         raise HTTPException(status_code=404, detail="Lesson not found")
     if not db.delete_v2_lesson(lesson_id):
         raise HTTPException(status_code=500, detail="Lesson delete failed")
-    output_dir = Path(service.OUTPUT_DIR)
+    output_dir = user_assets.current_output_root(service.OUTPUT_DIR)
     shutil.rmtree(output_dir / "v2_assets" / str(lesson_id), ignore_errors=True)
     shutil.rmtree(output_dir / "v2_exports" / str(lesson_id), ignore_errors=True)
     for export in output_dir.glob(f"v2-intensive-{lesson_id}.html"):
@@ -302,31 +407,79 @@ class RetrySubtitlesBody(BaseModel):
 
 
 @router.post("/{lesson_id}/retry-subtitles")
-def retry_subtitles(lesson_id: int, body: RetrySubtitlesBody | None = None):
+def retry_subtitles(lesson_id: int, request: Request, body: RetrySubtitlesBody | None = None):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
+    # 重新拉取 YouTube/B 站字幕会走平台下载链路，仅管理员可用
+    if str(lesson["source_type"]) in {"youtube", "bilibili"}:
+        require_admin(request)
     if lesson["subtitle_status"] not in {"failed", "ready"}:
         raise HTTPException(status_code=409, detail="Subtitle pipeline is already running")
     model = (body.whisper_model if body else "") or "large-v3"
     translate = bool(lesson.get("translation_requested"))
+    source_type = str(lesson["source_type"])
+
+    op = None
+    billed = credit_meter.mode() in ("shadow", "enforce")
+    if billed:
+        # 用户主动重转录 = 新的独立幂等 operation（Task 7）；
+        # 同 key 重放不重复 enqueue、不重复扣费
+        try:
+            idem_key = credit_meter.require_idempotency_key(
+                request.headers.get("Idempotency-Key", ""))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        try:
+            op, replayed = service.retranscribe_operation(
+                lesson, str(request.scope.get("elt_username") or ""), idem_key)
+        except InsufficientCredits as e:
+            raise HTTPException(status_code=402,
+                                detail=credit_meter.insufficient_payload(e))
+        except credit_meter.OperationConflictError as e:
+            # key 跨操作类型或跨 lesson 复用：显式 409，不动原 operation
+            raise HTTPException(status_code=409, detail=e.detail or str(e))
+        except service.CreditOperationReleasedError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        if replayed:
+            return {"ok": True, "replayed": True, "whisper_model": model,
+                    "credits": service._op_billing(op)}
+
     db.set_v2_lesson_status(lesson_id, subtitle_status="pending")
     db.clear_v2_lesson_subtitle_error(lesson_id)
-    source_type = str(lesson["source_type"])
-    if source_type == "bilibili":
-        service.enqueue_bilibili_import(
-            lesson_id, lesson["source_url"], download_video=False,
-            whisper_model=model, translate=translate,
-        )
-    elif source_type == "youtube":
-        service.enqueue_subtitle_fetch(lesson_id, lesson["source_url"], translate=translate)
-    elif source_type in {"local", "local_audio", "local_video"}:
-        service.enqueue_local_import(
-            lesson_id, lesson["source_url"], whisper_model=model, translate=translate,
-        )
-    else:
-        raise HTTPException(status_code=400, detail=f"Unsupported source type: {source_type}")
-    return {"ok": True, "whisper_model": model}
+    try:
+        with credit_meter.use_operation(op):  # None 时为空上下文，单用户无影响
+            if source_type == "bilibili":
+                service.enqueue_bilibili_import(
+                    lesson_id, lesson["source_url"], download_video=False,
+                    whisper_model=model, translate=translate,
+                )
+            elif source_type == "youtube":
+                service.enqueue_subtitle_fetch(lesson_id, lesson["source_url"], translate=translate)
+            elif source_type in {"local", "local_audio", "local_video"}:
+                service.enqueue_local_import(
+                    lesson_id, lesson["source_url"], whisper_model=model, translate=translate,
+                )
+            elif source_type == "uploaded_media":
+                # source_url 为 upload:<id>，重转录从本用户暂存文件重新导入
+                upload = db.get_v2_media_upload(str(lesson["source_url"]).split(":", 1)[-1])
+                if not upload:
+                    raise HTTPException(status_code=409, detail="原始上传已不存在，无法重转录")
+                media_path = user_assets.current_uploads_root() / upload["stored_relpath"]
+                service.enqueue_local_import(
+                    lesson_id, str(media_path), whisper_model=model, translate=translate,
+                )
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported source type: {source_type}")
+    except Exception:
+        # enqueue 失败：后台管线不会运行，立即释放本次重转录占位
+        if op is not None:
+            credit_meter.release(op["id"], reason="retranscribe enqueue failed")
+        raise
+    result = {"ok": True, "whisper_model": model, "replayed": False}
+    if op is not None:
+        result["credits"] = service._op_billing(op)
+    return result
 
 
 @router.get("/sentence-review")
@@ -445,12 +598,29 @@ def _pattern_response(pattern: dict, *, cached: bool) -> dict:
     }
 
 
+def _begin_billed(request: Request, operation_type: str, **kwargs):
+    """同步 AI 计费开始；异常映射 402/409/400（统一载荷）。"""
+    try:
+        return credit_meter.begin_sync_operation(request, operation_type, **kwargs)
+    except (credit_meter.InsufficientCredits,
+            credit_meter.OperationConflictError, ValueError) as exc:
+        status, detail = credit_meter.billing_error(exc)
+        raise HTTPException(status_code=status, detail=detail) from exc
+
+
 @router.post("/sentence-review/{sentence_id}/pattern")
-def create_sentence_pattern(sentence_id: int):
+def create_sentence_pattern(sentence_id: int, request: Request):
     sentence = _saved_sentence_or_404(sentence_id)
+    # cache-before-reserve：已有句型免费返回
     cached = db.get_v2_sentence_pattern(sentence_id)
     if cached and cached.get("pattern_template"):
-        return _pattern_response(cached, cached=True)
+        return {**_pattern_response(cached, cached=True),
+                "credits": {"charged": 0, "cached": True}}
+    op, replay = _begin_billed(request, "sentence_pattern",
+                               reference_type="v2_sentence",
+                               reference_id=str(sentence_id))
+    if replay is not None:
+        return replay
     try:
         result = _request_pattern_json(
             PATTERN_EXTRACTION_PROMPT.format(english=sentence["text"])
@@ -458,8 +628,12 @@ def create_sentence_pattern(sentence_id: int):
         pattern_template = str(result.get("pattern_template") or "").strip()
         pattern = db.save_v2_sentence_pattern(sentence_id, pattern_template)
     except Exception as exc:
+        credit_meter.release_sync(op, reason=f"sentence_pattern failed: {exc}"[:500])
         return JSONResponse({"error": str(exc)}, status_code=500)
-    return _pattern_response(pattern, cached=False)
+    payload = _pattern_response(pattern, cached=False)
+    credit_meter.settle_sync(op, actual_usage={
+        "model": ai_config.AI_MODEL, "sentence_id": sentence_id}, response=payload)
+    return payload
 
 
 @router.patch("/sentence-review/{sentence_id}/pattern")
@@ -476,14 +650,22 @@ def update_sentence_pattern(sentence_id: int, body: SentencePatternPatchBody):
 def create_sentence_pattern_scenario(
     sentence_id: int,
     body: SentencePatternScenarioBody,
+    request: Request,
 ):
     sentence = _saved_sentence_or_404(sentence_id)
     pattern = db.get_v2_sentence_pattern(sentence_id)
     has_template = bool(pattern and pattern.get("pattern_template"))
     # 无 AI 句式分析时直接以原句为迁移参考
     template = pattern["pattern_template"] if has_template else sentence["text"]
+    # cache-before-reserve：已有情景且非主动重生成 → 免费返回
     if has_template and pattern.get("scenario_cn") and not body.regenerate:
-        return _pattern_response(pattern, cached=True)
+        return {**_pattern_response(pattern, cached=True),
+                "credits": {"charged": 0, "cached": True}}
+    op, replay = _begin_billed(request, "sentence_scenario",
+                               reference_type="v2_sentence",
+                               reference_id=str(sentence_id))
+    if replay is not None:
+        return replay
     try:
         result = _request_pattern_json(
             PATTERN_SCENARIO_PROMPT.format(
@@ -494,28 +676,96 @@ def create_sentence_pattern_scenario(
         scenario_cn = str(result.get("scenario_cn") or "").strip()
         if has_template:
             pattern = db.save_v2_sentence_pattern_scenario(sentence_id, scenario_cn)
-            return _pattern_response(pattern, cached=False)
+            payload = _pattern_response(pattern, cached=False)
+            credit_meter.settle_sync(op, actual_usage={
+                "model": ai_config.AI_MODEL, "sentence_id": sentence_id,
+                "regenerate": bool(body.regenerate)}, response=payload)
+            return payload
     except Exception as exc:
+        credit_meter.release_sync(op, reason=f"sentence_scenario failed: {exc}"[:500])
         return JSONResponse({"error": str(exc)}, status_code=500)
-    return {"scenario_cn": scenario_cn, "cached": False, "reference": "original_sentence"}
+    payload = {"scenario_cn": scenario_cn, "cached": False,
+               "reference": "original_sentence"}
+    credit_meter.settle_sync(op, actual_usage={
+        "model": ai_config.AI_MODEL, "sentence_id": sentence_id,
+        "reference": "original_sentence"}, response=payload)
+    return payload
 
 
-@router.get("/sentence-audio/{sentence_id}")
-def sentence_audio(sentence_id: int):
-    """Reading 课收藏句没有原音，用 SAPI 合成 wav 并缓存。"""
+def _sentence_audio_path(sentence_id: int) -> Path:
+    audio_dir = user_assets.user_output_subdir(
+        "v2_sentence_audio", fallback=OUTPUT_DIR / "v2_sentence_audio"
+    )
+    return audio_dir / f"sentence-{sentence_id}.wav"
+
+
+def _sentence_text_or_404(sentence_id: int) -> str:
     sentence = db.get_v2_sentence_by_id(sentence_id)
     if not sentence:
         raise HTTPException(status_code=404, detail="Sentence not found")
     text = str(sentence.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=404, detail="Sentence has no text")
-    audio_dir = OUTPUT_DIR / "v2_sentence_audio"
-    audio_path = audio_dir / f"sentence-{sentence_id}.wav"
-    if not is_current_tts_audio(audio_path, text):
-        synthesize_sentence_audio(text, audio_path)
-    if not audio_path.exists():
-        raise HTTPException(status_code=502, detail="Sentence audio synthesis failed")
+    return text
+
+
+@router.get("/sentence-audio/{sentence_id}")
+def sentence_audio(sentence_id: int):
+    """Reading 课收藏句没有原音，用 SAPI 合成 wav 并缓存。"""
+    text = _sentence_text_or_404(sentence_id)
+    audio_path = _sentence_audio_path(sentence_id)
+    if credit_meter.billing_active():
+        # 计费模式：GET 只读缓存，新合成必须走 POST /sentence-audio/prepare
+        if not is_current_tts_audio(audio_path, text):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "prepare_required",
+                        "prepare_url": "/api/v2/lessons/sentence-audio/prepare"})
+        if not audio_path.exists():
+            raise HTTPException(status_code=404, detail="Sentence audio cache missing")
+    else:
+        if not is_current_tts_audio(audio_path, text):
+            synthesize_sentence_audio(text, audio_path)
+        if not audio_path.exists():
+            raise HTTPException(status_code=502, detail="Sentence audio synthesis failed")
     return FileResponse(audio_path, media_type="audio/wav")
+
+
+@router.post("/sentence-audio/prepare")
+def sentence_audio_prepare(request: Request, body: dict | None = None):
+    """显式句子音频合成（Task 8 sentence_tts）：缓存优先，只对新合成计费。"""
+    sentence_id = int((body or {}).get("sentence_id") or 0)
+    text = _sentence_text_or_404(sentence_id)
+    audio_path = _sentence_audio_path(sentence_id)
+    audio_url = f"/api/v2/lessons/sentence-audio/{sentence_id}"
+    if is_current_tts_audio(audio_path, text) and audio_path.exists():
+        return {"audio_url": audio_url, "cached": True,
+                "credits": {"charged": 0, "cached": True}}
+
+    op, replay = _begin_billed(request, "sentence_tts",
+                               char_count=len(text),
+                               reference_type="v2_sentence",
+                               reference_id=str(sentence_id))
+    if replay is not None:
+        return replay
+    try:
+        synthesize_sentence_audio(text, audio_path)
+    except Exception as exc:
+        credit_meter.release_sync(op, reason=f"sentence_tts failed: {exc}"[:500])
+        raise HTTPException(status_code=502,
+                            detail=f"Sentence audio synthesis failed: {exc}")
+    if not audio_path.exists():
+        credit_meter.release_sync(op, reason="sentence_tts produced no audio")
+        raise HTTPException(status_code=502, detail="Sentence audio synthesis failed")
+
+    payload = {"audio_url": audio_url, "cached": False}
+    credit_meter.settle_sync(op, actual_usage={
+        "engine": "sapi",
+        "characters": len(text),
+        "sentence_id": sentence_id,
+        "audio_path": audio_path.name,
+    }, response=payload)
+    return payload
 
 
 @router.get("/sentence-phonetics/{sentence_id}")
@@ -552,6 +802,15 @@ def lesson_status(lesson_id: int):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.post("/{lesson_id}/reading/tts/cancel")
+def cancel_reading_tts_route(lesson_id: int):
+    lesson = db.get_v2_lesson(lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    was_running = cancel_reading_tts(lesson_id)
+    return {"lesson_id": lesson_id, "cancel_requested": True, "was_running": was_running}
+
+
 @router.patch("/{lesson_id}/mode")
 def update_lesson_mode(lesson_id: int, body: LessonModeBody):
     lesson = db.get_v2_lesson(lesson_id)
@@ -574,11 +833,15 @@ def lesson_subtitles(lesson_id: int, wordlists: str | None = None):
     highlighted = highlight_segments(
         segments, hidden_words=hidden_words, source_words=source_words, source_lists=source_lists
     )
+    from webapp.services.mfa_alignment import apply_aligned_unit_times
+
     return {
         "lesson_id": lesson_id,
         "subtitle_status": lesson["subtitle_status"],
         "segments": highlighted,
-        "sentence_units": build_translation_units(highlighted),
+        "sentence_units": apply_aligned_unit_times(
+            lesson_id, build_translation_units(highlighted)
+        ),
     }
 
 
@@ -690,7 +953,7 @@ def _hy_mt_translate(text: str) -> str:
 
 
 @router.post("/{lesson_id}/translate-selection")
-def translate_selection(lesson_id: int, body: TranslateSelectionBody):
+def translate_selection(lesson_id: int, body: TranslateSelectionBody, request: Request):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
@@ -699,11 +962,26 @@ def translate_selection(lesson_id: int, body: TranslateSelectionBody):
         raise HTTPException(status_code=400, detail="选区不能为空")
     if len(text) > 4000:
         raise HTTPException(status_code=400, detail="选区不能超过 4000 字符")
+    # cache-before-reserve：已缓存翻译免费返回
     cached = db.get_v2_sentence(text)
     translation = str((cached or {}).get("translation") or "").strip()
-    if not translation:
+    if translation:
+        return {"translation": translation, "engine": "hy-mt",
+                "credits": {"charged": 0, "cached": True}}
+    op, replay = _begin_billed(request, "selection_translation",
+                               reference_type="v2_lesson",
+                               reference_id=str(lesson_id))
+    if replay is not None:
+        return replay
+    try:
         translation = _hy_mt_translate(text)
-        db.upsert_v2_sentence(text, translation=translation)
+    except HTTPException as exc:
+        credit_meter.release_sync(op, reason=f"selection_translation failed: {exc.detail}"[:500])
+        raise
+    db.upsert_v2_sentence(text, translation=translation)
+    credit_meter.settle_sync(op, actual_usage={
+        "engine": "hy-mt", "characters": len(text), "lesson_id": lesson_id},
+        response={"translation": translation, "engine": "hy-mt"})
     return {"translation": translation, "engine": "hy-mt"}
 
 
@@ -829,13 +1107,141 @@ def alignment_status(lesson_id: int):
 
 
 @router.post("/{lesson_id}/alignment")
-def start_alignment(lesson_id: int, body: AlignmentBody | None = None):
-    from webapp.services.mfa_alignment import enqueue_lesson_alignment
+def start_alignment(lesson_id: int, request: Request, body: AlignmentBody | None = None):
+    from webapp.services.mfa_alignment import enqueue_lesson_alignment, get_alignment_status
+
+    force = bool(body and body.force)
+    op, free_retry, replayed = _ancillary_billing(
+        request, lesson_id, force=force, capability="alignment",
+        operation_type="alignment_rebuild", per_minute=True,
+        current_status=get_alignment_status(lesson_id).get("status")
+        if db.get_v2_lesson(lesson_id) else None,
+        running_states={"queued", "running"},
+        failed_states={"failed"},
+    )
+    if replayed:
+        result = get_alignment_status(lesson_id)
+        result["credits"] = service._op_billing(op)
+        result["replayed"] = True
+        return result
+    try:
+        with credit_meter.use_operation(op):
+            result = enqueue_lesson_alignment(lesson_id, force=force)
+    except Exception as exc:
+        if op is not None:
+            credit_meter.release(op["id"], reason="alignment enqueue rejected")
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise
+    if op is not None:
+        result["credits"] = service._op_billing(op)
+    if free_retry:
+        result["credits"] = {"mode": credit_meter.mode(), "charged": 0,
+                             "free_retry": True}
+    return result
+
+
+def _ancillary_billing(request: Request, lesson_id: int, *, force: bool,
+                       capability: str, operation_type: str, per_minute: bool,
+                       current_status, running_states: set, failed_states: set):
+    """附属能力（导航/对齐）计费编排（Task 7）。返回 (op, free_retry, replayed)。
+
+    - force=False：首次生成属于课程 bundle，免费，(None, False, False)。
+    - force=True 且当前状态为失败：每个 (用户, 能力, 课程) 恰好第一次免费
+      （审计写入 credit_free_retries），返回 (None, True, False)；之后才计费。
+    - force=True 计费：独立幂等 operation；同 key 重放返回 (op, False, True)，
+      调用方返回当前状态、不重复 enqueue；已 released → 409。
+    - 正在运行中：409，不产生任何计费。
+    """
+    if not force or credit_meter.mode() not in ("shadow", "enforce"):
+        return None, False, False
+    if current_status in running_states:
+        raise HTTPException(status_code=409, detail=f"{capability} is already running")
+    username = str(request.scope.get("elt_username") or "")
+    try:
+        idem_key = credit_meter.require_idempotency_key(
+            request.headers.get("Idempotency-Key", ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    op = credit_meter.get_operation_by_key(username, idem_key)
+    if op is not None:
+        try:
+            credit_meter.require_operation_identity(
+                op, operation_type=operation_type,
+                reference_type="lesson", reference_id=str(lesson_id))
+        except credit_meter.OperationConflictError as e:
+            raise HTTPException(status_code=409, detail=e.detail or str(e))
+        if op["status"] == "released":
+            raise HTTPException(status_code=409,
+                                detail="该 Idempotency-Key 的上一次操作已失败释放，请用新的 key 重试")
+        return op, False, True
+    if current_status in failed_states and credit_meter.try_consume_free_retry(
+            username, capability, str(lesson_id),
+            reason=f"course build bundled {capability} failed; first retry free"):
+        return None, True, False
+    kwargs: dict = {"idempotency_key": idem_key,
+                    "reference_type": "lesson", "reference_id": str(lesson_id)}
+    if per_minute:
+        lesson = db.get_v2_lesson(lesson_id) or {}
+        kwargs["duration_seconds"] = max(1.0, float(lesson.get("duration") or 60.0))
+    try:
+        op = credit_meter.reserve(username, operation_type, **kwargs)
+    except InsufficientCredits as e:
+        raise HTTPException(status_code=402,
+                            detail=credit_meter.insufficient_payload(e))
+    if op is None:
+        raise HTTPException(status_code=500, detail="credit reserve unavailable")
+    return op, False, False
+
+
+@router.post("/{lesson_id}/outline-summary")
+def outline_summary(lesson_id: int, request: Request, body: OutlineSummaryBody | None = None):
+    force = bool(body and body.force)
+    try:
+        current = get_document_outline_status(lesson_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    op, free_retry, replayed = _ancillary_billing(
+        request, lesson_id, force=force, capability="outline",
+        operation_type="outline_regenerate", per_minute=False,
+        current_status=current.get("status"),
+        running_states={"pending"},
+        failed_states={"error"},
+    )
+    if replayed:
+        result = dict(current)
+        result["credits"] = service._op_billing(op)
+        result["replayed"] = True
+        return result
+
+    def _with_credits(result: dict) -> dict:
+        result = dict(result)
+        if op is not None:
+            result["credits"] = service._op_billing(op)
+        if free_retry:
+            result["credits"] = {"mode": credit_meter.mode(), "charged": 0,
+                                 "free_retry": True}
+        return result
 
     try:
-        return enqueue_lesson_alignment(lesson_id, force=bool(body and body.force))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        with credit_meter.use_operation(op):
+            result = start_document_outline_generation(lesson_id, force=force)
+        if result.get("status") == "pending":
+            return JSONResponse(status_code=202, content=_with_credits(result))
+        return _with_credits(result)
+    except Exception as exc:
+        # 启动失败：后台任务不会运行，立即释放 fresh 占位
+        if op is not None:
+            credit_meter.release(op["id"], reason="outline start failed")
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if isinstance(exc, RuntimeError):
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=502, detail=f"Outline generation failed: {exc}") from exc
 
 
 @router.post("/{lesson_id}/intensive-export")

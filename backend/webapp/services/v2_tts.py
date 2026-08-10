@@ -19,9 +19,24 @@ from webapp.storage.lessons import OUTPUT_DIR
 
 _ACTIVE_LESSONS: set[tuple[str, int]] = set()
 _ACTIVE_LOCK = threading.Lock()
+_CANCEL_REQUESTED: set[tuple[str, int]] = set()
 
 # 块级合成并发路数：edge_tts 是网络型任务，3 路约 3 倍吞吐；超限流风险低（调用数已是块级）
 _TTS_WORKERS = max(1, int(os.environ.get("ELT_TTS_CONCURRENCY", "3")))
+
+
+class ReadingTTSCancelled(RuntimeError):
+    """用户主动取消朗读音频生成。"""
+
+
+def cancel_reading_tts(lesson_id: int) -> bool:
+    """标记取消：合成在块边界停止。返回是否确有进行中的任务（无任务时不留标记）。"""
+    active_key = (user_assets.current_scope_key(), int(lesson_id))
+    with _ACTIVE_LOCK:
+        if active_key not in _ACTIVE_LESSONS:
+            return False
+        _CANCEL_REQUESTED.add(active_key)
+        return True
 
 
 def reading_tts_output_path(lesson_id: int) -> Path:
@@ -98,6 +113,11 @@ def _run_reading_tts(lesson_id: int, active_key: tuple[str, int] | None = None) 
         active_key = (user_assets.current_scope_key(), int(lesson_id))
     try:
         result = build_reading_tts(lesson_id)
+    except ReadingTTSCancelled:
+        # 用户取消：回到未申请 TTS 的状态，不残留错误提示与精听入口
+        db.set_v2_lesson_status(lesson_id, subtitle_status="", subtitle_error="")
+        db.update_v2_lesson_metadata(lesson_id, media_kind="")
+        credit_meter.release_current(reason="reading_tts cancelled by user")
     except Exception as exc:
         db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc))
         # 合成失败：撤回生成音频声明，课程回到「无精听」能力
@@ -115,6 +135,7 @@ def _run_reading_tts(lesson_id: int, active_key: tuple[str, int] | None = None) 
     finally:
         with _ACTIVE_LOCK:
             _ACTIVE_LESSONS.discard(active_key)
+            _CANCEL_REQUESTED.discard(active_key)
 
 
 _WORD_TOKEN = re.compile(r"[a-z0-9']+")
@@ -221,19 +242,37 @@ def build_reading_tts(lesson_id: int) -> dict:
         for block_index, group in enumerate(block_sentences)
         if group
     ]
+    cancel_key = (user_assets.current_scope_key(), int(lesson_id))
+
+    def raise_if_cancelled() -> None:
+        with _ACTIVE_LOCK:
+            if cancel_key in _CANCEL_REQUESTED:
+                raise ReadingTTSCancelled(f"Reading TTS lesson {lesson_id} cancelled by user")
+
+    raise_if_cancelled()
     block_boundaries: dict[int, list[dict]] = {}
     with ThreadPoolExecutor(max_workers=_TTS_WORKERS) as pool:
         futures = {
+            # 工作线程先查取消标记再合成：取消后空闲 worker 不会捡起下一块
             pool.submit(
-                _synthesize_block_with_retry,
-                " ".join(group),
-                parts_dir / f"{block_index:05d}.wav",
-                index=block_index,
+                lambda bi=block_index, g=group: (
+                    raise_if_cancelled()
+                    or _synthesize_block_with_retry(
+                        " ".join(g), parts_dir / f"{bi:05d}.wav", index=bi
+                    )
+                )
             ): block_index
             for block_index, group in synthesis_jobs
         }
-        for future in as_completed(futures):
-            block_boundaries[futures[future]] = future.result()
+        try:
+            for future in as_completed(futures):
+                raise_if_cancelled()
+                block_boundaries[futures[future]] = future.result()
+        except BaseException:
+            # 取消或失败时撤销未开始的块，不让整池排队块继续跑完
+            for pending in futures:
+                pending.cancel()
+            raise
 
     with wave.open(str(output_path), "wb") as combined:
         # 预置参数：首块合成前失败时 close 不会以 "# channels not specified" 掩盖真实错误

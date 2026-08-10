@@ -984,6 +984,136 @@
       line-height: 1.7;
       overflow-wrap: anywhere;
     }
+    .chat-coverage-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .coverage-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 9px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      border: 1px solid transparent;
+    }
+    .coverage-badge.full { background: var(--brand-light); color: var(--brand-dark); border-color: #a7e7cc; }
+    .coverage-badge.partial { background: #fdf6e3; color: #8a6d1d; border-color: #ecd9a0; }
+    .coverage-badge.none { background: #f3f4f2; color: var(--muted); border-color: var(--line); }
+    .chat-ext-label {
+      padding: 1px 9px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #7a5b13;
+      background: #fdf6e3;
+      border: 1px solid #ecd9a0;
+    }
+    .chat-unsupported {
+      margin-top: 8px;
+      padding: 7px 10px;
+      border: 1px dashed var(--line);
+      border-radius: 7px;
+      background: #fafbfa;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .chat-unsupported-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #8a6d1d;
+      margin-bottom: 3px;
+    }
+    .chat-unsupported ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .chat-unsupported li { margin: 2px 0; }
+    .citation-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .citation-card {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--brand);
+      border-radius: 7px;
+      background: #fdfefd;
+      cursor: pointer;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .citation-card:hover,
+    .citation-card:focus-visible {
+      border-color: var(--brand);
+      box-shadow: 0 2px 8px rgba(47, 111, 94, .12);
+      transform: translateY(-1px);
+      outline: none;
+    }
+    .citation-card-head {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      margin-bottom: 2px;
+      min-width: 0;
+    }
+    .citation-time {
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--brand-dark);
+      background: var(--brand-light);
+      border-radius: 4px;
+      padding: 0 5px;
+      white-space: nowrap;
+    }
+    .citation-chapter {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--brand-dark);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .citation-excerpt {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @keyframes citationFlash {
+      0%, 100% { background-color: transparent; box-shadow: none; }
+      20%, 55% { background-color: rgba(209, 250, 229, .9); box-shadow: 0 0 0 4px rgba(209, 250, 229, .55); }
+    }
+    .citation-target-flash {
+      animation: citationFlash 1.6s ease;
+      border-radius: 5px;
+    }
+    .chat-ext-row {
+      display: flex;
+      justify-content: flex-end;
+      padding: 4px 10px 0;
+    }
+    .chat-ext-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .chat-ext-toggle input { accent-color: var(--brand); margin: 0; }
     .chat-message-body p {
       margin: 0 0 10px;
       white-space: pre-wrap;
@@ -1371,6 +1501,8 @@
     </a>
     <h1 id="video-title">Loading video...</h1>
     <span id="status-badge" class="status-badge">subtitles pending</span>
+    <button id="tts-cancel-btn" type="button" style="display:none; border:1px solid #fca5a5; color:#a33b2f; background:none; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; white-space:nowrap;" onclick="cancelReadingTts()">取消生成音频</button>
+    <a id="credit-badge" href="/account" title="积分余额（点击查看详情）" style="display:none; border:1px solid #dde5d6; background:#f8f9f7; color:#33502b; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap; font-variant-numeric:tabular-nums;"></a>
     <a id="login-btn" href="/login" style="display:none; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap;">登录</a>
     <div id="user-menu" style="display:none; position:relative;">
       <button id="user-menu-btn" onclick="toggleUserMenu(event)" style="background:none; border:1px solid #ddd; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; white-space:nowrap;"></button>
@@ -1519,6 +1651,12 @@
           <div id="chat-context-summary">Context: current playback point.</div>
           <button id="reading-context-clear" class="chat-context-clear" type="button" onclick="clearReadingChatSelection()" hidden>清除选区</button>
         </div>
+        <div class="chat-ext-row">
+          <label class="chat-ext-toggle" for="chat-external-knowledge">
+            <input id="chat-external-knowledge" type="checkbox">
+            <span>允许视频外补充（默认仅依据当前视频/文章内容回答）</span>
+          </label>
+        </div>
         <div class="chat-input-row">
           <select id="chat-voice-language" class="chat-voice-language" aria-label="Voice input language">
             <option value="en-US" selected>EN</option>
@@ -1531,7 +1669,7 @@
                    onkeydown="if(event.key==='Enter') sendMessage()">
             <span id="chat-voice-status" class="chat-voice-status" aria-live="polite"></span>
           </div>
-          <button id="chat-send" onclick="sendMessage()">Send</button>
+          <button id="chat-send" data-billable-op="lesson_chat" onclick="sendMessage()">Send</button>
         </div>
       </section>
     </aside>
@@ -1543,8 +1681,8 @@
   <div class="reading-selection-actions">
     <button class="intensive-action" type="button" data-action="intensive" onclick="runReadingSelectionAction('intensive')">跳转精学</button>
     <button type="button" data-action="save-target" onclick="runReadingSelectionAction('save-target')">收藏短语</button>
-    <button type="button" data-action="translate" onclick="runReadingSelectionAction('translate')">翻译</button>
-    <button type="button" data-action="analyze" onclick="runReadingSelectionAction('analyze')">AI 解析</button>
+    <button type="button" data-action="translate" data-billable-op="selection_translation" onclick="runReadingSelectionAction('translate')">翻译</button>
+    <button type="button" data-action="analyze" data-billable-op="lesson_chat" onclick="runReadingSelectionAction('analyze')">AI 解析</button>
     <button type="button" data-action="ask" onclick="runReadingSelectionAction('ask')">提问</button>
     <button type="button" data-action="play-sentence" onclick="runReadingSelectionAction('play-sentence')">播放</button>
   </div>
@@ -1564,6 +1702,8 @@
     </div>
   </div>
 </div>
+<script src="/static/elt_credits.js?v=20260809-1"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
 <script src="/static/voice-input.js?v=20260715-1"></script>
 <script>
 const LESSON_ID = {{ lesson_id }};
@@ -1864,6 +2004,7 @@ function toggleChatVoice() {
 window.addEventListener('DOMContentLoaded', async () => {
   initSidebarPanelResizers();
   initChatVoiceInput();
+  initCitationDelegation();
   loadCachedDocumentOutline();
   await refreshLesson();
   await loadChatSessions();
@@ -1912,8 +2053,8 @@ function applyStudyMode() {
 }
 
 async function switchStudyMode(mode) {
-  if (!availableStudyModes.includes(mode)) return;
   if (mode === activeStudyMode) return;
+  if (!availableStudyModes.includes(mode)) return;
   const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/mode`, {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
@@ -2036,7 +2177,7 @@ document.getElementById('subtitle-error-retry')?.addEventListener('click', async
   try {
     const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/retry-subtitles`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()},
       body: JSON.stringify({whisper_model: 'large-v3'}),
     });
     const data = await resp.json().catch(() => ({}));
@@ -2274,6 +2415,33 @@ function updateStatusBadge(status) {
   const value = status || 'pending';
   badge.textContent = value === 'reading' ? 'reading mode' : `subtitles ${value}`;
   badge.className = `status-badge ${value === 'ready' || value === 'reading' ? 'ready' : value === 'failed' ? 'failed' : ''}`;
+  const cancelBtn = document.getElementById('tts-cancel-btn');
+  if (cancelBtn) {
+    // 仅 Reading 课 TTS 生成中（已声明生成音频、成品未落盘）时可取消
+    const generating = Boolean(lessonData)
+      && lessonData.media_kind === 'generated_audio'
+      && !lessonData.media_url
+      && lessonData.subtitle_status === 'pending';
+    cancelBtn.style.display = generating ? '' : 'none';
+    if (!generating) { cancelBtn.disabled = false; cancelBtn.textContent = '取消生成音频'; }
+  }
+}
+
+async function cancelReadingTts() {
+  const btn = document.getElementById('tts-cancel-btn');
+  if (!btn) return;
+  if (!confirm('确定取消生成朗读音频？已合成的进度不会保留。')) return;
+  btn.disabled = true;
+  btn.textContent = '正在取消…';
+  try {
+    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/reading/tts/cancel`, {method: 'POST'});
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || `HTTP ${resp.status}`);
+    btn.textContent = '已取消，稍后自动恢复为无音频';
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '取消生成音频';
+    alert('取消失败：' + (err.message || err));
+  }
 }
 
 function initPlayer({allowReading = false} = {}) {
@@ -2588,7 +2756,7 @@ async function requestDocumentOutline(force = false) {
   try {
     const response = await fetch(`/api/v2/lessons/${LESSON_ID}/outline-summary`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()},
       body: JSON.stringify({force}),
     });
     const data = await response.json().catch(() => ({}));
@@ -2631,9 +2799,27 @@ async function pollDocumentOutline() {
   }
 }
 
+function scrollReadingToTime(seconds) {
+  const paragraphs = Array.from(document.querySelectorAll('#reading-passage [data-block-index]'));
+  if (!paragraphs.length) return false;
+  let target = null;
+  paragraphs.forEach(el => {
+    const raw = el.dataset.startSeconds;
+    const start = raw === '' || raw === undefined ? NaN : Number(raw);
+    if (!Number.isFinite(start) || start > seconds + 0.25) return;
+    if (!target || start > Number(target.dataset.startSeconds)) target = el;
+  });
+  if (!target) return false;
+  target.scrollIntoView({behavior: 'smooth', block: 'center'});
+  target.classList.add('outline-target-flash');
+  setTimeout(() => target.classList.remove('outline-target-flash'), 1600);
+  return true;
+}
+
 function jumpToDocumentAnchor(anchorType, anchorId) {
   if (anchorType === 'time') {
     const seconds = Number(anchorId) || 0;
+    if (activeStudyMode === 'reading' && scrollReadingToTime(seconds)) return;
     currentTime = seconds;
     seekTo(seconds);
     updateCurrentSubtitle();
@@ -3106,7 +3292,7 @@ async function requestReadingSelectionAI(action) {
   try {
     const sessionId = await ensureActiveChatSession();
     if (!sessionId) throw new Error('无法创建聊天会话');
-    const resp = await fetch('/api/v2/chat', {
+    const resp = await eltCredits.billableFetch('lesson_chat', '/api/v2/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -3147,7 +3333,7 @@ async function requestReadingSelectionTranslation() {
   const actionButtons = document.querySelectorAll('#reading-selection-popover [data-action="translate"], #reading-selection-popover [data-action="analyze"]');
   actionButtons.forEach(button => { button.disabled = true; });
   try {
-    const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/translate-selection`, {
+    const resp = await eltCredits.billableFetch('selection_translation', `/api/v2/lessons/${LESSON_ID}/translate-selection`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({text: selectedText}),
@@ -3389,8 +3575,12 @@ function onOutlineJump(idx) {
   selectedStart = section.start;
   selectedEnd = section.end;
   selectedIds = section.segment_ids || [];
-  seekTo(section.start || 0);
-  updateCurrentSubtitle();
+  if (activeStudyMode === 'reading' && scrollReadingToTime(section.start || 0)) {
+    // reading 模式：AI 导航章节跳转为滚动到对应段落并闪烁高亮
+  } else {
+    seekTo(section.start || 0);
+    updateCurrentSubtitle();
+  }
   updateContextSummary();
   renderOutline();
 }
@@ -4085,7 +4275,8 @@ async function loadChatHistory(sessionId = activeChatSessionId) {
     container.innerHTML = '';
     for (const item of data.messages || []) {
       addChatMessage('user', item.user_message || '');
-      addChatMessage('ai', item.ai_response || '');
+      // 历史消息与实时回复走同一渲染器：coverage 徽标和证据卡刷新后仍可点击
+      addChatMessage('ai', item.ai_response || '', item);
     }
     if (!(data.messages || []).length) {
       container.innerHTML = '<div class="empty-state">No messages in this conversation yet.</div>';
@@ -4102,8 +4293,14 @@ async function sendMessage() {
   const input = document.getElementById('chat-input');
   const message = input.value.trim();
   if (!message) return;
+  const extToggle = document.getElementById('chat-external-knowledge');
+  const allowExternal = extToggle?.checked === true;
   const sessionId = await ensureActiveChatSession();
-  if (!sessionId) return;
+  if (!sessionId) {
+    // 会话创建失败同样复位开关，避免下一轮静默携带外部知识
+    if (extToggle) extToggle.checked = false;
+    return;
+  }
   input.value = '';
   const button = document.getElementById('chat-send');
   button.disabled = true;
@@ -4113,27 +4310,30 @@ async function sendMessage() {
   const timeoutId = setTimeout(() => controller.abort(), 50000);
 
   try {
-    const resp = await fetch('/api/v2/chat', {
+    const payload = {
+      lesson_id: LESSON_ID,
+      session_id: sessionId,
+      message,
+      timestamp_seconds: currentTime,
+      context_mode: contextMode,
+      selected_start_seconds: selectedStart,
+      selected_end_seconds: selectedEnd,
+      selected_segment_ids: selectedIds,
+      selected_text: contextMode === 'reading_selection' ? readingChatSelection : null,
+    };
+    if (allowExternal) payload.allow_external_knowledge = true;
+    const resp = await eltCredits.billableFetch('lesson_chat', '/api/v2/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       signal: controller.signal,
-      body: JSON.stringify({
-        lesson_id: LESSON_ID,
-        session_id: sessionId,
-        message,
-        timestamp_seconds: currentTime,
-        context_mode: contextMode,
-        selected_start_seconds: selectedStart,
-        selected_end_seconds: selectedEnd,
-        selected_segment_ids: selectedIds,
-        selected_text: contextMode === 'reading_selection' ? readingChatSelection : null,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       setChatMessageContent(pendingMessage, 'Error: ' + (data.detail || data.error || 'request failed'));
     } else {
       setChatMessageContent(pendingMessage, data.message.ai_response || 'AI 未返回内容。');
+      renderAiMessageExtras(pendingMessage, data.message || {});
     }
   } catch (error) {
     const message = error.name === 'AbortError'
@@ -4143,6 +4343,220 @@ async function sendMessage() {
   } finally {
     clearTimeout(timeoutId);
     button.disabled = false;
+    if (extToggle) extToggle.checked = false;
+  }
+}
+
+// Task 10：coverage 徽标、外部知识标签与最多 3 张证据卡。
+// 模型输出的答案/摘录/章节一律 textContent 注入，不进 innerHTML。
+function renderAiMessageExtras(item, meta) {
+  if (!item || !meta || typeof meta !== 'object') return;
+  const body = item.querySelector('.chat-message-body');
+  if (!body) return;
+  body.querySelector('.chat-extras')?.remove();
+  const coverage = String(meta.coverage_status || '');
+  const citations = Array.isArray(meta.citations) ? meta.citations : [];
+  if (!coverage && !meta.external_knowledge_used && !citations.length) return;
+  const extras = document.createElement('div');
+  extras.className = 'chat-extras';
+
+  if (coverage || meta.external_knowledge_used) {
+    const row = document.createElement('div');
+    row.className = 'chat-coverage-row';
+    const labels = {
+      full: '完整覆盖 · 当前材料足以回答',
+      partial: '部分覆盖 · 缺口已在回答中说明',
+      none: '当前材料中未找到可回答的内容',
+    };
+    if (coverage) {
+      const badge = document.createElement('span');
+      badge.className = 'coverage-badge ' + (labels[coverage] ? coverage : 'none');
+      badge.textContent = labels[coverage] || '覆盖情况未知';
+      row.appendChild(badge);
+    }
+    if (meta.external_knowledge_used) {
+      const ext = document.createElement('span');
+      ext.className = 'chat-ext-label';
+      ext.textContent = '含视频外补充（external knowledge）';
+      row.appendChild(ext);
+    }
+    extras.appendChild(row);
+  }
+  // coverage=none 不渲染任何证据卡/链接，避免伪造跳转
+  if (coverage !== 'none' && citations.length) {
+    extras.appendChild(renderCitationCards(citations));
+  }
+  // partial/none 的缺口边界说明（有界列表，一律 textContent）
+  const unsupported = (Array.isArray(meta.unsupported) ? meta.unsupported : [])
+    .map(item => String(item || '').trim()).filter(Boolean).slice(0, 5);
+  if ((coverage === 'partial' || coverage === 'none') && unsupported.length) {
+    const box = document.createElement('div');
+    box.className = 'chat-unsupported';
+    const title = document.createElement('div');
+    title.className = 'chat-unsupported-title';
+    title.textContent = '未被当前材料支持：';
+    box.appendChild(title);
+    const listEl = document.createElement('ul');
+    unsupported.forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = item;
+      listEl.appendChild(li);
+    });
+    box.appendChild(listEl);
+    extras.appendChild(box);
+  }
+  body.appendChild(extras);
+  // 事件委托幂等自挂：addEventListener 对同函数引用自动去重，
+  // 历史恢复/实时渲染路径都保证卡片可点击
+  initCitationDelegation();
+}
+
+function renderCitationCards(citations) {
+  const list = document.createElement('div');
+  list.className = 'citation-list';
+  citations.slice(0, 3).forEach(citation => {
+    if (!citation || typeof citation !== 'object') return;
+    const anchorType = String(citation.anchor_type || '');
+    const chapter = String(citation.chapter_title || '');
+    const excerpt = String(citation.excerpt || '');
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'citation-card';
+    card.dataset.anchorType = anchorType;
+
+    const head = document.createElement('span');
+    head.className = 'citation-card-head';
+    const tag = document.createElement('span');
+    tag.className = 'citation-time';
+    if (anchorType === 'time') {
+      // data-citation-* 前缀：避免与 reading-passage 真实锚点属性撞选择器
+      card.dataset.citationStartSeconds = String(Number(citation.start_seconds) || 0);
+      card.dataset.citationSegmentIndex = citation.segment_index == null ? '' : String(citation.segment_index);
+      tag.textContent = formatTime(citation.start_seconds);
+      card.setAttribute('aria-label',
+        `跳转到 ${formatTime(citation.start_seconds)}${chapter ? '，' + chapter : ''}`);
+    } else {
+      card.dataset.citationSentenceKey = citation.sentence_key == null ? '' : String(citation.sentence_key);
+      card.dataset.citationBlockIndex = citation.block_index == null ? '' : String(citation.block_index);
+      tag.textContent = '原文';
+      card.setAttribute('aria-label', `跳转到原文句子${chapter ? '，' + chapter : ''}`);
+    }
+    head.appendChild(tag);
+    if (chapter) {
+      const chapterEl = document.createElement('span');
+      chapterEl.className = 'citation-chapter';
+      chapterEl.textContent = chapter;
+      head.appendChild(chapterEl);
+    }
+    card.appendChild(head);
+    if (excerpt) {
+      const excerptEl = document.createElement('span');
+      excerptEl.className = 'citation-excerpt';
+      excerptEl.textContent = excerpt;
+      card.appendChild(excerptEl);
+    }
+    list.appendChild(card);
+  });
+  return list;
+}
+
+function initCitationDelegation() {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  container.addEventListener('click', onCitationCardClick);
+}
+
+function onCitationCardClick(event) {
+  const card = event.target.closest('.citation-card');
+  if (!card) return;
+  jumpToCitation(card.dataset);
+}
+
+// 跳转只动播放器与字幕/段落高亮：不清空对话、不刷新页面。
+function jumpToCitation(dataset) {
+  const anchorType = dataset.anchorType || '';
+  if (anchorType === 'time') {
+    const start = Number(dataset.citationStartSeconds);
+    if (!Number.isFinite(start)) return;
+    const segmentIndex = Number(dataset.citationSegmentIndex);
+    // 用服务器校验过的 segment_index 经 sentenceUnits.segment_ids 映射真实字幕句，
+    // 绝不拿 citation excerpt 文本当选择器
+    const unit = Number.isFinite(segmentIndex)
+      ? sentenceUnits.find(item => (item.segment_ids || []).map(Number).includes(segmentIndex))
+      : null;
+    const seekTarget = Math.max(0, start - 2);
+    if (activeStudyMode === 'reading' && scrollReadingToTime(start)) {
+      return;
+    }
+    seekTo(seekTarget);
+    playMediaPlayback();
+    if (unit) {
+      activeSentenceIdx = sentenceUnits.indexOf(unit);
+      updateCurrentSubtitle();
+    }
+    flashCitationTarget(document.getElementById('current-subtitle'));
+    return;
+  }
+  // Reading：优先真实 data-sentence-key，缺失才回退 block_index
+  const target = findReadingAnchor(
+    dataset.citationSentenceKey || '', dataset.citationBlockIndex || '');
+  if (!target) return;
+  flashCitationTarget(target);
+}
+
+// 任意 sentence_key/block_index 都不能破坏选择器或注入 CSS：
+// CSS.escape 可用时在 try 内走 querySelector；不可用/出错时逐元素比对 dataset 字符串。
+function findReadingAnchor(sentenceKey, blockIndex) {
+  const passage = document.getElementById('reading-passage');
+  if (!passage) return null;
+  const safeQuery = (attr, value) => {
+    try {
+      if (window.CSS && typeof window.CSS.escape === 'function') {
+        return passage.querySelector(`[${attr}="${window.CSS.escape(value)}"]`);
+      }
+    } catch (_) {}
+    return undefined; // 无法用安全选择器 → 走 dataset 逐元素比对
+  };
+  if (sentenceKey) {
+    const key = String(sentenceKey);
+    const viaSelector = safeQuery('data-sentence-key', key);
+    if (viaSelector) return viaSelector;
+    if (viaSelector === undefined) {
+      // 无法用安全选择器 → 走 dataset 逐元素比对
+      for (const el of passage.querySelectorAll('[data-sentence-key]')) {
+        if (el.dataset.sentenceKey === key) return el;
+      }
+    }
+  }
+  if (blockIndex) {
+    const key = String(blockIndex);
+    const viaSelector = safeQuery('data-block-index', key);
+    if (viaSelector) return viaSelector;
+    if (viaSelector === undefined) {
+      for (const el of passage.querySelectorAll('[data-block-index]')) {
+        if (el.dataset.blockIndex === key) return el;
+      }
+    }
+  }
+  return null;
+}
+
+function flashCitationTarget(element) {
+  if (!element) return;
+  element.scrollIntoView({behavior: 'smooth', block: 'center'});
+  element.classList.remove('citation-target-flash');
+  void element.offsetWidth;
+  element.classList.add('citation-target-flash');
+  setTimeout(() => element.classList.remove('citation-target-flash'), 1700);
+}
+
+function playMediaPlayback() {
+  if (localMedia && typeof localMedia.play === 'function') {
+    localMedia.play().catch(() => {});
+    return;
+  }
+  if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+    try { ytPlayer.playVideo(); } catch (_) {}
   }
 }
 
@@ -4245,13 +4659,14 @@ function formatChatMessageContent(content, role = 'ai') {
   return html.join('');
 }
 
-function addChatMessage(role, content) {
+function addChatMessage(role, content, meta = null) {
   const container = document.getElementById('chat-messages');
   container.querySelector('.empty-state')?.remove();
   const item = document.createElement('div');
   item.className = 'chat-msg ' + role;
   item.innerHTML = `<div class="role">${role === 'user' ? 'You' : 'AI'}</div><div class="chat-message-body"></div>`;
   setChatMessageContent(item, content);
+  if (role === 'ai' && meta) renderAiMessageExtras(item, meta);
   container.appendChild(item);
   container.scrollTop = container.scrollHeight;
   return item;
@@ -4323,7 +4738,27 @@ async function initAuthBadge() {
     const me = await r.json();
     document.getElementById('user-menu-btn').textContent = '👤 ' + me.username + ' ▾';
     document.getElementById('user-menu').style.display = '';
+    refreshCreditBadge(me.credits);
   } catch (e) { /* 单用户模式忽略 */ }
+}
+// 全局积分余额：fail-closed——加载失败显示「积分 —」，绝不把错误显示成 0。
+async function refreshCreditBadge(summary) {
+  const el = document.getElementById('credit-badge');
+  if (!el) return;
+  try {
+    let s = summary;
+    if (!s) {
+      const r = await fetch('/api/credits/summary');
+      if (!r.ok) throw new Error();
+      s = await r.json();
+    }
+    if (typeof s.available !== 'number') throw new Error();
+    el.textContent = '积分 ' + s.available;
+    el.style.display = '';
+  } catch (e) {
+    el.textContent = '积分 —';
+    el.style.display = '';
+  }
 }
 async function logout() {
   await fetch('/api/auth/logout', {method: 'POST'});
