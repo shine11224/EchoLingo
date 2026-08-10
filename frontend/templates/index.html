@@ -3363,15 +3363,16 @@ function buildCourseMenu(course) {
 
 function buildModeButton(course, mode, label) {
   const available = mode === 'intensive'
-    ? course.kind === 'v2'
+    ? course.kind === 'v2' && course.available_modes.includes('reading')
     : course.available_modes.includes(mode);
+  if (!available) return '';
   const intensiveClass = mode === 'intensive' ? ' intensive' : '';
   const title = mode === 'intensive' && course.kind === 'v2' && !course.intensive_ready
     ? '首次进入时生成精读 HTML'
     : label;
   return `<button class="course-action${intensiveClass}" type="button"
     data-course-key="${esc(course.key)}" data-course-mode="${mode}"
-    title="${esc(title)}" ${available ? '' : 'disabled'}>${label}</button>`;
+    title="${esc(title)}">${label}</button>`;
 }
 
 function buildRecentCourseCard(course) {

@@ -1892,6 +1892,9 @@ function isMediaLesson() {
 }
 
 function applyStudyMode() {
+  if (availableStudyModes.length && !availableStudyModes.includes(activeStudyMode)) {
+    activeStudyMode = availableStudyModes[0];
+  }
   const isReading = activeStudyMode === 'reading';
   document.body.dataset.lessonMode = isReading ? 'reading' : 'listening';
   document.querySelector('.video-card').hidden = isReading;
@@ -1909,6 +1912,7 @@ function applyStudyMode() {
 }
 
 async function switchStudyMode(mode) {
+  if (!availableStudyModes.includes(mode)) return;
   if (mode === activeStudyMode) return;
   const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/mode`, {
     method: 'PATCH',

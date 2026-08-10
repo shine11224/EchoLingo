@@ -165,6 +165,44 @@ def test_patch_mode_persists_valid_mode_and_rejects_unavailable_mode(tmp_path, m
     assert db.get_v2_lesson(text["id"])["lesson_mode"] == "reading"
 
 
+def test_capabilities_reading_pdf_lesson_without_media(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_pdf", source_url="reading://pdf-caps",
+        title="PDF passage", lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [{"index": 1, "text": "A paragraph."}])
+
+    status = client.get(f"/api/v2/lessons/{lesson['id']}/status").json()
+    assert status["capabilities"] == {"can_listen": False, "can_read": True}
+    assert status["available_modes"] == ["reading"]
+    rejected = client.patch(f"/api/v2/lessons/{lesson['id']}/mode", json={"mode": "listening"})
+    assert rejected.status_code == 400
+    library = client.get("/api/v2/lessons/library").json()["lessons"]
+    entry = next(c for c in library if c["id"] == lesson["id"])
+    assert entry["capabilities"] == {"can_listen": False, "can_read": True}
+
+
+def test_capabilities_youtube_lesson_can_listen(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=abc123def45",
+        video_id="abc123def45", title="Demo",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [{"index": 1, "text": "A paragraph."}])
+    status = client.get(f"/api/v2/lessons/{lesson['id']}/status").json()
+    assert status["capabilities"] == {"can_listen": True, "can_read": True}
+
+
 def test_start_youtube_lesson_returns_immediately(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
@@ -185,7 +223,69 @@ def test_start_youtube_lesson_returns_immediately(tmp_path, monkeypatch):
     data = resp.json()
     assert data["lesson"]["video_id"] == "abc123def45"
     assert data["lesson"]["subtitle_status"] == "pending"
+    assert data["lesson"]["title"] == "YouTube Lesson abc123def45"
     assert data["workspace_url"] == f"/workspace/{data['lesson']['id']}"
+
+
+def test_start_youtube_lesson_backfills_blank_title_on_reuse(tmp_path, monkeypatch):
+    import db
+    import webapp.services.v2_lessons as service
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    url = "https://www.youtube.com/watch?v=abc123def45"
+    existing = db.create_v2_lesson(
+        source_type="youtube",
+        source_url=url,
+        video_id="abc123def45",
+        title="",
+    )
+
+    result = service.start_youtube_lesson(url)
+
+    assert result["lesson"]["id"] == existing["id"]
+    assert result["lesson"]["title"] == "YouTube Lesson abc123def45"
+
+
+def _stub_subtitle_pipeline(monkeypatch, service, title):
+    bundle = SimpleNamespace(title=title)
+    monkeypatch.setattr(service, "fetch_youtube_subtitles", lambda url: bundle)
+    monkeypatch.setattr(service, "source_bundle_to_segment_dicts", lambda b: [])
+    monkeypatch.setattr(service, "_store_media_segments", lambda *a, **k: None)
+    monkeypatch.setattr(service, "_enqueue_media_alignment", lambda *a, **k: None)
+
+
+def test_youtube_subtitle_fetch_backfills_real_title(tmp_path, monkeypatch):
+    import db
+    import webapp.services.v2_lessons as service
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    _stub_subtitle_pipeline(monkeypatch, service, "Real Video Title")
+    lesson = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=abc123def45",
+        video_id="abc123def45", title="YouTube Lesson abc123def45",
+    )
+    service._fetch_and_store_subtitles(lesson["id"], lesson["source_url"])
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["title"] == "Real Video Title"
+    assert saved["subtitle_status"] == "ready"
+
+
+def test_youtube_subtitle_fetch_blank_title_keeps_fallback(tmp_path, monkeypatch):
+    import db
+    import webapp.services.v2_lessons as service
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    _stub_subtitle_pipeline(monkeypatch, service, "   ")
+    lesson = db.create_v2_lesson(
+        source_type="youtube",
+        source_url="https://www.youtube.com/watch?v=abc123def45",
+        video_id="abc123def45", title="YouTube Lesson abc123def45",
+    )
+    service._fetch_and_store_subtitles(lesson["id"], lesson["source_url"])
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["title"] == "YouTube Lesson abc123def45"
+    assert saved["subtitle_status"] == "ready"
 
 
 def test_start_local_media_lesson_uses_v2_workspace(tmp_path, monkeypatch):

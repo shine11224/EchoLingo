@@ -87,6 +87,120 @@ def _split_source_segments(segments: list[dict]) -> list[dict]:
     return pieces
 
 
+def _split_oversized_unit(unit: dict) -> list[dict]:
+    """无句末标点的超限 unit 按词界均衡硬切，时间戳按词位比例单调插值。"""
+    text = unit["text"]
+    if _SENTENCE_END_RE.search(text.strip()):
+        return [unit]
+    tokens = text.split()
+    counts = [len(_WORD_RE.findall(token)) for token in tokens]
+    total = sum(counts)
+    if total <= MAX_TRANSLATION_UNIT_WORDS:
+        return [unit]
+    start = float(unit["start"])
+    end = float(unit["end"])
+    duration = max(0.0, end - start)
+
+    # 按词索引均分 n 段；多词 token 跨界可能让某段超 48，此时增加段数重试
+    n = max(2, -(-total // MAX_TRANSLATION_UNIT_WORDS))
+    while True:
+        bounds = [i * total // n for i in range(n + 1)]
+        bounds[n] = total
+        pieces: list[list[str]] = [[] for _ in range(n)]
+        word_ranges: list[list[int]] = [[0, 0] for _ in range(n)]
+        cursor = 0
+        piece_index = 0
+        for token, count in zip(tokens, counts):
+            while piece_index < n - 1 and cursor >= bounds[piece_index + 1]:
+                piece_index += 1
+            if not pieces[piece_index]:
+                word_ranges[piece_index][0] = cursor
+            pieces[piece_index].append(token)
+            cursor += count
+            word_ranges[piece_index][1] = cursor
+        non_empty = [i for i in range(n) if pieces[i]]
+        if all(word_ranges[i][1] - word_ranges[i][0] <= MAX_TRANSLATION_UNIT_WORDS for i in non_empty):
+            break
+        n += 1
+
+    out: list[dict] = []
+    for i in non_empty:
+        piece_text = " ".join(pieces[i])
+        words = {word.casefold() for word in _WORD_RE.findall(piece_text)}
+        w0, w1 = word_ranges[i]
+        piece_end = end if i == non_empty[-1] else start + duration * w1 / total
+        out.append({
+            **unit,
+            "text": piece_text,
+            "start": start + duration * w0 / total,
+            "end": piece_end,
+            "highlighted_words": [
+                word for word in unit["highlighted_words"] if str(word).casefold() in words
+            ],
+            "word_meanings": {
+                word: meaning
+                for word, meaning in unit["word_meanings"].items()
+                if str(word).casefold() in words
+            },
+            "highlighted_word_lists": {
+                word: list_key
+                for word, list_key in (unit.get("highlighted_word_lists") or {}).items()
+                if str(word).casefold() in words
+            },
+        })
+    return out
+
+
+def _rebalance_punctuationless_units(units: list[dict]) -> list[dict]:
+    """同一逻辑源被预切出的连续无句末标点 unit 合并后重新均衡切分，避免小尾巴。
+
+    只合并 segment_ids 完全相同的相邻 run，句末边界和其他 cue 的切分保持不变。
+    """
+    out: list[dict] = []
+    i = 0
+    while i < len(units):
+        unit = units[i]
+        if _SENTENCE_END_RE.search(unit["text"].strip()):
+            out.append(unit)
+            i += 1
+            continue
+        run = [unit]
+        j = i + 1
+        while (
+            j < len(units)
+            and not _SENTENCE_END_RE.search(units[j]["text"].strip())
+            and units[j].get("segment_ids")
+            and units[j]["segment_ids"] == unit.get("segment_ids")
+        ):
+            run.append(units[j])
+            j += 1
+        if len(run) == 1:
+            out.append(unit)
+        else:
+            merged = {
+                **unit,
+                "text": " ".join(piece["text"] for piece in run),
+                "start": float(run[0]["start"]),
+                "end": float(run[-1]["end"]),
+                "highlighted_words": sorted({
+                    word for piece in run for word in piece["highlighted_words"]
+                }),
+                "word_meanings": {
+                    word: meaning
+                    for piece in run
+                    for word, meaning in piece["word_meanings"].items()
+                },
+                "highlighted_word_lists": {
+                    word: list_key
+                    for piece in run
+                    for word, list_key in (piece.get("highlighted_word_lists") or {}).items()
+                },
+            }
+            out.extend(_split_oversized_unit(merged))
+        i = j
+    return out
+
+
 def build_translation_units(segments: list[dict]) -> list[dict]:
     """Mirror the workspace sentence-unit boundaries used for playback."""
     units: list[dict] = []
@@ -155,7 +269,13 @@ def build_translation_units(segments: list[dict]) -> list[dict]:
             or index == len(split_segments) - 1
         ):
             flush()
-    return units
+    out: list[dict] = []
+    for unit in units:
+        out.extend(_split_oversized_unit(unit))
+    out = _rebalance_punctuationless_units(out)
+    for index, unit in enumerate(out):
+        unit["index"] = index
+    return out
 
 
 def translate_lesson_subtitles(lesson_id: int) -> dict:

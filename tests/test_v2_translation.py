@@ -145,6 +145,67 @@ def test_playback_units_wait_for_sentence_end_in_the_next_cue_after_word_limit()
     assert units[0]["end"] == units[1]["start"]
 
 
+def test_playback_units_hard_cap_splits_one_oversized_chunk_without_punctuation():
+    from webapp.services.v2_translation import MAX_TRANSLATION_UNIT_WORDS, _WORD_RE, build_translation_units
+
+    tokens = [f"word{i:03d}" for i in range(100)]
+    units = build_translation_units([
+        {"index": 1, "start": 0.0, "end": 50.0, "text": " ".join(tokens)},
+    ])
+
+    assert len(units) == 3
+    assert all(len(_WORD_RE.findall(unit["text"])) <= MAX_TRANSLATION_UNIT_WORDS for unit in units)
+    assert min(len(_WORD_RE.findall(unit["text"])) for unit in units) >= 30
+    assert [token for unit in units for token in unit["text"].split()] == tokens
+    assert units[0]["start"] == 0.0
+    assert units[-1]["end"] == 50.0
+    for prev, curr in zip(units, units[1:]):
+        assert curr["start"] == prev["end"]
+
+
+def test_playback_units_hard_cap_avoids_tiny_tail_when_balanced_split_is_possible():
+    from webapp.services.v2_translation import MAX_TRANSLATION_UNIT_WORDS, _WORD_RE, build_translation_units
+
+    tokens = [f"word{i:03d}" for i in range(MAX_TRANSLATION_UNIT_WORDS + 1)]
+    units = build_translation_units([
+        {"index": 1, "start": 10.0, "end": 20.0, "text": " ".join(tokens)},
+    ])
+
+    sizes = [len(_WORD_RE.findall(unit["text"])) for unit in units]
+    assert len(units) == 2
+    assert all(size <= MAX_TRANSLATION_UNIT_WORDS for size in sizes)
+    assert min(sizes) >= 20
+    assert [token for unit in units for token in unit["text"].split()] == tokens
+    assert units[0]["start"] == 10.0
+    assert units[1]["start"] == units[0]["end"]
+    assert units[1]["end"] == 20.0
+
+
+def test_playback_units_hard_cap_splits_oversized_chunk_among_mixed_chunks():
+    from webapp.services.v2_translation import MAX_TRANSLATION_UNIT_WORDS, _WORD_RE, build_translation_units
+
+    oversized = [f"word{i:03d}" for i in range(80)]
+    segments = [
+        {"index": 1, "start": 0.0, "end": 2.0, "text": "Hello world."},
+        {"index": 2, "start": 2.0, "end": 40.0, "text": " ".join(oversized)},
+        {"index": 3, "start": 40.0, "end": 42.0, "text": "Short bridge"},
+        {"index": 4, "start": 42.0, "end": 46.0, "text": "Final sentence here."},
+    ]
+    units = build_translation_units(segments)
+
+    assert [unit["text"] for unit in units] == [
+        "Hello world.",
+        " ".join(oversized[:40]),
+        " ".join(oversized[40:]),
+        "Short bridge Final sentence here.",
+    ]
+    assert all(len(_WORD_RE.findall(unit["text"])) <= MAX_TRANSLATION_UNIT_WORDS for unit in units)
+    expected_tokens = [token for segment in segments for token in segment["text"].split()]
+    assert [token for unit in units for token in unit["text"].split()] == expected_tokens
+    assert units[0]["start"] == 0.0
+    assert units[-1]["end"] == 46.0
+
+
 def test_translate_lesson_fails_without_hy_mt_but_keeps_subtitles(tmp_path, monkeypatch):
     import db
     from webapp.services import v2_translation

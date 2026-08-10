@@ -38,13 +38,16 @@ class ReadingUploadBusyError(RuntimeError):
 
 def start_youtube_lesson(url: str, *, translate: bool = False) -> dict:
     video_id = extract_video_id(url)
+    fallback_title = f"YouTube Lesson {video_id}" if video_id else "YouTube Lesson"
     lesson = db.create_v2_lesson(
         source_type="youtube",
         source_url=url,
         video_id=video_id,
-        title="",
+        title=fallback_title,
         duration=0,
     )
+    if not str(lesson.get("title") or "").strip():
+        db.update_v2_lesson_metadata(lesson["id"], title=fallback_title)
     db.configure_v2_lesson_translation(lesson["id"], requested=translate)
     lesson = db.get_v2_lesson(lesson["id"]) or lesson
     return {"lesson": lesson, "workspace_url": f"/workspace/{lesson['id']}"}
@@ -324,6 +327,9 @@ def _fetch_and_store_subtitles(lesson_id: int, url: str, translate: bool = False
                 # 转录失败保留原字幕，课程仍可用（断句质量差但不阻断导入）
                 print(f"[v2] lesson {lesson_id}: whisper 转录失败，保留原字幕：{exc}", flush=True)
         _store_media_segments(lesson_id, segments)
+        title = (bundle.title or "").strip()
+        if title:
+            db.update_v2_lesson_metadata(lesson_id, title=title)
         db.set_v2_lesson_status(lesson_id, subtitle_status="ready")
         _enqueue_media_alignment(lesson_id)
         if translate:
@@ -435,15 +441,24 @@ def _copy_media_for_lesson(lesson_id: int, source: Path) -> str:
     return f"/output/v2_assets/{lesson_id}/{target.name}"
 
 
-def get_available_modes(lesson: dict) -> list[str]:
-    modes: list[str] = []
-    if str(lesson.get("video_id") or "").strip() or str(lesson.get("media_url") or "").strip():
-        modes.append("listening")
+def get_lesson_capabilities(lesson: dict) -> dict:
+    can_listen = bool(
+        str(lesson.get("video_id") or "").strip()
+        or str(lesson.get("media_url") or "").strip()
+    )
     if "reading_block_count" in lesson:
-        has_reading = int(lesson.get("reading_block_count") or 0) > 0
+        can_read = int(lesson.get("reading_block_count") or 0) > 0
     else:
-        has_reading = bool(db.get_v2_reading_blocks(int(lesson["id"])))
-    if has_reading:
+        can_read = bool(db.get_v2_reading_blocks(int(lesson["id"])))
+    return {"can_listen": can_listen, "can_read": can_read}
+
+
+def get_available_modes(lesson: dict) -> list[str]:
+    caps = get_lesson_capabilities(lesson)
+    modes: list[str] = []
+    if caps["can_listen"]:
+        modes.append("listening")
+    if caps["can_read"]:
         modes.append("reading")
     return modes
 
@@ -467,6 +482,7 @@ def get_course_library(include_archived: bool = False) -> list[dict]:
             "archived": bool(lesson.get("archived")),
             "tags": tags,
             "available_modes": get_available_modes(lesson),
+            "capabilities": get_lesson_capabilities(lesson),
             "progress_percent": min(100, max(0, round(position / duration * 100))) if duration > 0 else 0,
             "last_active_at": (
                 lesson.get("progress_updated_at")
@@ -485,7 +501,8 @@ def get_lesson_status(lesson_id: int) -> dict:
     if not lesson:
         raise ValueError(f"Lesson {lesson_id} not found")
     progress = db.get_v2_lesson_progress(lesson_id) or {}
-    return {"lesson": lesson, "available_modes": get_available_modes(lesson), "progress": {
+    return {"lesson": lesson, "available_modes": get_available_modes(lesson),
+            "capabilities": get_lesson_capabilities(lesson), "progress": {
         "last_position_seconds": progress.get("last_position_seconds", 0),
         "last_segment_index": progress.get("last_segment_index", 0),
     }}

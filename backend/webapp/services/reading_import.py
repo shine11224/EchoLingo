@@ -95,24 +95,14 @@ def _extract_pdf_text_layer_from_path(path: str | Path, pages: list[int] | None 
 
 _X_TOLERANCE = 1.5  # >2 starts gluing tightly-kerned academic fonts into fake words
 _PAGE_NUMBER_RE = re.compile(r"^\d{1,4}$")
-_HYPHEN_BREAK_RE = re.compile(r"([A-Za-z]{2,})-\s*\n\s*([a-z]{2,})")
+_HYPHEN_BREAK_RE = re.compile(
+    r"([A-Za-zÀ-ÖØ-öø-ÿ]{2,})-\s*\n\s*([a-zà-öø-ÿ]{2,})"
+)
 _GUTTER_CLEAN_RATIO = 0.15   # page votes for the document gutter only below this
-_GUTTER_APPLY_RATIO = 0.35   # above this a page is treated as full-width (figure/table)
 _GUTTER_AGREE_PT = 12        # candidates within ±12pt count as the same gutter
-
-
-def _join_hyphen_break(match: re.Match) -> str:
-    """Dehyphenate LaTeX line breaks: join only when the merged word is a real
-    dictionary word (ECDICT); otherwise keep the hyphen (citation-\ndriven)."""
-    merged = match.group(1) + match.group(2)
-    try:
-        from webapp.services import dicts as dict_service
-
-        if dict_service.lookup_ecdict(merged.lower()):
-            return merged
-    except Exception:
-        pass
-    return f"{match.group(1)}-{match.group(2)}"
+_LINE_TOP_TOLERANCE = 2.5    # words within ±2.5pt share a baseline
+_LINE_GAP_SPLIT_PT = 8.0     # larger horizontal gap splits a row into two lines
+_GUTTER_SPAN_MARGIN = 12.0   # line crossing the gutter by >12pt both sides is full-width
 
 
 def _page_gutter_candidate(page) -> tuple[float, float] | None:
@@ -174,30 +164,178 @@ def _extract_pdf_pages(pages) -> str:
         text = _extract_pdf_page_text(page, gutter)
         if text.strip():
             chunks.append(text)
-    return "\n\n".join(chunks)
+    return _dehyphenate("\n\n".join(chunks))
 
 
 def _extract_pdf_page_text(page, gutter: float | None) -> str:
-    """Extract one page, splitting into left/right columns when a gutter applies."""
-    use_gutter = gutter
-    if use_gutter is not None:
-        candidate = _page_gutter_candidate(page)
-        # page crossed by a full-width figure/table → fall back to single column
-        if candidate is None or candidate[1] > _GUTTER_APPLY_RATIO:
-            use_gutter = None
-    if use_gutter is None:
+    """Extract one page in reading order.
+
+    Without a document gutter the page is single-column and pdfplumber's own
+    ordering is kept. With a gutter, words are clustered into physical lines
+    and re-ordered by vertical region: full-width lines (titles, figures,
+    captions) stay in natural position; two-column bands emit the left column
+    before the right one.
+    """
+    if gutter is None:
         return _clean_pdf_text(page.extract_text(x_tolerance=_X_TOLERANCE) or "")
-    left = page.filter(lambda obj: (float(obj["x0"]) + float(obj["x1"])) / 2 < use_gutter)
-    right = page.filter(lambda obj: (float(obj["x0"]) + float(obj["x1"])) / 2 >= use_gutter)
-    left_text = left.extract_text(x_tolerance=_X_TOLERANCE) or ""
-    right_text = right.extract_text(x_tolerance=_X_TOLERANCE) or ""
-    return _clean_pdf_text(left_text + "\n\n" + right_text)
+    words = _page_words(page)
+    lines = _cluster_words_into_lines(words)
+    if not lines:
+        return ""
+    chunks = _order_lines_into_chunks(lines, gutter)
+    return _clean_pdf_text("\n\n".join(chunks))
+
+
+def _page_words(page) -> list[dict]:
+    """Words on a page minus rotated margin strings and text inside images.
+
+    arXiv-style papers stamp a vertical left-margin string (upright=False);
+    academic diagrams embed words inside raster/vector image regions. Both
+    pollute reading order, so they are dropped. Captions sit outside image
+    bboxes and survive. extra_attrs needs a real pdfplumber; test doubles
+    fall back to plain extract_words.
+    """
+    try:
+        words = page.extract_words(x_tolerance=_X_TOLERANCE, extra_attrs=["upright"])
+    except Exception:
+        words = page.extract_words(x_tolerance=_X_TOLERANCE)
+    words = [w for w in words if w.get("upright", True)]
+    boxes: list[tuple[float, float, float, float]] = []
+    for image in getattr(page, "images", None) or []:
+        try:
+            boxes.append((
+                float(image["x0"]), float(image["top"]),
+                float(image["x1"]), float(image["bottom"]),
+            ))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not boxes:
+        return words
+    return [w for w in words if not _word_center_in_boxes(w, boxes)]
+
+
+def _word_center_in_boxes(word: dict, boxes: list[tuple[float, float, float, float]]) -> bool:
+    cx = (float(word["x0"]) + float(word["x1"])) / 2
+    cy = (float(word["top"]) + float(word.get("bottom", word["top"]))) / 2
+    return any(x0 <= cx <= x1 and top <= cy <= bottom for x0, top, x1, bottom in boxes)
+
+
+def _cluster_words_into_lines(words: list[dict]) -> list[dict]:
+    """Group words into physical lines: same baseline, then split on wide gaps.
+
+    A row holding both columns (same baseline) splits at the gutter gap, so
+    each returned line lies fully in one column or genuinely spans the page.
+    """
+    rows: list[list[dict]] = []
+    for word in sorted(words, key=lambda w: (float(w["top"]), float(w["x0"]))):
+        if rows and abs(float(word["top"]) - float(rows[-1][0]["top"])) <= _LINE_TOP_TOLERANCE:
+            rows[-1].append(word)
+        else:
+            rows.append([word])
+    lines: list[dict] = []
+    for row in rows:
+        current: list[dict] = []
+        current_x1 = 0.0
+        for word in sorted(row, key=lambda w: float(w["x0"])):
+            if current and float(word["x0"]) - current_x1 > _LINE_GAP_SPLIT_PT:
+                lines.append(_build_line(current))
+                current = []
+            current.append(word)
+            current_x1 = float(word["x1"])
+        if current:
+            lines.append(_build_line(current))
+    return lines
+
+
+def _build_line(words: list[dict]) -> dict:
+    return {
+        "top": min(float(w["top"]) for w in words),
+        "x0": min(float(w["x0"]) for w in words),
+        "x1": max(float(w["x1"]) for w in words),
+        "text": " ".join(str(w["text"]) for w in words),
+    }
+
+
+def _order_lines_into_chunks(lines: list[dict], gutter: float) -> list[str]:
+    """Order lines into text chunks: full-width lines in place, column bands
+    left-then-right. Chunk boundaries become blank lines downstream."""
+    chunks: list[str] = []
+    full_buf: list[str] = []
+    left_buf: list[str] = []
+    right_buf: list[str] = []
+
+    def flush_columns() -> None:
+        if left_buf:
+            chunks.append("\n".join(left_buf))
+            left_buf.clear()
+        if right_buf:
+            chunks.append("\n".join(right_buf))
+            right_buf.clear()
+
+    def flush_full() -> None:
+        if full_buf:
+            chunks.append("\n".join(full_buf))
+            full_buf.clear()
+
+    for line in sorted(lines, key=lambda l: (l["top"], l["x0"])):
+        spans_gutter = (
+            line["x0"] < gutter - _GUTTER_SPAN_MARGIN
+            and line["x1"] > gutter + _GUTTER_SPAN_MARGIN
+        )
+        if spans_gutter:
+            flush_columns()
+            full_buf.append(line["text"])
+        else:
+            flush_full()
+            center = (line["x0"] + line["x1"]) / 2
+            (left_buf if center < gutter else right_buf).append(line["text"])
+    flush_columns()
+    flush_full()
+    return chunks
 
 
 def _clean_pdf_text(text: str) -> str:
-    text = _HYPHEN_BREAK_RE.sub(_join_hyphen_break, text)
     lines = [line for line in text.splitlines() if not _PAGE_NUMBER_RE.match(line.strip())]
     return "\n".join(lines)
+
+
+def _dehyphenate(text: str) -> str:
+    """Join words broken by typesetting hyphens at line breaks.
+
+    With ECDICT available (private/cloud) the merged word must be a real
+    dictionary entry. Without it (public repo ships no ECDICT) fall back to
+    document-internal attestation: join when the merged word is attested
+    elsewhere (reconcil-\ning with "reconciling" in the next paragraph);
+    preserve the hyphen only when both fragments are independently attested
+    as standalone words (citation-\ndriven); otherwise join. Fragments at
+    the break point itself never count as attestation.
+    """
+    stripped = _HYPHEN_BREAK_RE.sub(" ", text)
+    counts: dict[str, int] = {}
+    for w in re.findall(r"[A-Za-z]+", stripped):
+        counts[w.lower()] = counts.get(w.lower(), 0) + 1
+    def independently_attested(word: str) -> bool:
+        # ``stripped`` already removes every line-break occurrence, so any
+        # remaining count is independent document evidence.
+        return counts.get(word, 0) > 0
+
+    def decide(match: re.Match) -> str:
+        head, tail = match.group(1), match.group(2)
+        merged = head + tail
+        try:
+            from webapp.services import dicts as dict_service
+
+            if dict_service.lookup_ecdict(merged.lower()):
+                return merged
+        except Exception:
+            pass
+        if counts.get(merged.lower(), 0):
+            return merged
+        if independently_attested(head.lower()) and independently_attested(tail.lower()):
+            return f"{head}-{tail}"
+        return merged
+
+    return _HYPHEN_BREAK_RE.sub(decide, text)
 
 
 def extract_text_from_upload(filename: str, content: bytes) -> str:

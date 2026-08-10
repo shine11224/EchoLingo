@@ -73,5 +73,10 @@ server_*.log
 resources/ecdict/
 resources/wordlists/wordlists/compiled/builtin_*.json
 
+# Runtime user wordlists (uploaded/generated locally; never publish)
+resources/wordlists/wordlists/user/*
+!resources/wordlists/wordlists/user/.gitkeep
+resources/wordlists/wordlists/compiled/user_*.json
+
 # 本地敏感信息（订阅链接、cookies 等）
 secrets/

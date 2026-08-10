@@ -601,8 +601,14 @@ def test_intensive_export_writes_homepage_html_and_lesson_metadata(tmp_path, mon
 def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
+    from webapp.fastapi_routes import v2_lessons as lesson_routes
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(
+        lesson_routes,
+        "load_lists_for_keys",
+        lambda keys: [("test_vocab", {"first", "sentence"})],
+    )
     client = TestClient(create_app())
     lesson = db.create_v2_lesson(
         source_type="reading_text",
@@ -623,7 +629,9 @@ def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, 
     )
     db.set_review_word_lifecycle("first", mastered=True)
 
-    response = client.get(f"/api/v2/lessons/{lesson['id']}/intensive")
+    response = client.get(
+        f"/api/v2/lessons/{lesson['id']}/intensive?wordlists=test_vocab"
+    )
 
     assert response.status_code == 200
     highlighted_words = response.json()["sentences"][0]["highlighted_words"]
