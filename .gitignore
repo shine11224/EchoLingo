@@ -71,7 +71,6 @@ server_*.log
 
 # ECDICT downloaded data (build via backend/build_ecdict.py)
 resources/ecdict/
-resources/wordlists/wordlists/compiled/builtin_*.json
 
 # Runtime user wordlists (uploaded/generated locally; never publish)
 resources/wordlists/wordlists/user/*

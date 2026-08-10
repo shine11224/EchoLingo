@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -28,6 +29,18 @@ try:
 except ImportError:  # pragma: no cover - 公开库路径
     auth_router = None
     AuthMiddleware = None
+
+# 管理员私有导入页仅私有库/云端提供；公开库缺少模板/路由时静默降级
+try:
+    from webapp.fastapi_routes.admin_private import router as admin_private_router
+except ImportError:  # pragma: no cover - 公开库路径
+    admin_private_router = None
+
+# 积分 API 仅私有库/云端提供；公开库缺少 webapp.auth.credits 时静默降级
+try:
+    from webapp.fastapi_routes.credits import router as credits_router
+except ImportError:  # pragma: no cover - 公开库路径
+    credits_router = None
 
 from webapp.fastapi_routes.jobs import router as jobs_router
 from webapp.fastapi_routes.lessons import router as lessons_router
@@ -73,6 +86,22 @@ def _resume_interrupted_translations() -> None:
             db.reset_current_db_path(token)
 
 
+def _ensure_builtin_wordlists_async() -> None:
+    """启动自愈：内置词表缺失且 ECDICT 可用时后台重建，不阻塞服务启动。"""
+
+    def _run() -> None:
+        try:
+            import build_ecdict
+
+            result = build_ecdict.ensure_builtin_wordlists()
+            if result not in ("present", "no-db"):
+                print(f"[startup] builtin wordlists: {result}")
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def create_app() -> FastAPI:
     db.init_db()
     migrate_lessons_to_db()
@@ -80,6 +109,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         _resume_interrupted_translations()
+        _ensure_builtin_wordlists_async()
         yield
         try:
             from webapp.services.hy_translate import stop_local_server
@@ -126,6 +156,10 @@ def create_app() -> FastAPI:
     app.include_router(misc_router)
     app.include_router(v2_lessons_router)
     app.include_router(v2_chat_router)
+    if admin_private_router is not None:
+        app.include_router(admin_private_router)
+    if credits_router is not None:
+        app.include_router(credits_router)
 
     return app
 

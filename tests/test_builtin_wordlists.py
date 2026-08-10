@@ -37,6 +37,28 @@ def test_builtin_wordlists_generated_with_inflections(tmp_path, monkeypatch):
     assert 3000 < len(coca5["words"]) < 20000
 
 
+def test_ensure_builtin_wordlists_noop_and_no_db(tmp_path, monkeypatch):
+    compiled = tmp_path / "compiled"
+    compiled.mkdir()
+    for list_id, *_ in build_ecdict.BUILTIN_LISTS:
+        (compiled / f"{list_id}.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(build_ecdict, "COMPILED_DIR", compiled)
+    assert build_ecdict.ensure_builtin_wordlists() == "present"
+
+    # 缺词表但无 ecdict.db → 不重建，安静跳过（公开库无词典时的启动路径）
+    (compiled / "builtin_gre.json").unlink()
+    monkeypatch.setattr(build_ecdict, "DB_PATH", tmp_path / "nope.db")
+    assert build_ecdict.ensure_builtin_wordlists() == "no-db"
+
+
+@pytest.mark.skipif(not build_ecdict.DB_PATH.exists(), reason="ecdict.db not built")
+def test_ensure_builtin_wordlists_regenerates(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_ecdict, "COMPILED_DIR", tmp_path)
+    assert build_ecdict.ensure_builtin_wordlists() == "regenerated"
+    assert (tmp_path / "builtin_cet4.json").exists()
+    assert (tmp_path / "builtin_gre.json").exists()
+
+
 def test_wordlists_config_includes_virtual_vocab_lists(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app

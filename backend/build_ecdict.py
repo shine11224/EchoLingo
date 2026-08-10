@@ -130,6 +130,25 @@ def build_builtin_wordlists() -> list[str]:
     return written
 
 
+def ensure_builtin_wordlists() -> str:
+    """Startup self-heal: regenerate builtin wordlists when missing and ecdict.db exists.
+
+    Returns 'present' | 'regenerated' | 'no-db' | 'failed'. Never raises —
+    a wordlist problem must not crash server startup.
+    """
+    expected = [f"{list_id}.json" for list_id, *_ in BUILTIN_LISTS]
+    if all((COMPILED_DIR / name).exists() for name in expected):
+        return "present"
+    if not DB_PATH.exists():
+        return "no-db"
+    try:
+        build_builtin_wordlists()
+    except Exception as exc:
+        print(f"[ecdict] builtin wordlist regeneration failed: {exc}")
+        return "failed"
+    return "regenerated"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rebuild", action="store_true", help="rebuild db from existing csv")
