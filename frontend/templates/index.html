@@ -1485,11 +1485,13 @@
   <div class="header-top">
     <h1>🎧 EchoLingo</h1>
     <span class="header-stat" id="header-stat"></span>
+    <a id="credit-badge" href="/account" title="积分余额（点击查看详情）" style="display:none; margin-left:8px; border:1px solid #dde5d6; background:#f8f9f7; color:#33502b; border-radius:6px; padding:4px 10px; font-size:12px; text-decoration:none; white-space:nowrap; font-variant-numeric:tabular-nums;"></a>
     <a id="login-btn" href="/login" style="display:none; margin-left:8px; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:4px 12px; font-size:13px; text-decoration:none;">登录</a>
     <div id="user-menu" style="display:none; position:relative; margin-left:8px;">
       <button id="user-menu-btn" onclick="toggleUserMenu(event)" style="background:none; border:1px solid #ddd; border-radius:6px; padding:4px 10px; font-size:13px; cursor:pointer;"></button>
       <div id="user-menu-pop" style="display:none; position:absolute; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e3e3e3; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.08); min-width:120px; z-index:1000;">
         <a href="/account" style="display:block; padding:8px 14px; font-size:13px; color:#333; text-decoration:none;">账号设置</a>
+        <a id="admin-import-link" href="/admin/private-import" style="display:none; padding:8px 14px; font-size:13px; color:#333; text-decoration:none;">🔒 私有导入</a>
         <button onclick="logout()" style="display:block; width:100%; text-align:left; padding:8px 14px; font-size:13px; background:none; border:none; cursor:pointer; color:#333;">退出登录</button>
       </div>
     </div>
@@ -1521,7 +1523,7 @@
       <div class="path-step">
         <div class="path-num">1</div>
         <div class="path-title">输入素材</div>
-        <div class="path-desc">粘贴 B站 / YouTube 链接、填入本地音视频路径，或上传文本。</div>
+        <div class="path-desc">上传本地音视频文件，或上传、粘贴文本。</div>
       </div>
       <div class="path-step">
         <div class="path-num">2</div>
@@ -1550,57 +1552,50 @@
     </div>
     <div id="gen-form">
       <div class="course-builder">
-        <section class="course-source-card">
+        <!-- 默认隐藏：由 initAuthBadge 在单用户模式或登录后揭示；
+             首页统一使用浏览器文件上传，不暴露服务器路径或平台链接入口。 -->
+        <section class="course-source-card" id="media-source-card" style="display:none">
           <div class="course-source-head">
             <div>
               <h3 class="course-source-title">上传音视频</h3>
-              <div class="course-source-note">支持 B站 / YouTube 链接，也可以选择本地 mp3、mp4、m4a、wav、mov 等文件。</div>
+              <div class="course-source-note">从本地选择音视频文件，上传后生成课程。</div>
             </div>
-            <span class="source-badge" id="source-badge">未选择</span>
+            <span class="source-badge" id="user-media-badge">未选择</span>
           </div>
-          <div class="url-row">
-            <input class="url-input" type="text" id="url-input"
-                   placeholder="粘贴视频链接，或填入本地音视频路径…"
-                   oninput="detectSource(this.value)">
-            <button type="button" id="browse-file-btn" onclick="browseLocalFile()"
-                    title="选择本地音视频文件"
-                    style="flex-shrink:0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;font-size:13px;white-space:nowrap;">
-              📂 选择文件
-            </button>
+          <div class="reading-upload-row">
+            <input id="user-media-file-input" class="reading-file-input" type="file"
+                   accept=".mp3,.mp4,.m4a,.wav,.mov"
+                   onchange="onUserMediaSelected()">
+            <button class="reading-upload-btn" type="button"
+                    onclick="document.getElementById('user-media-file-input').click()">选择音视频文件</button>
+            <span class="reading-upload-note" id="user-media-note">支持 mp3 / mp4 / m4a / wav / mov</span>
+          </div>
+          <div id="user-media-progress-wrap" style="display:none; margin-top:8px;">
+            <div style="height:6px; background:var(--line); border-radius:3px; overflow:hidden;">
+              <div id="user-media-progress-bar" style="height:100%; width:0%; background:var(--accent,#4a7); transition:width .2s;"></div>
+            </div>
+            <div id="user-media-progress-text" style="font-size:12px; color:#666; margin-top:4px;"></div>
+          </div>
+          <div id="user-media-quote" style="display:none; margin-top:10px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:13px;">
+            <div id="user-media-quote-text"></div>
+            <div style="margin-top:8px; display:flex; gap:8px;">
+              <button type="button" onclick="cancelUserMediaUpload()"
+                      style="padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;font-size:13px;">取消</button>
+            </div>
           </div>
           <div class="course-settings">
-            <div class="settings-label">视频设置</div>
+            <div class="settings-label">转录设置</div>
             <div class="options-row">
-              <div class="opt-group hidden" id="bili-opts">
-                <span>集数</span>
-                <input class="page-input" type="number" id="bili-page" min="1" placeholder="P1">
-                <select id="download-mode">
-                  <option value="audio">仅音频（快）</option>
-                  <option value="video">含视频</option>
-                </select>
-              </div>
-              <div class="opt-group hidden" id="yt-opts">
-                <span>YouTube</span>
-                <select id="youtube-download">
-                  <option value="subtitle-only">嵌入视频（默认）</option>
-                  <option value="audio">仅音频（盲听）</option>
-                </select>
-              </div>
               <div class="opt-group">
                 <span>Whisper</span>
-                <select id="whisper-model" onchange="onWhisperModelChange(this.value)">
-                  <option value="large-v3">large-v3（最准）</option>
-                  <option value="medium">medium（均衡）</option>
-                  <option value="base">base（最快）</option>
-                  <option value="groq">Groq（large-v3）</option>
-                  <option value="paraformer">Paraformer（云端，阿里云百炼）</option>
+                <select id="user-media-whisper-model" onchange="onWhisperModelChange(this.value)">
+                  <option value="groq">large-v3（Groq）</option>
                 </select>
-                <span class="groq-net-hint" id="groq-net-hint" style="display:none" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
-                  <span class="groq-net-pop">Groq 转录需要能访问 api.groq.com（海外网络或代理）。直连不可用时会报 403 / 连接错误，请改用本地模型（large-v3 / medium / base）。</span>
+                <span class="groq-net-hint" id="groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
+                  <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
                 </span>
               </div>
               <div id="groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
-              <div id="dashscope-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置千问 Key — 请先在设置 → API 设置填写（阿里云百炼 API-KEY）</div>
             </div>
           </div>
         </section>
@@ -1615,7 +1610,7 @@
           </div>
           <textarea id="reading-text-input" class="reading-text-input"
                     placeholder="粘贴 Reading passage，生成高亮学习页…"
-                    oninput="detectReadingText(this.value)"></textarea>
+                    oninput="detectReadingText(this.value);refreshTtsEta()"></textarea>
           <div class="reading-upload-row">
             <input id="reading-file-input" class="reading-file-input" type="file"
                    accept=".txt,.md,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1629,7 +1624,8 @@
             <div class="options-row">
               <div class="opt-group">
                 <span>音频</span>
-                <label class="ai-toggle"><input type="checkbox" id="text-tts"> 生成朗读音频</label>
+                <label class="ai-toggle" data-billable-op="reading_tts"><input type="checkbox" id="text-tts" onchange="refreshTtsEta()"> 生成朗读音频</label>
+                <span id="text-tts-eta" class="hidden" style="font-size:12px;color:#6b7280;margin-left:8px;"></span>
               </div>
             </div>
           </div>
@@ -1853,7 +1849,7 @@
         <span class="story-word-count" id="story-word-count">0 / 20</span>
       </div>
       <div class="story-word-chips" id="story-word-chips"></div>
-      <div class="story-btn-row"><button class="primary" id="gen-story-btn" onclick="generateStory()">✨ 生成记忆故事</button></div>
+      <div class="story-btn-row"><button class="primary" id="gen-story-btn" data-billable-op="vocab_story" onclick="generateStory()">✨ 生成记忆故事</button></div>
       <div class="story-area" id="story-area">
         <p class="story-interaction-hint">点单词查释义；拖选单词或短语后可收藏、翻译、朗读或问 AI</p>
         <div class="story-box" id="story-text"></div>
@@ -1862,7 +1858,7 @@
           <button class="story-refresh-btn hidden" id="story-speak-btn" onclick="speakStory()">🔊 朗读全文</button>
           <button class="story-refresh-btn hidden" id="story-stop-btn" onclick="stopStorySpeech()">停止朗读</button>
           <button class="story-refresh-btn hidden" id="story-chat-btn" onclick="openStoryChat()">💬 AI 对话</button>
-          <button class="story-refresh-btn hidden" id="story-refresh-btn" onclick="generateStory(true)">换一个故事</button>
+          <button class="story-refresh-btn hidden" id="story-refresh-btn" data-billable-op="vocab_story" onclick="generateStory(true)">换一个故事</button>
         </div>
         <aside class="story-chat-panel" id="story-chat-panel" hidden aria-label="记忆故事 AI 对话">
           <div class="story-chat-head">
@@ -1873,7 +1869,7 @@
           <div class="story-chat-compose">
             <textarea id="story-chat-input" maxlength="1000" placeholder="问词义、搭配、语法，或让 AI 和你练习…"
                       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStoryChatMessage();}"></textarea>
-            <button class="primary" id="story-chat-send" type="button" onclick="sendStoryChatMessage()">发送</button>
+            <button class="primary" id="story-chat-send" type="button" data-billable-op="story_chat" onclick="sendStoryChatMessage()">发送</button>
           </div>
         </aside>
       </div>
@@ -2099,7 +2095,9 @@
 <!-- ══════════════════════════════════════════════
      JAVASCRIPT
 ══════════════════════════════════════════════ -->
-<script src="/static/natural-tts.js?v=20260805-1"></script>
+<script src="/static/elt_credits.js?v=20260809-1"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script src="/static/natural-tts.js?v=20260809-1"></script>
 <script>
 // ── Tab Routing ───────────────────────────────
 let _vocabLoaded = false;
@@ -2581,7 +2579,6 @@ function updateHeaderStat(tab) {
 
 // ── Source Detection ──────────────────────────
 let _detectedSource = '';
-let _detectedMediaSource = '';
 let _detectedTextSource = '';
 
 function setBadge(id, label, kind = '') {
@@ -2591,25 +2588,6 @@ function setBadge(id, label, kind = '') {
   badge.className = kind ? `source-badge ${kind}` : 'source-badge';
 }
 
-async function browseLocalFile() {
-  const btn = document.getElementById('browse-file-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '选择中…'; }
-  try {
-    const resp = await fetch('/api/browse-file', { method: 'POST' });
-    const data = await resp.json();
-    if (data.path) {
-      const inp = document.getElementById('url-input');
-      inp.value = data.path;
-      detectSource(data.path);
-    }
-  } catch (e) {
-    console.warn('browse-file failed:', e);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📂 选择文件'; }
-  }
-}
-
-let _lessonCheckTimer = null;
 function detectReadingText(value) {
   const text = String(value || '').trim();
   if (!text) {
@@ -2622,6 +2600,32 @@ function detectReadingText(value) {
   clearReadingFileSelection();
   setBadge('reading-source-badge', '📖 粘贴文本', 'reading');
   _detectedTextSource = 'reading_text';
+}
+
+function refreshTtsEta() {
+  const box = document.getElementById('text-tts');
+  const eta = document.getElementById('text-tts-eta');
+  if (!box || !eta) return;
+  if (!box.checked) { eta.classList.add('hidden'); return; }
+  eta.classList.remove('hidden');
+  const text = (document.getElementById('reading-text-input')?.value || '').trim();
+  const file = getReadingFile();
+  if (text.length >= 20) {
+    // 实测：音频时长 ≈ 字符数 × 0.075s；块级 3 路并发合成约 12 倍实时速
+    const seconds = Math.max(30, Math.round(text.length * 0.075 / 12));
+    eta.textContent = seconds < 90
+      ? '预估生成约 1 分钟'
+      : `预估生成约 ${Math.round(seconds / 60)} 分钟（随文本长度变化）`;
+  } else if (file && /\.(txt|md)$/i.test(file.name)) {
+    const seconds = Math.max(30, Math.round(file.size * 0.075 / 12));
+    eta.textContent = seconds < 90
+      ? '预估生成约 1 分钟'
+      : `预估生成约 ${Math.round(seconds / 60)} 分钟（按文件大小估算）`;
+  } else if (file) {
+    eta.textContent = '预估生成时间取决于文档长度：普通文档几分钟，长 PDF 可能 10 分钟以上';
+  } else {
+    eta.textContent = '预估生成时间取决于文本长度：普通文章约 1-2 分钟，长 PDF 可能 10 分钟以上';
+  }
 }
 
 function getReadingFile() {
@@ -2659,81 +2663,7 @@ function onReadingFileSelected() {
   setBadge('reading-source-badge', `📖 ${ext.toUpperCase()} 文件`, 'reading');
   if (note) note.textContent = file.name;
   _detectedTextSource = 'reading_upload';
-}
-
-function detectSource(url) {
-  const biliOpts = document.getElementById('bili-opts');
-  const ytOpts = document.getElementById('yt-opts');
-  url = url.trim();
-  if (!url) {
-    setBadge('source-badge', '未选择');
-    biliOpts.classList.add('hidden'); ytOpts.classList.add('hidden'); _detectedMediaSource = '';
-    _hideLessonHint(); return;
-  }
-  if (url.includes('bilibili.com') || url.includes('b23.tv')) {
-    setBadge('source-badge', '📺 B站', 'bilibili');
-    biliOpts.classList.remove('hidden'); ytOpts.classList.add('hidden'); _detectedMediaSource = 'bilibili';
-    clearTimeout(_lessonCheckTimer);
-    _lessonCheckTimer = setTimeout(() => _checkExistingLesson(url), 600);
-  } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
-    setBadge('source-badge', '▶ YouTube', 'youtube');
-    biliOpts.classList.add('hidden'); ytOpts.classList.remove('hidden'); _detectedMediaSource = 'youtube';
-  } else if (isReadingPdfPath(url)) {
-    setBadge('source-badge', '📖 PDF 路径', 'reading');
-    biliOpts.classList.add('hidden'); ytOpts.classList.add('hidden'); _detectedMediaSource = 'reading_pdf';
-  } else if (isLocalTextPath(url)) {
-    setBadge('source-badge', '📄 文本路径', 'local');
-    biliOpts.classList.add('hidden'); ytOpts.classList.add('hidden'); _detectedMediaSource = 'text';
-  } else if (isLocalMediaPath(url)) {
-    setBadge('source-badge', '🎬 本地音视频', 'local');
-    biliOpts.classList.add('hidden'); ytOpts.classList.add('hidden'); _detectedMediaSource = 'local';
-  } else {
-    setBadge('source-badge', '📰 文章链接', 'article');
-    biliOpts.classList.add('hidden'); ytOpts.classList.add('hidden'); _detectedMediaSource = 'article';
-  }
-}
-
-async function _checkExistingLesson(url) {
-  try {
-    const data = await fetch('/api/lesson/check?url=' + encodeURIComponent(url)).then(r => r.json());
-    if (data.has_lesson) {
-      const label = data.has_transcript_cache ? '转录缓存已存在' : '已有课程可复用转录';
-      _showLessonHint(`⚡ ${label}，将跳过 Whisper 直接重新分析`);
-    } else {
-      _hideLessonHint();
-    }
-  } catch (_) { _hideLessonHint(); }
-}
-function _showLessonHint(msg) {
-  let el = document.getElementById('lesson-reuse-hint');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'lesson-reuse-hint';
-    el.style.cssText = 'font-size:12px;color:#2a7a3b;margin-top:4px;padding:4px 8px;background:#e8f5e9;border-radius:6px;';
-    document.getElementById('url-input')?.closest('.course-source-card')?.appendChild(el);
-  }
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-function _hideLessonHint() {
-  const el = document.getElementById('lesson-reuse-hint');
-  if (el) el.style.display = 'none';
-}
-
-function isLocalMediaPath(value) {
-  return /^file:\/\//i.test(value)
-      || /^[a-zA-Z]:[\\/]/.test(value)
-      || /\.(mp4|m4a|mp3|wav|ogg|flac|aac|webm|mov|mkv)$/i.test(value);
-}
-
-function isLocalTextPath(value) {
-  return /\.(md|txt)$/i.test(value);
-}
-
-function isReadingPdfPath(value) {
-  return /^file:\/\//i.test(value) && /\.pdf$/i.test(value)
-      || /^[a-zA-Z]:[\\/].*\.pdf$/i.test(value)
-      || /\.pdf$/i.test(value);
+  refreshTtsEta();
 }
 
 // ── Generation ────────────────────────────────
@@ -2845,10 +2775,10 @@ async function uploadReadingFile(file) {
     const form = new FormData();
     form.append('file', file);
     form.append('tts', document.getElementById('text-tts').checked ? 'true' : 'false');
-    const resp = await fetch('/api/v2/lessons/reading/upload', {
-      method: 'POST',
-      body: form
-    });
+    // Task 8：tts 勾选时 reading_tts 计费要求幂等键（per-click 稳定 UUID）
+    const resp = window.eltCredits
+      ? await eltCredits.billableFetch('reading_tts', '/api/v2/lessons/reading/upload', {method: 'POST', body: form})
+      : await fetch('/api/v2/lessons/reading/upload', {method: 'POST', body: form});
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || '无法导入 Reading 文件');
     const workspaceUrl = data.workspace_url || (data.job_id ? await pollReadingUpload(data.job_id) : '');
@@ -2864,17 +2794,20 @@ async function uploadReadingFile(file) {
 }
 
 async function startGeneration() {
-  const url = document.getElementById('url-input').value.trim();
   const readingText = document.getElementById('reading-text-input')?.value.trim() || '';
   const readingFile = getReadingFile();
-  if (url) detectSource(url);
   if (readingText) detectReadingText(readingText);
   if (readingFile) _detectedTextSource = 'reading_upload';
 
-  const hasMediaInput = Boolean(url);
+  const selectedMediaFile = document.getElementById('user-media-file-input')?.files?.[0] || null;
+  const hasMediaInput = Boolean(_userMediaUpload);
   const hasTextInput = Boolean(readingText || readingFile);
+  if (selectedMediaFile && !hasMediaInput) {
+    alert('音视频正在上传，请稍候');
+    return;
+  }
   if (!hasMediaInput && !hasTextInput) {
-    alert('请先上传音视频、粘贴视频链接，或上传/粘贴文本');
+    alert('请先选择音视频文件，或上传、粘贴文本');
     return;
   }
   if (hasMediaInput && hasTextInput) {
@@ -2882,46 +2815,43 @@ async function startGeneration() {
     return;
   }
 
-  _detectedSource = hasTextInput ? _detectedTextSource : _detectedMediaSource;
+  _detectedSource = hasTextInput ? _detectedTextSource : 'uploaded_media';
   if (!_detectedSource) { alert('无法识别课程来源，请检查输入'); return; }
 
+  if (_detectedSource === 'uploaded_media') {
+    await confirmUserMediaLesson();
+    return;
+  }
   if (_detectedSource === 'reading_upload') {
     await uploadReadingFile(readingFile);
     return;
   }
 
-  // v2 path: video/audio sources go directly to workspace
-  if (['youtube', 'bilibili', 'local', 'reading_text'].includes(_detectedSource)) {
+  if (_detectedSource === 'reading_text') {
     document.getElementById('gen-btn').disabled = true;
     document.getElementById('gen-btn').textContent = '启动中…';
-    startInlineProgress(_detectedSource === 'reading_text' ? '正在创建文本课程…' : '正在创建音视频课程…');
+    startInlineProgress('正在创建文本课程…');
     try {
       const payload = {
-        source_type: _detectedSource,
-        url: _detectedSource === 'local' ? '' : url,
-        local_path: _detectedSource === 'local' ? url : '',
-        title: _detectedSource === 'reading_text' ? 'Reading Passage' : '',
-        text: _detectedSource === 'reading_text' ? readingText : '',
-        download_mode: document.getElementById('download-mode').value,
-        bilibili_page: document.getElementById('bili-page').value || '',
-        whisper_model: document.getElementById('whisper-model').value,
+        source_type: 'reading_text',
+        title: 'Reading Passage',
+        text: readingText,
         translate: true,
-        tts: _detectedSource === 'reading_text' && document.getElementById('text-tts').checked,
+        tts: document.getElementById('text-tts').checked,
       };
-      const resp = await fetch('/api/v2/lessons/start', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
+      const resp = window.eltCredits
+        ? await eltCredits.billableFetch('reading_tts', '/api/v2/lessons/start', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          })
+        : await fetch('/api/v2/lessons/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+          });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || '无法开始课程');
-      const requiresCourseTranslation = payload.translate
-        && ['youtube', 'bilibili', 'local'].includes(_detectedSource);
-      if (requiresCourseTranslation && data.lesson?.id) {
-        await waitForTranslationReadiness(data.lesson.id, data.workspace_url);
-      } else {
-        finishInlineProgress('完成，正在打开工作台…');
-      }
+      finishInlineProgress('完成，正在打开工作台…');
       window.location.href = data.workspace_url;
     } catch(e) {
       failInlineProgress(e.message);
@@ -2930,89 +2860,6 @@ async function startGeneration() {
       document.getElementById('gen-btn').textContent = '▶ 开始生成';
     }
     return;
-  }
-  if (_detectedSource === 'reading_pdf') {
-    document.getElementById('gen-btn').disabled = true;
-    document.getElementById('gen-btn').textContent = '启动中…';
-    runStageProgress([
-      { percent: 15, label: '正在读取本地 PDF 路径…' },
-      { percent: 45, label: '正在提取 PDF 文本层…' },
-      { percent: 72, label: '必要时执行 OCR 识别…' },
-      { percent: 90, label: '正在创建 Reading 课程…' },
-    ]);
-    try {
-      const resp = await fetch('/api/v2/lessons/start', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          source_type: 'reading_pdf',
-          local_path: url,
-          tts: document.getElementById('text-tts').checked,
-        })
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || '无法开始 Reading');
-      finishInlineProgress('完成，正在打开 Reading 工作台…');
-      window.location.href = data.workspace_url;
-    } catch(e) {
-      failInlineProgress(e.message);
-      alert(e.message);
-      document.getElementById('gen-btn').disabled = false;
-      document.getElementById('gen-btn').textContent = '▶ 开始生成';
-    }
-    return;
-  }
-
-  const payload = {
-    url: _detectedSource === 'text' ? '' : url,
-    source_type: _detectedSource,
-    local_path: _detectedSource === 'text' ? url : undefined,
-    download_mode: document.getElementById('download-mode').value,
-    youtube_download: document.getElementById('youtube-download').value,
-    bilibili_page: document.getElementById('bili-page').value || '',
-    analysis_mode: 'auto',
-    ai_segmentation: false,
-    ai_ipa: false,
-    whisper_model: document.getElementById('whisper-model').value,
-  };
-
-  document.getElementById('gen-btn').disabled = true;
-  document.getElementById('gen-btn').textContent = '生成中…';
-  startInlineProgress('任务已提交，正在启动生成流水线…');
-  document.getElementById('cancel-btn').classList.add('hidden');
-  document.getElementById('progress-wrap').classList.remove('hidden');
-  document.getElementById('progress-done').classList.add('hidden');
-  document.getElementById('progress-error').classList.add('hidden');
-  document.getElementById('copy-feedback').classList.add('hidden');
-  document.getElementById('progress-log').textContent = '';
-
-  try {
-    const res  = await fetch('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    const data = await res.json();
-    if (res.status === 409) {
-      showGenError(data.error || '该视频正在生成中，请等待完成或刷新页面查看进度', { errorInfo: data.error_info });
-      document.getElementById('gen-btn').disabled = false;
-      document.getElementById('gen-btn').textContent = '▶ 开始生成';
-      document.getElementById('cancel-btn').classList.add('hidden');
-      return;
-    }
-    if (data.error) {
-      showGenError(data.error, { errorInfo: data.error_info });
-      document.getElementById('gen-btn').disabled = false;
-      document.getElementById('gen-btn').textContent = '▶ 开始生成';
-      document.getElementById('cancel-btn').classList.add('hidden');
-      return;
-    }
-    _currentJobId = data.job_id;
-    document.getElementById('cancel-btn').classList.remove('hidden');
-    setInlineProgress(100, '已进入下方详细流水线');
-    _pollStatus(data.job_id);
-  } catch(e) {
-    failInlineProgress(e.message);
-    showGenError(e.message);
-    document.getElementById('gen-btn').disabled = false;
-    document.getElementById('gen-btn').textContent = '▶ 开始生成';
-    document.getElementById('cancel-btn').classList.add('hidden');
   }
 }
 
@@ -3243,10 +3090,9 @@ function showCopyFeedback(message, isError = false) {
 }
 
 function resetForm() {
-  document.getElementById('url-input').value = '';
   document.getElementById('reading-text-input').value = '';
   clearReadingFileSelection();
-  detectSource('');
+  cancelUserMediaUpload();
   detectReadingText('');
   hideInlineProgress();
   document.getElementById('progress-wrap').classList.add('hidden');
@@ -3362,12 +3208,14 @@ function buildCourseMenu(course) {
 }
 
 function buildModeButton(course, mode, label) {
-  const available = mode === 'intensive'
-    ? course.kind === 'v2' && course.available_modes.includes('reading')
-    : course.available_modes.includes(mode);
-  if (!available) return '';
+  const caps = course.capabilities || {};
+  const canRead = caps.can_read !== undefined ? caps.can_read : course.available_modes.includes('reading');
+  const canListen = caps.can_listen !== undefined ? caps.can_listen : course.available_modes.includes('listening');
+  if (mode === 'listening' && !canListen) return '';
+  if (mode === 'reading' && !canRead) return '';
+  if (mode === 'intensive' && !(course.kind === 'v2' && canRead)) return '';
   const intensiveClass = mode === 'intensive' ? ' intensive' : '';
-  const title = mode === 'intensive' && course.kind === 'v2' && !course.intensive_ready
+  const title = mode === 'intensive' && !course.intensive_ready
     ? '首次进入时生成精读 HTML'
     : label;
   return `<button class="course-action${intensiveClass}" type="button"
@@ -4289,7 +4137,7 @@ async function analyzeSentenceRetell(sentenceId) {
   if (!sentence || !_sentenceRetellTranscript) return;
   setSentenceRetellStatus('AI 正在对比复述与原句…');
   try {
-    const response = await fetch('/api/listening-retell-analysis', {
+    const response = await eltCredits.billableFetch('listening_retell', '/api/listening-retell-analysis', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({english:sentence.text, retelling:_sentenceRetellTranscript}),
     });
@@ -4382,6 +4230,7 @@ function renderSentenceAnalysisPanel(sentence, errorMessage='') {
 }
 
 function renderSentencePatternPractice(sentence, errorMessage='') {
+  if (window.eltCredits) setTimeout(() => eltCredits.annotate(), 0);
   const scenario = sentencePatternScenario(sentence);
   const answer = String(sentence._pattern_answer || '');
   const pattern = sentencePatternTemplate(sentence);
@@ -4396,7 +4245,7 @@ function renderSentencePatternPractice(sentence, errorMessage='') {
     <div class="practice-stage">
       <div class="sentence-practice-actions">
         <button type="button" id="sentence-pattern-toggle-${sentence.id}" onclick="toggleSentencePatternTemplate(${sentence.id})">${patternVisible ? '隐藏句式骨架' : '查看句式骨架'}</button>
-        <button type="button" id="sentence-hint-btn-${sentence.id}" onclick="${hintVisible ? `generateSentencePatternScenario(${sentence.id},true)` : `showSentencePatternHint(${sentence.id})`}">${hintVisible ? '换一个提示' : 'AI 中文提示'}</button>
+        <button type="button" data-billable-op="sentence_scenario" id="sentence-hint-btn-${sentence.id}" onclick="${hintVisible ? `generateSentencePatternScenario(${sentence.id},true)` : `showSentencePatternHint(${sentence.id})`}">${hintVisible ? '换一个提示' : 'AI 中文提示'}</button>
       </div>
       <div class="pattern-reuse-strip" id="sentence-pattern-template-${sentence.id}" ${patternVisible ? '' : 'hidden'}><strong>复用句式</strong><code>${esc(pattern)}</code></div>
       <div class="hint-row">
@@ -4408,8 +4257,8 @@ function renderSentencePatternPractice(sentence, errorMessage='') {
         <button class="mic-btn" id="sentence-mic-${sentence.id}" type="button" onclick="toggleSentenceVoiceInput(${sentence.id})" aria-label="语音输入">🎤</button>
       </div>
       <div class="sentence-practice-actions">
-        <button class="primary" id="sentence-practice-submit-${sentence.id}" type="button" ${answer.trim() ? '' : 'disabled'} onclick="submitSentencePatternPractice(${sentence.id})">AI 批改</button>
-        <button type="button" id="sentence-example-btn-${sentence.id}" ${exampleReady ? '' : 'disabled title="提交造句后开放"'} onclick="submitSentencePatternExample(${sentence.id})">查看 AI 示例</button>
+        <button class="primary" data-billable-op="practice_evaluation" id="sentence-practice-submit-${sentence.id}" type="button" ${answer.trim() ? '' : 'disabled'} onclick="submitSentencePatternPractice(${sentence.id})">AI 批改</button>
+        <button type="button" data-billable-op="practice_example" id="sentence-example-btn-${sentence.id}" ${exampleReady ? '' : 'disabled title="提交造句后开放"'} onclick="submitSentencePatternExample(${sentence.id})">查看 AI 示例</button>
         <button type="button" onclick="toggleSentencePracticeHistory(${sentence.id})">查看练习记录</button>
       </div>
     </div>
@@ -4441,7 +4290,7 @@ function applySentenceAnalysisPayload(sentence, data) {
 }
 
 async function requestSentencePatternScenario(sentence, regenerate=false) {
-  const response = await fetch(`/api/v2/lessons/sentence-review/${sentence.id}/pattern/scenario`, {
+  const response = await eltCredits.billableFetch('sentence_scenario', `/api/v2/lessons/sentence-review/${sentence.id}/pattern/scenario`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({regenerate:Boolean(regenerate)}),
   });
@@ -4452,7 +4301,7 @@ async function requestSentencePatternScenario(sentence, regenerate=false) {
 
 async function requestSentenceAnalysis(sentence, force=false) {
   if (!await ensureAiAvailability()) { showNoKeyToast(); throw new Error('AI 服务未配置'); }
-  const response = await fetch('/api/oral-analysis', {
+  const response = await eltCredits.billableFetch('oral_analysis', '/api/oral-analysis', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({english:sentence.text, sentence_id:Number(sentence.id), persist:true, force:Boolean(force)}),
   });
@@ -4543,7 +4392,7 @@ async function submitSentencePatternPractice(sentenceId) {
   resultEl.classList.add('visible');
   resultEl.innerHTML = '<span style="color:var(--muted)">正在批改表达…</span>';
   try {
-    const response = await fetch('/api/practice', {
+    const response = await eltCredits.billableFetch('practice_evaluation', '/api/practice', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         practice_type:'pattern', hint_cn:sentence._pattern_hint_visible ? sentencePatternScenario(sentence) : '', english:sentence.text,
@@ -4573,7 +4422,7 @@ async function submitSentencePatternExample(sentenceId) {
   resultEl.classList.add('visible');
   resultEl.innerHTML = '<span style="color:var(--muted)">正在生成新的参考表达…</span>';
   try {
-    const response = await fetch('/api/practice', {
+    const response = await eltCredits.billableFetch('practice_example', '/api/practice', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         practice_type:'pattern', action:'example', mode:'example',
@@ -5208,6 +5057,7 @@ function resolveVocabContextSentence(entry, context, analysis) {
 }
 
 function buildVocabCard(word, entry) {
+  if (window.eltCredits) setTimeout(() => eltCredits.annotate(), 0);
   const st  = reviewStatus(entry);
   const an  = entry.cached_analysis || {};
   const ipa = an.ipa || '';
@@ -5321,14 +5171,14 @@ function buildVocabCard(word, entry) {
           <div class="practice-target-hint" id="practice-target-${esc(word)}" hidden>${esc(word)}</div>
         <div class="hint-row">
           <span class="hint-text placeholder" id="hint-${esc(word)}">默认自由造句；需要提示时再生成中文情景。</span>
-          <button type="button" id="vocab-hint-btn-${esc(word)}" onclick="genVocabHint(decodeURIComponent('${encodedWord}'))">AI 情景造句</button>
+          <button type="button" data-billable-op="practice_hint" id="vocab-hint-btn-${esc(word)}" onclick="genVocabHint(decodeURIComponent('${encodedWord}'))">AI 情景造句</button>
         </div>
         <div class="input-row">
           <textarea class="practice-textarea" id="answer-${esc(word)}" placeholder="输入或说出你的英文句子…" oninput="updatePracticeBtn(decodeURIComponent('${encodedWord}'),this.value)"></textarea>
           <button class="mic-btn" id="mic-${esc(word)}" onclick="toggleVoiceInput(decodeURIComponent('${encodedWord}'))">🎤</button>
         </div>
         <div class="practice-btns">
-          <button class="primary" id="practice-btn-${esc(word)}" disabled onclick="submitVocabPractice(decodeURIComponent('${encodedWord}'))">批改表达</button>
+          <button class="primary" data-billable-op="practice_evaluation" id="practice-btn-${esc(word)}" disabled onclick="submitVocabPractice(decodeURIComponent('${encodedWord}'))">批改表达</button>
           <button type="button" onclick="submitVocabPracticeExample(decodeURIComponent('${encodedWord}'))">查看 AI 示例</button>
           <button type="button" onclick="toggleVocabPracticeHistory(decodeURIComponent('${encodedWord}'))">查看练习记录</button>
         </div>
@@ -5458,7 +5308,7 @@ async function generateVocabAnalysis(event, word) {
   button.textContent = 'AI 正在生成解析…';
   if (status) status.textContent = '';
   try {
-    const response = await fetch('/analyze-word', {
+    const response = await eltCredits.billableFetch('word_analysis', '/analyze-word', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         word,
@@ -6001,7 +5851,7 @@ async function generateStory(forceNew=false) {
   try {
     const _themeRaw=(document.getElementById('story-theme-sel')||{}).value||'';
     const _theme=_themeRaw==='__custom__'?(document.getElementById('story-theme-custom')||{}).value||'':_themeRaw;
-    const resp=await fetch('/api/vocab-story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({words:[..._storyWordSet],learner_level:(document.getElementById('story-level-sel')||{}).value||'B1',theme:_theme,force_new:forceNew})});
+    const resp=await eltCredits.billableFetch('vocab_story', '/api/vocab-story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({words:[..._storyWordSet],learner_level:(document.getElementById('story-level-sel')||{}).value||'B1',theme:_theme,force_new:forceNew})});
     const raw=await resp.text();
     let data; try { data=JSON.parse(raw); } catch(_) { throw new Error('服务器返回非 JSON 响应，请检查 AI Key 配置'); }
     if (!resp.ok) throw new Error(data?.detail || data?.error || resp.statusText);
@@ -6237,7 +6087,7 @@ async function translateStorySelection() {
   if (!selected) return;
   setStorySelectionResult('正在使用混元翻译…');
   try {
-    const response = await fetch('/api/story-translate', {
+    const response = await eltCredits.billableFetch('story_translation', '/api/story-translate', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:selected}),
     });
     const data = await response.json().catch(() => ({}));
@@ -6315,7 +6165,7 @@ async function sendStoryChatMessage() {
   button.disabled = true;
   const pending = appendStoryChatMessage('assistant', 'AI 正在结合故事语境思考…');
   try {
-    const response = await fetch('/api/story-chat', {
+    const response = await eltCredits.billableFetch('story_chat', '/api/story-chat', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({story, selection:_storyChatSelection, message, history:priorHistory}),
     });
@@ -6507,7 +6357,7 @@ async function genVocabHint(word) {
   hintEl.textContent='生成中…'; hintEl.classList.remove('placeholder');
   if (hintBtn) { hintBtn.disabled=true; hintBtn.textContent='生成中…'; }
   try {
-    const data=await fetch('/api/hint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({english:example,vocab:[word],pattern_template:''})}).then(r=>r.json());
+    const data=await eltCredits.billableFetch('practice_hint', '/api/hint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({english:example,vocab:[word],pattern_template:''})}).then(r=>r.json());
     hintEl.textContent=data.hint||'生成失败';
     if (vocabData[word] && data.hint) {
       vocabData[word].used_hint = true;
@@ -6540,7 +6390,7 @@ async function submitVocabPractice(word) {
   if (!answer) return;
   resEl.classList.add('visible'); resEl.innerHTML='<span style="color:var(--muted)">正在批改你的表达…</span>';
   try {
-    const response=await fetch('/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const response=await eltCredits.billableFetch('practice_evaluation', '/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       practice_type:entry.target_type==='phrase'?'phrase':'word',
       action:'correct',hint_cn,english:example,source_context:example,vocab:[word],
       target:word,meaning:an.basic_meaning||'',
@@ -6566,7 +6416,7 @@ async function submitVocabPracticeExample(word) {
   resEl.classList.add('visible');
   resEl.innerHTML='<span style="color:var(--muted)">正在生成新的参考表达…</span>';
   try {
-    const response=await fetch('/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const response=await eltCredits.billableFetch('practice_example', '/api/practice',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       practice_type:entry.target_type==='phrase'?'phrase':'word',
       action:'example',mode:'example',hint_cn:entry._active_hint||'',
       english:context.sentence||(an.examples||[])[0]||'',
@@ -6651,7 +6501,7 @@ async function translateAiSentence(button, encodedText) {
   const slot = button.closest('.ai-sentence-actions')?.nextElementSibling;
   button.disabled = true;
   try {
-    const response = await fetch('/api/story-translate', {
+    const response = await eltCredits.billableFetch('story_translation', '/api/story-translate', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({text}),
     });
@@ -6912,7 +6762,7 @@ async function loadAiSettings() {
       }
     }
 
-    onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
+    onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
   } catch (_) {}
 }
 
@@ -6945,11 +6795,11 @@ async function deleteAiSetting(field) {
 
     if (field === 'groq_api_key') {
       _groqKeyConfigured = false;
-      onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
+      onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
     }
     if (field === 'dashscope_api_key') {
       _dashscopeKeyConfigured = false;
-      onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
+      onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
     }
   } catch (e) {
     alert('删除失败：' + e.message);
@@ -6977,7 +6827,7 @@ async function saveAiSettings() {
     if (d.ok) {
       _groqKeyConfigured = !!body.groq_api_key;
       _dashscopeKeyConfigured = !!body.dashscope_api_key;
-      onWhisperModelChange(document.getElementById('whisper-model')?.value || '');
+      onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
       // 刷新"已配置"标记
       for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
         const el = document.getElementById(inputId);
@@ -7028,17 +6878,40 @@ async function autoResumeJob() {
   } catch (_) {}
 }
 async function initAuthBadge() {
+  const mediaCard = document.getElementById('media-source-card');
+  // 运行模式唯一可信信号：后端 /health 的 auth_enabled。
+  // 后端明确无认证，或已确认登录用户时揭示浏览器上传卡；
+  // guest、请求失败或信号不明一律保持隐藏。
+  let authEnabled = null;
+  try {
+    const h = await fetch('/health', {cache: 'no-store'});
+    if (h.ok) {
+      const v = (await h.json()).auth_enabled;
+      // 只接受严格布尔值：缺字段/null/字符串/数字一律信号不明，保持隐藏
+      if (v === true || v === false) authEnabled = v;
+    }
+  } catch (e) { /* 信号不明：保持隐藏 */ }
+  if (authEnabled === false) {
+    // 单用户/公开库模式：显示浏览器文件上传入口
+    if (mediaCard) mediaCard.style.display = '';
+    return;
+  }
+  if (authEnabled !== true) return;
+  // 多用户模式：再确认身份
   try {
     const r = await fetch('/api/auth/me');
     if (!r.ok) {
-      // 未登录：右上角显示登录入口（本地单用户模式接口不存在时同样静默）
+      // 未登录：右上角显示登录入口；媒体入口保持隐藏（后端同样 404）
       if (r.status === 401) document.getElementById('login-btn').style.display = '';
       return;
     }
     const me = await r.json();
     document.getElementById('user-menu-btn').textContent = '👤 ' + me.username + ' ▾';
     document.getElementById('user-menu').style.display = '';
-    // 非管理员：隐藏 API 配置区与建课页的 key 缺失提示（配置仅管理员可改）
+    refreshCreditBadge(me.credits);
+    // 所有登录用户统一使用浏览器文件上传；管理员的平台链接导入保留在私有页。
+    if (mediaCard) mediaCard.style.display = '';
+    // 非管理员：隐藏 API 配置区与建课页的 key 缺失提示（配置仅管理员可改）。
     if (!me.is_admin) {
       const sec = document.getElementById('ai-settings-section');
       if (sec) sec.style.display = 'none';
@@ -7046,12 +6919,136 @@ async function initAuthBadge() {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
+    } else {
+      const adminLink = document.getElementById('admin-import-link');
+      if (adminLink) adminLink.style.display = 'block';
     }
-  } catch (e) { /* 单用户模式忽略 */ }
+  } catch (e) { /* 网络异常/解析失败：保持隐藏 */ }
 }
 async function logout() {
   await fetch('/api/auth/logout', {method: 'POST'});
   location.href = '/login';
+}
+// 全局积分余额：fail-closed——加载失败显示「积分 —」，绝不把错误显示成 0。
+// AI 操作完成后可再调 refreshCreditBadge() 拉最新值。
+async function refreshCreditBadge(summary) {
+  const el = document.getElementById('credit-badge');
+  if (!el) return;
+  try {
+    let s = summary;
+    if (!s) {
+      const r = await fetch('/api/credits/summary');
+      if (!r.ok) throw new Error();
+      s = await r.json();
+    }
+    if (typeof s.available !== 'number') throw new Error();
+    el.textContent = '积分 ' + s.available;
+    el.style.display = '';
+  } catch (e) {
+    el.textContent = '积分 —';
+    el.style.display = '';
+  }
+}
+// ── 普通用户浏览器音视频上传 ─────────────────────────────
+let _userMediaUpload = null;  // {upload_id, filename, quote}
+function onUserMediaSelected() {
+  const input = document.getElementById('user-media-file-input');
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  if (!['mp3', 'mp4', 'm4a', 'wav', 'mov'].includes(ext)) {
+    alert('仅支持 mp3、mp4、m4a、wav、mov 格式');
+    input.value = '';
+    return;
+  }
+  document.getElementById('user-media-badge').textContent = file.name;
+  document.getElementById('user-media-note').textContent = file.name;
+  document.getElementById('user-media-quote').style.display = 'none';
+  _userMediaUpload = null;
+  uploadUserMedia(file);
+}
+function uploadUserMedia(file) {
+  const wrap = document.getElementById('user-media-progress-wrap');
+  const bar = document.getElementById('user-media-progress-bar');
+  const text = document.getElementById('user-media-progress-text');
+  wrap.style.display = '';
+  bar.style.width = '0%';
+  text.textContent = '上传中…';
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/v2/lessons/media-uploads');
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      bar.style.width = pct + '%';
+      text.textContent = `上传中… ${pct}%（${(e.loaded/1048576).toFixed(1)} / ${(e.total/1048576).toFixed(1)} MB）`;
+    }
+  };
+  xhr.onload = () => {
+    let data = {};
+    try { data = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+    if (xhr.status === 200) {
+      bar.style.width = '100%';
+      text.textContent = '上传完成，等待确认';
+      _userMediaUpload = data;
+      const mins = Math.max(1, Math.ceil((data.duration_seconds || 0) / 60));
+      document.getElementById('user-media-quote-text').textContent =
+        `${data.filename} · ${data.media_kind === 'local_video' ? '视频' : '音频'} · 约 ${mins} 分钟` +
+        ` · 预计消耗 ${data.quote.points} 积分（${data.quote.rate_version}）`;
+      document.getElementById('user-media-quote').style.display = '';
+    } else {
+      wrap.style.display = 'none';
+      alert(data.detail || '上传失败，请检查文件类型与大小');
+      document.getElementById('user-media-badge').textContent = '未选择';
+      document.getElementById('user-media-note').textContent = '支持 mp3 / mp4 / m4a / wav / mov';
+      document.getElementById('user-media-file-input').value = '';
+    }
+  };
+  xhr.onerror = () => {
+    wrap.style.display = 'none';
+    alert('网络异常，上传失败');
+    document.getElementById('user-media-badge').textContent = '未选择';
+    document.getElementById('user-media-note').textContent = '支持 mp3 / mp4 / m4a / wav / mov';
+    document.getElementById('user-media-file-input').value = '';
+  };
+  xhr.send(form);
+}
+async function confirmUserMediaLesson() {
+  if (!_userMediaUpload) return;
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  btn.textContent = '创建中…';
+  try {
+    const resp = await fetch('/api/v2/lessons/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()},
+      body: JSON.stringify({
+        source_type: 'uploaded_media',
+        upload_id: _userMediaUpload.upload_id,
+        whisper_model: document.getElementById('user-media-whisper-model').value,
+        translate: true,
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || '无法开始课程');
+    window.location.href = data.workspace_url;
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false;
+    btn.textContent = '▶ 开始生成';
+  }
+}
+async function cancelUserMediaUpload() {
+  if (_userMediaUpload) {
+    try { await fetch(`/api/v2/lessons/media-uploads/${_userMediaUpload.upload_id}`, {method: 'DELETE'}); } catch (_) {}
+  }
+  _userMediaUpload = null;
+  document.getElementById('user-media-quote').style.display = 'none';
+  document.getElementById('user-media-progress-wrap').style.display = 'none';
+  document.getElementById('user-media-badge').textContent = '未选择';
+  document.getElementById('user-media-note').textContent = '支持 mp3 / mp4 / m4a / wav / mov';
+  document.getElementById('user-media-file-input').value = '';
 }
 function toggleUserMenu(e) {
   e.stopPropagation();
