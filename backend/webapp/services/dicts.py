@@ -66,6 +66,30 @@ def lookup_ecdict(word: str) -> str:
     return re.sub(r"\s+", " ", " ".join(p for p in parts if p)).strip()[:1200]
 
 
+def word_in_dict(word: str) -> bool:
+    """词是否被词典覆盖（全量 ECDICT 优先，缺失时查 compact 释义库）。
+
+    供 PDF 后处理做「粘连词是否该拆」之类的存在性判断。"""
+    key = word.strip().lower()
+    if not key:
+        return False
+    conn = _get_ecdict_conn()
+    if conn is None:
+        compact = _get_compact_conn()  # 内部用同一把锁，须在 with 块外获取
+        if compact is None:
+            return False
+    else:
+        compact = None
+    try:
+        with _ECDICT_LOCK:
+            target = conn if conn is not None else compact
+            table = "words" if conn is not None else "gloss"
+            row = target.execute(f"SELECT 1 FROM {table} WHERE word = ?", (key,)).fetchone()
+            return row is not None
+    except Exception:
+        return False
+
+
 def lookup_ecdict_translation(word: str) -> str:
     """仅取 ECDICT 中文释义的首个义项（角标级短文本）；缺失返回 ''。
 

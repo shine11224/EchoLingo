@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,16 +24,93 @@ KEEP_LABELS = ("text", "section_header", "list_item")
 
 _probe_cache: bool | None = None
 
+# 行尾引用残留：句末点线 + [数字]（". . . [0]"）
+_TRAILING_CITATION = re.compile(r"(?:\s*\.\s*){2,}\s*\[\d+\]\s*$|\s*\[\d+\]\s*$")
+# 疑似行尾断词粘连：纯小写、长度 ≥10
+_JOINED_TOKEN = re.compile(r"\b[a-z]{10,}\b")
+
+
+def _is_letter_spaced_block(text: str) -> bool:
+    """图内 letter-spaced 标签整块剔除：≥4 个空白分词且 ≥70% 是单字母。
+
+    此类块基本是图/流程图内部文字（"R e fi n e m e n t"，连字以 "fi" 两字母
+    出现，逐 run 合并不可靠）；正常句子（"I am a boy"）单字母占比远低于阈值。"""
+    tokens = text.split()
+    if len(tokens) < 4:
+        return False
+    singles = sum(1 for token in tokens if len(token) == 1)
+    return singles / len(tokens) >= 0.7
+
+
+# 短但结构性的词（Docling 偶尔把章节标成 text 而非 section_header）
+_STRUCTURAL_WORDS = {"abstract", "references", "appendix", "appendices", "acknowledgements", "acknowledgments", "keywords"}
+
+
+def _is_noise_text(text: str) -> bool:
+    """图内数字/符号标签等碎片：<12 字符、无句读、不成词组。"""
+    if len(text) >= 12:
+        return False
+    if re.search(r"[.!?;:]", text):
+        return False
+    if text.lower() in _STRUCTURAL_WORDS:
+        return False
+    return len(text.split()) <= 2
+
+
+def _word_in_dict(word: str) -> bool:
+    from webapp.services import dicts
+
+    return dicts.word_in_dict(word)
+
+
+def _split_joined_words(text: str) -> str:
+    """行尾断词直接粘连（"retrievalaugmented"）：词不在词典时，尝试拆成两个都在词典的
+    部分并补连字符；拆不出则保留原样。词典缺失（极简部署）时整体跳过。"""
+    def fix(match: re.Match) -> str:
+        token = match.group(0)
+        if _word_in_dict(token):
+            return token
+        for i in range(4, len(token) - 3):
+            left, right = token[:i], token[i:]
+            if _word_in_dict(left) and _word_in_dict(right):
+                return f"{left}-{right}"
+        return token
+
+    return _JOINED_TOKEN.sub(fix, text)
+
+
+def _polish_paragraph(text: str) -> str:
+    text = _TRAILING_CITATION.sub("", text).strip()
+    text = _split_joined_words(text)
+    return text
+
 
 def items_to_paragraphs(items: list[dict]) -> list[str]:
-    """Filter docling items to plain body paragraphs."""
-    paragraphs = []
+    """Filter docling items to plain body paragraphs, with figure-noise post-processing.
+
+    后处理顺序：label 过滤 → 字符规整 → letter-spaced 合并 → 引用残留清洗 →
+    碎片噪声剔除 → 粘连词拆分 → 小写开头段并回上一段（图文字打断的跨段句）。
+    """
+    paragraphs: list[str] = []
     for item in items:
-        if str(item.get("label") or "").lower() not in KEEP_LABELS:
+        label = str(item.get("label") or "").lower()
+        if label not in KEEP_LABELS:
             continue
         text = " ".join(str(item.get("text") or "").split())
-        if text:
-            paragraphs.append(text)
+        if not text:
+            continue
+        text = _polish_paragraph(text)
+        if not text:
+            continue
+        if _is_letter_spaced_block(text):
+            continue
+        if label != "section_header" and _is_noise_text(text):
+            continue
+        # 小写开头的正文段是上一段被图/表打断的延续：并回上一段
+        if label != "section_header" and paragraphs and text[0].islower():
+            paragraphs[-1] = f"{paragraphs[-1]} {text}"
+            continue
+        paragraphs.append(text)
     return paragraphs
 
 
