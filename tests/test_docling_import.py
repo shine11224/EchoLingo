@@ -96,6 +96,18 @@ def test_split_joined_words_skips_short_tokens(monkeypatch):
     assert docling_import._split_joined_words("graphand") == "graphand"  # <10 字符不处理
 
 
+def test_items_to_paragraphs_second_pass_drops_merged_letter_spaced_and_numeric():
+    items = [
+        {"label": "text", "text": "Decision M a"},   # 单块 2/3 单字母，达不到阈值
+        {"label": "text", "text": "i n g"},          # 小写开头并回上块 → 拼成 letter-spaced
+        {"label": "text", "text": "0.3"},            # 坐标轴刻度
+        {"label": "text", "text": "0 0 1"},
+        {"label": "text", "text": "..."},
+        {"label": "text", "text": "Body text survives."},
+    ]
+    assert docling_import.items_to_paragraphs(items) == ["Body text survives."]
+
+
 def test_docling_disabled_via_env(monkeypatch):
     monkeypatch.setenv("ELT_DOCLING", "off")
     monkeypatch.setattr(docling_import, "_probe_cache", None)

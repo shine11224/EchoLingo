@@ -111,6 +111,13 @@ def items_to_paragraphs(items: list[dict]) -> list[str]:
             paragraphs[-1] = f"{paragraphs[-1]} {text}"
             continue
         paragraphs.append(text)
+    # 二次过滤：合并可能拼出新的 letter-spaced 块（"Decision M a" + "i n g"），
+    # 坐标轴刻度等纯数字/标点碎片（无字母）一并剔除。
+    paragraphs = [
+        paragraph
+        for paragraph in paragraphs
+        if not _is_letter_spaced_block(paragraph) and re.search(r"[A-Za-z一-鿿]", paragraph)
+    ]
     return paragraphs
 
 
