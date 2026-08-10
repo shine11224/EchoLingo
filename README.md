@@ -51,6 +51,14 @@ pip install -r requirements.txt
 python backend/build_ecdict.py   # one-time: builds the built-in ECDICT offline dictionary
 ```
 
+Optional — high-quality PDF reflow via [Docling](https://github.com/docling-project/docling) (better reading order for two-column/mixed-layout PDFs):
+
+```bash
+pip install docling   # ~2GB incl. torch; layout models auto-download (~1GB) on first PDF import
+```
+
+Without it, PDF import falls back to the built-in geometric text extraction. Set `ELT_DOCLING=off` to disable even when installed.
+
 Configure API keys:
 
 ```bash

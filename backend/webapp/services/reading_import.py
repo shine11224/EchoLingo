@@ -66,6 +66,13 @@ def build_reading_blocks_from_text(raw_text: str, title: str = "Reading Passage"
 
 def extract_text_from_pdf(path: str | Path, pages: list[int] | None = None) -> str:
     pdf_path = Path(path)
+    if pages is None:
+        # 高质量档：Docling 版式重排（可选组件，失败/未安装自动回退几何管线）
+        from webapp.services.docling_import import extract_text_with_docling
+
+        docling_text = extract_text_with_docling(pdf_path)
+        if docling_text and docling_text.strip():
+            return docling_text
     try:
         text = _extract_pdf_text_layer_from_path(pdf_path, pages=pages)
     except Exception as exc:
@@ -373,6 +380,13 @@ def extract_text_from_docx_bytes(content: bytes) -> str:
 
 
 def extract_text_from_pdf_bytes(content: bytes) -> str:
+    # 高质量档：Docling 版式重排（可选组件，失败/未安装自动回退几何管线）
+    from webapp.services.docling_import import extract_text_with_docling_bytes
+
+    docling_text = extract_text_with_docling_bytes(content)
+    if docling_text and docling_text.strip():
+        return docling_text
+
     try:
         text = _extract_pdf_text_layer_from_bytes(content)
     except Exception as exc:
