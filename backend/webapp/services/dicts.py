@@ -6,9 +6,24 @@ import threading
 from pathlib import Path
 
 ECDICT_DB = Path(__file__).resolve().parents[3] / "resources" / "ecdict" / "ecdict.db"
+# 随库分发的紧凑释义库（build_compact_gloss.py 生成）：全量 ECDICT 缺失时兜底角标级释义
+COMPACT_GLOSS_DB = Path(__file__).resolve().parents[3] / "resources" / "ecdict" / "gloss_compact.db"
 
 _ECDICT_CONN = None
 _ECDICT_LOCK = threading.Lock()
+_COMPACT_CONN = None
+
+
+def _get_compact_conn():
+    global _COMPACT_CONN
+    if _COMPACT_CONN is not None:
+        return _COMPACT_CONN
+    with _ECDICT_LOCK:
+        if _COMPACT_CONN is None and COMPACT_GLOSS_DB.exists():
+            import sqlite3
+
+            _COMPACT_CONN = sqlite3.connect(str(COMPACT_GLOSS_DB), check_same_thread=False)
+    return _COMPACT_CONN
 
 
 def _get_ecdict_conn():
@@ -52,10 +67,23 @@ def lookup_ecdict(word: str) -> str:
 
 
 def lookup_ecdict_translation(word: str) -> str:
-    """仅取 ECDICT 中文释义的首个义项（角标级短文本）；缺失返回 ''。"""
+    """仅取 ECDICT 中文释义的首个义项（角标级短文本）；缺失返回 ''。
+
+    全量 ECDICT 不在时回退随库分发的 compact 释义库（已预取首义项）。"""
     conn = _get_ecdict_conn()
     if conn is None:
-        return ""
+        compact = _get_compact_conn()
+        if compact is None:
+            return ""
+        try:
+            with _ECDICT_LOCK:
+                row = compact.execute(
+                    "SELECT zh FROM gloss WHERE word = ?",
+                    (word.strip().lower(),),
+                ).fetchone()
+        except Exception:
+            return ""
+        return str(row[0])[:40] if row and row[0] else ""
     try:
         with _ECDICT_LOCK:
             row = conn.execute(
@@ -68,6 +96,43 @@ def lookup_ecdict_translation(word: str) -> str:
         return ""
     first = str(row[0]).replace("\\n", "\n").split("\n", 1)[0].strip()
     return first[:40]
+
+
+def lookup_ecdict_phonetic(word: str) -> str:
+    """取 ECDICT 音标（不含斜杠）；缺失返回 ''。依次尝试原词小写、撇号所有格词干、
+    简单复数/三单去 s——用于逐词音标行兜底（whisper/Groq 对齐无音素数据）。"""
+    conn = _get_ecdict_conn()
+    if conn is None:
+        return ""
+
+    def query(candidate: str) -> str:
+        if not candidate:
+            return ""
+        try:
+            with _ECDICT_LOCK:
+                row = conn.execute(
+                    "SELECT phonetic FROM words WHERE word = ?",
+                    (candidate,),
+                ).fetchone()
+        except Exception:
+            return ""
+        return str(row[0]).strip() if row and row[0] else ""
+
+    base = re.sub(r"[^a-zA-Z'-]", "", str(word or "")).lower()
+    if not base:
+        return ""
+    candidates = [base]
+    if "'" in base:
+        candidates.append(base.split("'", 1)[0])          # it's → it, don't → don
+    if base.endswith("s") and len(base) > 3:
+        candidates.append(base[:-1])                       # ideas → idea
+    if base.endswith("ies") and len(base) > 4:
+        candidates.append(base[:-3] + "y")                 # studies → study
+    for candidate in candidates:
+        phonetic = query(candidate)
+        if phonetic:
+            return phonetic
+    return ""
 
 
 _TAG_LABELS = {
@@ -195,3 +260,19 @@ init_ipa()
 
 def strip_ipa_asterisks(raw: str) -> str:
     return re.sub(r"\*([^*]+)\*", r"\1", raw)
+
+
+def eng_ipa(word: str) -> str:
+    """eng_to_ipa 程序化音标（标准音，无真实音变）；库缺失或词不可转返回 ''。"""
+    token = re.sub(r"[^a-zA-Z'-]", "", str(word or "")).lower()
+    if not token:
+        return ""
+    try:
+        import eng_to_ipa as ipa_lib
+
+        raw = str(ipa_lib.convert(token) or "").strip()
+    except Exception:
+        return ""
+    if not raw or "*" in raw:  # *word* = eng_to_ipa 未收录，原样回显无价值
+        return ""
+    return raw

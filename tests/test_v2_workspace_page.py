@@ -398,8 +398,8 @@ def test_index_hides_fixed_ai_course_settings(tmp_path, monkeypatch):
     assert 'id="ai-segmentation"' not in resp.text
     assert 'id="ai-translation"' not in resp.text
     assert 'id="ai-ipa"' not in resp.text
-    assert "ai_segmentation: false" in resp.text
-    assert "ai_ipa: false" in resp.text
+    assert "ai_segmentation:" not in resp.text
+    assert "ai_ipa:" not in resp.text
 
 
 def test_index_contains_reading_text_controls(tmp_path, monkeypatch):
@@ -422,7 +422,8 @@ def test_index_contains_reading_text_controls(tmp_path, monkeypatch):
     assert 'id="text-ipa"' not in resp.text
     assert "tts: document.getElementById('text-tts').checked" in resp.text
     assert "form.append('tts', document.getElementById('text-tts').checked ? 'true' : 'false')" in resp.text
-    assert "['youtube', 'bilibili', 'local'].includes(_detectedSource)" in resp.text
+    assert "_detectedSource === 'uploaded_media'" in resp.text
+    assert "await confirmUserMediaLesson();" in resp.text
     assert '.txt,.md,.docx,.pdf' in resp.text
 
 
@@ -497,6 +498,6 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     assert 'id="ai-translation"' not in resp.text
     assert 'id="ai-ipa"' not in resp.text
     assert "translate: true" in resp.text
-    assert 'id="whisper-model"' in resp.text
+    assert 'id="user-media-whisper-model"' in resp.text
     assert "waitForTranslationReadiness" in resp.text
     assert "translation_ready" in resp.text

@@ -70,7 +70,8 @@ models/
 server_*.log
 
 # ECDICT downloaded data (build via backend/build_ecdict.py)
-resources/ecdict/
+resources/ecdict/*
+!resources/ecdict/gloss_compact.db
 
 # Runtime user wordlists (uploaded/generated locally; never publish)
 resources/wordlists/wordlists/user/*

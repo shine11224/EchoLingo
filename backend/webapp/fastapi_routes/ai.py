@@ -84,6 +84,14 @@ async def gen_hint(request: Request):
     english = data.get("english", "")
     pattern_template = data.get("pattern_template", "") or data.get("pattern", "")
     vocab = ", ".join(data.get("vocab", []))
+    previous_hints_raw = data.get("previous_hints", [])
+    if not isinstance(previous_hints_raw, list):
+        previous_hints_raw = []
+    previous_hints = list(dict.fromkeys(
+        str(hint).strip()[:100]
+        for hint in previous_hints_raw[-8:]
+        if str(hint).strip()
+    ))
     try:
         resp = await run_in_threadpool(
             ai_config.client.chat.completions.create,
@@ -92,6 +100,7 @@ async def gen_hint(request: Request):
                 english=english,
                 pattern_template=pattern_template or "无",
                 vocab=vocab or "无",
+                previous_hints="\n".join(f"- {hint}" for hint in previous_hints) or "无",
             )}],
             temperature=0.7,
             max_tokens=200,

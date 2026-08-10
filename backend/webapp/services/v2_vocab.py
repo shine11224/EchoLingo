@@ -313,7 +313,13 @@ def lookup_word_meaning(word: str, *, allow_external_fallback: bool = False) -> 
     normalized = surface.replace("-", "")
     if not normalized:
         return {"word": "", "meaning": "", "phonetic": "", "found": False}
-    cache_key = f"{normalized}:{int(allow_external_fallback)}"
+    full_external_fallback = bool(
+        allow_external_fallback and _external_fallback_billing_allowed()
+    )
+    fallback_scope = (
+        "full" if full_external_fallback else "free" if allow_external_fallback else "local"
+    )
+    cache_key = f"{normalized}:{fallback_scope}"
     if cache_key in _LOOKUP_CACHE:
         return dict(_LOOKUP_CACHE[cache_key])
     meanings = load_word_meanings()
@@ -353,7 +359,13 @@ def lookup_word_meaning(word: str, *, allow_external_fallback: bool = False) -> 
         result = {"word": normalized, "lemma": normalized, "meaning": "", "phonetic": phonetic, "found": False}
         _LOOKUP_CACHE[cache_key] = result
         return dict(result)
-    fallback = _translate_word_fallback(surface)
+    # 计费激活且无父 operation 时仍允许免费的 MyMemory 查询，但不静默调用 AI。
+    # 用户主动查词因此能兜底；建课等父 operation 内仍使用完整 AI + 免费翻译链。
+    fallback = (
+        _translate_word_fallback(surface)
+        if full_external_fallback
+        else _translate_word_free_fallback(surface)
+    )
     if fallback:
         meanings[normalized] = fallback
         result = {
@@ -605,12 +617,9 @@ def _concise_gloss(meaning: str, limit: int = 14) -> str:
     return text[: limit - 1] + "…"
 
 
-def _translate_word_fallback(word: str) -> str:
+def _translate_word_free_fallback(word: str) -> str:
     if len(word) <= 2:
         return ""
-    ai_meaning = _ai_word_gloss_fallback(word)
-    if ai_meaning:
-        return ai_meaning
     query = urllib.parse.urlencode({"q": word, "langpair": "en|zh-CN"})
     url = f"https://api.mymemory.translated.net/get?{query}"
     translated = ""
@@ -622,7 +631,32 @@ def _translate_word_fallback(word: str) -> str:
     translated = str(data.get("responseData", {}).get("translatedText") or "").strip()
     if translated and translated.lower() != word.lower() and re.search(r"[\u4e00-\u9fff]", translated):
         return translated
+    return ""
+
+
+def _translate_word_fallback(word: str) -> str:
+    if len(word) <= 2:
+        return ""
+    ai_meaning = _ai_word_gloss_fallback(word)
+    if ai_meaning:
+        return ai_meaning
+    translated = _translate_word_free_fallback(word)
+    if translated:
+        return translated
     return _ai_word_gloss_fallback(word)
+
+
+def _external_fallback_billing_allowed() -> bool:
+    """外部词义 fallback（翻译 API + AI 补义）是否允许触发。
+
+    单用户/公开库/积分 off：允许（本来就不计费）。
+    计费激活时：只有处于父 bundle operation 上下文（建课等）才允许——
+    页面加载、被动轮询、保存流程里的 fallback 绝不静默触发可计费 AI。"""
+    from webapp.runtime import credit_meter
+
+    if not credit_meter.billing_active():
+        return True
+    return credit_meter.current_operation() is not None
 
 
 def _ai_word_gloss_fallback(word: str) -> str:

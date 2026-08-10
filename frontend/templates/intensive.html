@@ -434,8 +434,13 @@
     .word-card-close { min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; }
     .word-card-meaning { margin-top: 13px; padding: 11px 12px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: #faf7ef; line-height: 1.6; }
     .word-card-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 13px; color: var(--muted); font-size: 12px; }
-    .word-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .word-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .word-card-actions button { width: 100%; }
     .word-save-button.saved { border-color: var(--brand); background: #e7f1e9; color: var(--brand-dark); font-weight: 800; }
+    .word-review-button.in-review { border-color: #9db5a3; background: #edf4ee; color: var(--brand-dark); font-weight: 800; opacity: 1; }
+    .word-example-item { margin-bottom: 10px; }
+    .word-example-actions { display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle; }
+    .word-example-actions button { min-height: 28px; padding: 3px 8px; font-size: 12px; }
     .word-analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
     .word-analysis-head h4 { margin: 0; }
     .word-analysis-actions { display: flex; align-items: center; gap: 6px; }
@@ -457,6 +462,10 @@
     .practice-result { display: none; margin-top: 10px; padding: 11px 12px; border-radius: 8px; background: #eef4ef; line-height: 1.65; }
     .practice-result.open { display: block; }
     .practice-result ul { margin: 5px 0 0; padding-left: 20px; }
+    .practice-sentence-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+    .practice-sentence-copy { min-width: 0; font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.8; }
+    .practice-sentence-label { margin-right: 6px; color: var(--muted); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 12px; font-weight: 750; }
+    .practice-sentence-speak { flex: 0 0 auto; min-height: 30px; padding: 4px 9px; color: var(--brand-dark); font-size: 12px; white-space: nowrap; }
     .practice-history-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcf9; }
     .practice-history-panel[hidden] { display: none; }
     .practice-history-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
@@ -586,7 +595,9 @@
   <div id="intensive-youtube-host" aria-hidden="true"></div>
   <aside id="intensive-word-card" class="word-card" role="dialog" aria-label="重点词汇卡片" aria-live="polite" tabindex="-1"></aside>
 
-  <script src="/static/natural-tts.js?v=20260805-1"></script>
+  <script src="/static/elt_credits.js?v=20260809-1"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script src="/static/natural-tts.js?v=20260809-1"></script>
   <script>
     const LESSON_ID = {{ lesson_id }};
     const targetSentenceParam = new URLSearchParams(window.location.search).get('sentence_key');
@@ -601,9 +612,11 @@
     const pronunciationCache = new Map();
     const oralAnalysisCache = new Map();
     const practiceHintCache = new Map();
+    const practiceHintHistory = new Map();
     const sentenceSpeed = new Map();
     const knownWords = new Set();
     const savedLessonWords = new Set();
+    const reviewBookWords = new Set();
     const vocabLog = {};
     const wordAnalysisCache = new Map();
     let activeWordCard = null;
@@ -829,7 +842,7 @@
               <div class="v1-module-head"><h3>④ 情景造句</h3><span class="v1-module-kicker">Output practice</span></div>
               <div class="v1-module-body">
                 <div class="practice-hint${hint ? ' open' : ''}" data-practice-hint="${sentence.key}">${hint ? escapeHtml(hint) : ''}</div>
-                <div class="module-actions"><button type="button" data-generate-hint="${sentence.key}">💡 ${hint ? '换一个提示' : '生成中文提示'}</button></div>
+                <div class="module-actions"><button type="button" data-generate-hint="${sentence.key}">💡 ${hint ? '换一换' : '生成中文提示'}</button></div>
                 <div class="practice-input-row">
                   <textarea data-practice-input="${sentence.key}" placeholder="参考中文提示，尝试用英文表达；留空可直接生成范例。"></textarea>
                   <button class="practice-mic" type="button" data-practice-mic="${sentence.key}" title="语音输入" aria-label="语音输入">🎤</button>
@@ -1053,14 +1066,7 @@
             <span class="pron-ipa">${escapeHtml(ipa || '—')}</span>
           </span>${pauseMarker(word.pause_after_ms, index < alignedWords.length - 1)}`;
         });
-        return `<div class="aligned-pronunciation">${pairs.join('')}</div>
-          <div class="pronunciation-legend">
-            <span><b>重读</b>：词典重音</span>
-            <span><span class="legend-link"></span>：原声紧密衔接候选</span>
-            <span style="color:#8b958e">弱读词：浅灰</span>
-            <span>/：原声短停顿 · //：原声明显停顿</span>
-            <span>MFA 原声对齐</span>
-          </div>`;
+        return `<div class="aligned-pronunciation">${pairs.join('')}</div>`;
       }
       const natural = data.natural || data.phonetics_natural || data.canonical || '';
       if (!natural) return '<span class="filter-note">暂未生成音标。</span>';
@@ -1122,7 +1128,7 @@
           <span class="pron-ipa">${escapeHtml(annotation.core)}${entry.tone ? `<span class="pron-tone">${escapeHtml(entry.tone)}</span>` : ''}</span>
         </span>`);
       });
-      const sourceLabel = data.source === 'mfa' ? 'MFA 原声对齐' : '规则音标';
+      const sourceLabel = {mfa: 'MFA 原声对齐', groq: '原声对齐（Groq）', whisper: '原声对齐（本地 Whisper）'}[data.source] || '规则音标';
       return `<div class="aligned-pronunciation">${pairs.join('')}</div>
         <div class="pronunciation-legend">
           <span><b>重读</b>：粗体</span>
@@ -1448,7 +1454,7 @@
       if (!sentence || !result) return null;
       result.innerHTML = '<div class="filter-note">AI 正在识别句式和复用场景…</div>';
       try {
-        const response = await fetch('/api/oral-analysis', {
+        const response = await eltCredits.billableFetch('oral_analysis', '/api/oral-analysis', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             english: sentence.text,
@@ -1478,32 +1484,61 @@
     async function generatePracticeHint(key) {
       const sentence = sentenceByKey(key);
       const result = document.querySelector(`[data-practice-hint="${key}"]`);
+      const button = document.querySelector(`[data-generate-hint="${key}"]`);
+      const input = document.querySelector(`[data-practice-input="${key}"]`);
       if (!sentence || !result) return '';
+      const cacheKey = Number(key);
+      const previousHints = [...(practiceHintHistory.get(cacheKey) || [])];
+      const currentHint = practiceHintCache.get(cacheKey) || '';
+      if (currentHint && !previousHints.includes(currentHint)) previousHints.push(currentHint);
       result.classList.add('open');
       result.textContent = '正在生成迁移练习…';
+      if (button) {
+        button.disabled = true;
+        button.textContent = currentHint ? '💡 正在换题…' : '💡 正在生成…';
+      }
       const oral = oralAnalysisCache.get(Number(key)) || {};
       try {
-        const response = await fetch('/api/hint', {
+        const response = await eltCredits.billableFetch('practice_hint', '/api/hint', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({english: sentence.text, pattern_template: oral.template || '', vocab: practiceWords(sentence)}),
+          body: JSON.stringify({
+            english: sentence.text,
+            pattern_template: oral.template || '',
+            vocab: practiceWords(sentence),
+            previous_hints: previousHints,
+          }),
         });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || '提示生成失败');
-        practiceHintCache.set(Number(key), data.hint || '');
-        result.textContent = data.hint || '';
-        return data.hint || '';
+        const nextHint = String(data.hint || '').trim();
+        if (!nextHint) throw new Error('AI 未返回新的中文提示');
+        practiceHintCache.set(cacheKey, nextHint);
+        practiceHintHistory.set(cacheKey, [...previousHints, nextHint]);
+        result.textContent = nextHint;
+        if (input) input.value = '';
+        if (button) button.textContent = '💡 换一换';
+        return nextHint;
       } catch (error) {
         result.textContent = `提示生成失败：${error.message}`;
+        if (button) button.textContent = currentHint ? '💡 换一换' : '💡 生成中文提示';
         return '';
+      } finally {
+        if (button) button.disabled = false;
       }
     }
 
-    function renderPracticeResult(data = {}) {
+    function renderPracticeSentence(text, key, label = '') {
+      if (!text) return '';
+      const encoded = encodeURIComponent(text);
+      return `<div class="practice-sentence-line"><div class="practice-sentence-copy">${label ? `<span class="practice-sentence-label">${escapeHtml(label)}</span>` : ''}${linkifyEnglish(text, key)}</div><button class="practice-sentence-speak" type="button" data-speak-example="${encoded}" aria-label="朗读这句英文">🔊 朗读</button></div>`;
+    }
+
+    function renderPracticeResult(data = {}, key) {
       const main = data.example_sentence || data.corrected || data.standard || '';
       const secondary = data.variant || '';
       const feedback = Array.isArray(data.feedback) ? data.feedback : [];
       const points = Array.isArray(data.key_points) ? data.key_points : [];
-      return `${main ? `<strong>${escapeHtml(main)}</strong>` : ''}${secondary ? `<div style="margin-top:7px">自然变体：${escapeHtml(secondary)}</div>` : ''}${feedback.length ? `<ul>${feedback.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}${points.length ? `<ul>${points.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}`;
+      return `${renderPracticeSentence(main, key)}${renderPracticeSentence(secondary, key, '自然变体')}${feedback.length ? `<ul>${feedback.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}${points.length ? `<ul>${points.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}`;
     }
 
     async function submitPractice(key) {
@@ -1520,7 +1555,7 @@
       result.textContent = isExample ? 'AI 正在生成自然范例…' : 'AI 正在批改你的表达…';
       const oral = oralAnalysisCache.get(Number(key)) || {};
       try {
-        const response = await fetch('/api/practice', {
+        const response = await eltCredits.billableFetch(isExample ? 'practice_example' : 'practice_evaluation', '/api/practice', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             action: isExample ? 'example' : 'correct',
@@ -1534,7 +1569,7 @@
         });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || '练习提交失败');
-        result.innerHTML = renderPracticeResult(data);
+        result.innerHTML = renderPracticeResult(data, key);
         practiceHistoryCache.delete(Number(key));
         const historyPanel = document.querySelector(`[data-practice-history="${key}"]`);
         if (historyPanel && !historyPanel.hidden) loadIntensivePracticeHistory(key, true);
@@ -1697,9 +1732,17 @@
       return String(item ?? '');
     }
 
-    function renderListValue(value, key) {
+    function renderListValue(value, key, withExampleActions = false) {
       if (!Array.isArray(value)) return escapeHtml(normalizeListItem(value || ''));
-      return value.map(item => `<li>${linkifyEnglish(normalizeListItem(item), key)}</li>`).join('');
+      return value.map(item => {
+        const text = normalizeListItem(item);
+        if (!withExampleActions) return `<li>${linkifyEnglish(text, key)}</li>`;
+        const encoded = encodeURIComponent(text);
+        return `<li class="word-example-item"><span>${linkifyEnglish(text, key)}</span><span class="word-example-actions">
+          <button type="button" data-speak-example="${escapeHtml(encoded)}">🔊 朗读</button>
+          <button type="button" data-save-example="${escapeHtml(encoded)}">☆ 收藏</button>
+        </span></li>`;
+      }).join('');
     }
 
     function hasDeepWordAnalysis(data) {
@@ -1732,7 +1775,7 @@
         </div>
         <div class="word-grid">
           ${rows.map(([label, value]) => `<div class="word-block full"><span class="word-label">${label}</span>${['英文释义', '用法'].includes(label) ? linkifyEnglish(value, key) : escapeHtml(value)}</div>`).join('')}
-          ${lists.map(([label, value]) => `<div class="word-block full"><span class="word-label">${label}</span><ul>${renderListValue(value, key)}</ul></div>`).join('')}
+          ${lists.map(([label, value]) => `<div class="word-block full"><span class="word-label">${label}</span><ul>${renderListValue(value, key, label === '例句')}</ul></div>`).join('')}
         </div>
       </div>`;
     }
@@ -1745,6 +1788,7 @@
 
     function renderIntensiveWordCard({word, key, meaning = '', phonetic = '', loading = false, error = ''}) {
       const saved = savedLessonWords.has(word);
+      const inReviewBook = reviewBookWords.has(word);
       return `<div class="word-card-head">
           <div><h3 class="word-card-title">${escapeHtml(word)}</h3>${phonetic ? `<div class="word-card-phonetic">/${escapeHtml(phonetic.replace(/^\/+|\/+$/g, ''))}/</div>` : ''}</div>
           <div class="word-analysis-actions">
@@ -1756,6 +1800,7 @@
         <div class="word-card-status"><span>熟悉程度</span><strong>${escapeHtml(familiarityText(word))}</strong></div>
         <div class="word-card-actions">
           <button class="word-save-button${saved ? ' saved' : ''}" type="button" data-toggle-word-save="${escapeHtml(word)}" data-key="${key}">${saved ? '★ 已收藏' : '☆ 收藏'}</button>
+          <button class="word-review-button${inReviewBook ? ' in-review' : ''}" type="button" data-add-word-review="${escapeHtml(word)}" data-review-meaning="${escapeHtml(meaning)}" ${inReviewBook || loading ? 'disabled' : ''}>${inReviewBook ? '✓ 已在复习本' : '＋ 加入复习本'}</button>
           <button type="button" data-mark-known="${escapeHtml(word)}">✓ 我认识</button>
           <button class="primary-action" type="button" data-study-word="${escapeHtml(word)}" data-key="${key}">深入学习</button>
         </div>`;
@@ -1795,6 +1840,7 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || '释义查询失败');
         if (!activeWordCard || activeWordCard.word !== normalized || activeWordCard.key !== Number(key)) return;
+        if (data.in_review_book) reviewBookWords.add(normalized);
         card.innerHTML = renderIntensiveWordCard({word: normalized, key, meaning: data.meaning || '', phonetic: data.phonetic || ''});
         card.scrollTop = 0;
         positionIntensiveWordCard(anchor);
@@ -1807,6 +1853,59 @@
     function closeIntensiveWordCard() {
       document.getElementById('intensive-word-card').classList.remove('open');
       activeWordCard = null;
+    }
+
+    async function addIntensiveWordToReview(word, meaning, button) {
+      const normalized = String(word || '').toLowerCase();
+      if (!normalized || !button || reviewBookWords.has(normalized)) return;
+      button.disabled = true;
+      button.textContent = '加入中…';
+      try {
+        const response = await fetch('/api/vocab-review/activate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            word: normalized,
+            source: 'intensive',
+            lesson_id: LESSON_ID,
+            meaning: String(meaning || ''),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.error) throw new Error(data.error || '加入复习本失败');
+        reviewBookWords.add(String(data.word || normalized).toLowerCase());
+        button.classList.add('in-review');
+        button.textContent = '✓ 已在复习本';
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = '重试加入';
+        window.alert(`加入复习本失败：${error.message}`);
+      }
+    }
+
+    function speakIntensiveExample(encodedText) {
+      const text = decodeURIComponent(encodedText || '');
+      if (!text) return;
+      NaturalTTS.speak(text, {lang:'en-US', rate:1});
+    }
+
+    async function saveIntensiveExample(button, encodedText) {
+      const text = decodeURIComponent(encodedText || '');
+      if (!text || !button) return;
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/v2/lessons/sentence-review/manual', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({text}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+        button.textContent = '✓ 已收藏';
+      } catch (error) {
+        button.disabled = false;
+        window.alert(`收藏失败：${error.message}`);
+      }
     }
 
     async function logIntensiveWordStudy(word, sentence, analysis) {
@@ -1859,7 +1958,7 @@
       }
       result.innerHTML = `<div class="word-analysis-head"><h4>${escapeHtml(normalized)}</h4><div class="word-analysis-actions"><button type="button" data-speak-word="${escapeHtml(normalized)}" data-key="${key}" aria-label="播放 ${escapeHtml(normalized)} 发音">🔊</button><button type="button" data-close-word-analysis="${key}">收起</button></div></div><span class="filter-note">AI 正在生成语境解析…</span>`;
       try {
-        const response = await fetch('/analyze-word', {
+        const response = await eltCredits.billableFetch('word_analysis', '/analyze-word', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({word: normalized, sentence: sentence.text}),
         });
@@ -2062,7 +2161,10 @@
         const key = localStorage.key(index);
         if (key?.startsWith('known_') && localStorage.getItem(key) === '1') knownWords.add(key.slice(6));
       }
-      if (vocabResponse.ok) Object.assign(vocabLog, await vocabResponse.json());
+      if (vocabResponse.ok) {
+        Object.assign(vocabLog, await vocabResponse.json());
+        for (const word of Object.keys(vocabLog)) reviewBookWords.add(String(word).toLowerCase());
+      }
       document.getElementById('lesson-title').textContent = intensiveDocument.lesson?.title || '逐句精读';
       renderAll();
       focusTargetSentence();
@@ -2081,8 +2183,27 @@
         playIntensiveWord(speakWord.dataset.speakWord);
         return;
       }
+      const speakExample = event.target.closest('[data-speak-example]');
+      if (speakExample) {
+        speakIntensiveExample(speakExample.dataset.speakExample);
+        return;
+      }
+      const saveExample = event.target.closest('[data-save-example]');
+      if (saveExample) {
+        saveIntensiveExample(saveExample, saveExample.dataset.saveExample);
+        return;
+      }
       const studyWord = event.target.closest('[data-study-word]');
       if (studyWord) { analyzeIntensiveWord(studyWord.dataset.studyWord, Number(studyWord.dataset.key)); return; }
+      const addWordReview = event.target.closest('[data-add-word-review]');
+      if (addWordReview) {
+        addIntensiveWordToReview(
+          addWordReview.dataset.addWordReview,
+          addWordReview.dataset.reviewMeaning,
+          addWordReview,
+        );
+        return;
+      }
       const toggleWordSave = event.target.closest('[data-toggle-word-save]');
       if (toggleWordSave) {
         toggleIntensiveWordSaved(toggleWordSave.dataset.toggleWordSave, Number(toggleWordSave.dataset.key))

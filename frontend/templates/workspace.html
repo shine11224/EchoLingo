@@ -2312,7 +2312,17 @@ async function loadSavedWords() {
   updateReviewSummary();
   updateCurrentSubtitle();
   if (activeStudyMode === 'reading') {
-    refreshReadingWordStates();
+    // 首渲染发生在词集/释义加载之前：内容有变化时使滚动守卫失效并重渲染一次，补齐 ruby 释义角标；
+    // 无变化时只切 class，保持轮询期滚动稳定。
+    const nextSignature = `${[...savedWordSet].sort().join(',')}|${Object.keys(wordMeaningCache).length}|${[...readingHiddenWordSet].sort().join(',')}`;
+    if (nextSignature !== savedWordsSignature && readingBlocks.length) {
+      savedWordsSignature = nextSignature;
+      readingPassageSignature = '';
+      renderReadingPassage();
+    } else {
+      savedWordsSignature = nextSignature;
+      refreshReadingWordStates();
+    }
   }
   renderReadingSavedItems();
 }
@@ -2880,6 +2890,8 @@ function renderSubtitleText(segment) {
 }
 
 let readingPassageSignature = '';
+// 收藏词/释义快照签名：loadSavedWords 后变化才触发一次重渲染（轮询期间不变不动，避免滚动回弹）
+let savedWordsSignature = '';
 
 function renderReadingPassage() {
   const root = document.getElementById('reading-passage');

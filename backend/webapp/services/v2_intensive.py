@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 import db
+from webapp.services.dicts import eng_ipa, lookup_ecdict_phonetic
 from webapp.services.mfa_alignment import get_alignment_status, load_lesson_alignment, numeric_token_ipa
 from webapp.services.v2_translation import build_translation_units
 from webapp.services.v2_vocab import highlight_reading_blocks, highlight_segments
@@ -33,7 +34,14 @@ def _enrich_aligned_words(words: list[dict]) -> list[dict]:
     for word in words:
         item = dict(word)
         if not str(item.get("ipa") or "").strip():
-            item["ipa"] = numeric_token_ipa(str(item.get("text") or item.get("word") or ""))
+            token = str(item.get("text") or item.get("word") or "")
+            # whisper/Groq 对齐无音素数据：数字走拼读，ECDICT 词典优先，
+            # 未收录词 eng_to_ipa 程序化兜底（标准音，不引入真实音变）
+            item["ipa"] = (
+                numeric_token_ipa(token)
+                or lookup_ecdict_phonetic(token)
+                or eng_ipa(token)
+            )
         enriched.append(item)
     return enriched
 
@@ -61,7 +69,8 @@ def _split_reading_text(text: str) -> list[str]:
             following = words_after[1] if len(words_after) > 1 else ""
             if current in _READING_CAPITAL_SPLIT_EXCLUDED_TOKENS:
                 continue
-            if previous[:1].isupper() or following[:1].isupper():
+            # New York / River Thames / United Kingdom 等连续大写专名不构成句界。
+            if (previous[:1].isupper() or following[:1].isupper()):
                 continue
             result.append(candidate)
             start = boundary.end()
@@ -146,22 +155,33 @@ def build_intensive_document(
         for item in (alignment or {}).get("sentences", [])
         if isinstance(item, dict)
     }
+    alignment_model = str((alignment or {}).get("model") or "")
+    timing_source = (
+        "groq" if alignment_model.startswith("groq:")
+        else "whisper" if alignment_model.startswith("faster-whisper:")
+        else "mfa"
+    )
 
     if is_reading:
         for block in db.get_v2_reading_blocks(lesson_id):
             block_index = int(block["index"])
-            block_texts = _split_reading_text(block.get("text", ""))
             timed_sentences = block.get("sentences") or []
-            for sentence_index, text in enumerate(block_texts):
+            # TTS 已生成的块：句单元与翻译/TTS 时间轴同源（_synthesizable_sentences），
+            # 不再用启发式重切——重切会把 "(Bornmann and Mutz, 2015)" 这类引用在
+            # 数字前断开，产生从未被翻译过的碎片单元，中文释义随之丢失。
+            if timed_sentences:
+                pairs = [
+                    (" ".join(str(sentence.get("text") or "").split()), sentence)
+                    for sentence in timed_sentences
+                    if str(sentence.get("text") or "").strip()
+                ]
+            else:
+                pairs = [(text, {}) for text in _split_reading_text(block.get("text", ""))]
+            for sentence_index, (text, timed) in enumerate(pairs):
                 key = reading_sentence_key(block_index, sentence_index)
                 saved = saved_by_key.get(key) or saved_by_text.get(_normalize_sentence(text))
-                timed = (
-                    timed_sentences[sentence_index]
-                    if sentence_index < len(timed_sentences)
-                    and _normalize_sentence(timed_sentences[sentence_index].get("text", ""))
-                    == _normalize_sentence(text)
-                    else {}
-                )
+                if timed and _normalize_sentence(timed.get("text", "")) != _normalize_sentence(text):
+                    timed = {}
                 sentences.append(
                     {
                         "key": key,
@@ -228,7 +248,7 @@ def build_intensive_document(
                         else segment.get("end_seconds", segment.get("end", 0))
                         or 0
                     ),
-                    "timing_source": "mfa" if aligned_ready else "subtitle",
+                    "timing_source": timing_source if aligned_ready else "subtitle",
                     "alignment_coverage": float(aligned.get("coverage") or 0) if aligned else 0,
                     "boundary_confidence": (
                         str(aligned.get("boundary_confidence") or "fallback")

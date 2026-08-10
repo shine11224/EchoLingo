@@ -154,6 +154,10 @@ def test_hint_prompt_prioritizes_all_highlighted_vocabulary(monkeypatch):
             "english": "We consolidate the schemas.",
             "pattern_template": "We need to ...",
             "vocab": ["consolidate", "schemas"],
+            "previous_hints": [
+                "团队需要整合这些数据模式。",
+                "学校应该统一这套登记规则。",
+            ],
         },
     )
 
@@ -161,6 +165,9 @@ def test_hint_prompt_prioritizes_all_highlighted_vocabulary(monkeypatch):
     prompt = calls[0]["messages"][0]["content"]
     assert "重点词汇：consolidate, schemas" in prompt
     assert "多个重点词彼此适配时，尽量全部覆盖" in prompt
+    assert "- 团队需要整合这些数据模式。" in prompt
+    assert "- 学校应该统一这套登记规则。" in prompt
+    assert "不得与其中任何一句相同或近义改写" in prompt
 
 
 def test_listening_retell_analysis_compares_meaning_and_blind_spots(monkeypatch):
@@ -396,6 +403,15 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     assert "if (hasSessionCache || hasDeepWordAnalysis(cached))" in page.text
     assert "toggleIntensiveWordSaved" in page.text
     assert "data-toggle-word-save" in page.text
+    assert "addIntensiveWordToReview" in page.text
+    assert "data-add-word-review" in page.text
+    assert "source: 'intensive'" in page.text
+    assert "＋ 加入复习本" in page.text
+    assert "data-speak-example" in page.text
+    assert "data-save-example" in page.text
+    assert "speakIntensiveExample" in page.text
+    assert "saveIntensiveExample" in page.text
+    assert "/api/v2/lessons/sentence-review/manual" in page.text
     assert "async function syncIntensiveHighlightedWords" in page.text
     assert "await syncIntensiveHighlightedWords();" in page.text
     assert "highlighted-words/sync" in page.text
@@ -446,9 +462,16 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     assert "generateOralAnalysis" in page.text
     assert "generatePracticeHint" in page.text
     assert "vocab: practiceWords(sentence)" in page.text
+    assert "previous_hints: previousHints" in page.text
+    assert "practiceHintHistory" in page.text
+    assert "button.textContent = '💡 换一换'" in page.text
+    assert "if (input) input.value = '';" in page.text
+    assert "renderPracticeSentence" in page.text
+    assert "linkifyEnglish(text, key)" in page.text
+    assert 'data-speak-example="${encoded}"' in page.text
     assert "data.example_sentence || data.corrected" in page.text
+    assert "isExample ? 'practice_example' : 'practice_evaluation'" in page.text
     assert "action: isExample ? 'example' : 'correct'" in page.text
-    assert "user_answer: userAnswer" in page.text
     assert "submitPractice" in page.text
     assert "/api/phonetics" in page.text
     assert "/api/oral-analysis" in page.text
@@ -456,10 +479,68 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     assert "/api/practice" in page.text
 
 
+def test_reading_intensive_uses_timed_sentence_units_with_translation(tmp_path, monkeypatch):
+    """TTS 已生成的 reading 课程：精读句单元必须与翻译/TTS 同源（block.sentences），
+
+    不能用启发式重切——重切会把 "(Bornmann and Mutz, 2015)" 在数字前断开，
+    产生从未被翻译的碎片单元导致中文丢失。"""
+    import db
+    from fastapi_server import create_app
+    from webapp.services import v2_vocab
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(v2_vocab, "load_v2_wordlist_index", lambda: {})
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_upload",
+        source_url="manual:intensive-timed",
+        title="Intensive Timed",
+        lesson_mode="reading",
+    )
+    full_sentence = (
+        "The rise of preprint servers and open-access repositories has expanded "
+        "scientific discourse, fostering cross-disciplinary discovery (Bornmann and Mutz, 2015), "
+        "but also burdening researchers with reconciling scattered findings."
+    )
+    db.replace_v2_reading_blocks(
+        lesson["id"],
+        [
+            {
+                "index": 0,
+                "text": full_sentence,
+                "start_seconds": 0.0,
+                "end_seconds": 12.5,
+                "sentences": [
+                    {
+                        "index": 0,
+                        "text": full_sentence,
+                        "start_seconds": 0.0,
+                        "end_seconds": 12.5,
+                    }
+                ],
+            }
+        ],
+    )
+    db.upsert_v2_sentence(full_sentence, translation="预印本服务器的兴起拓展了科学交流。")
+
+    response = client.get(f"/api/v2/lessons/{lesson['id']}/intensive")
+    assert response.status_code == 200
+    data = response.json()
+    assert [item["text"] for item in data["sentences"]] == [full_sentence]
+    assert data["sentences"][0]["translation"] == "预印本服务器的兴起拓展了科学交流。"
+    assert data["sentences"][0]["start_seconds"] == 0.0
+    assert data["sentences"][0]["end_seconds"] == 12.5
+
+
+
 def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
+    from webapp.services import v2_vocab
+
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    # 词表索引与本测试无关：私有环境存在用户 BNC 词表、公开干净检出没有，须隔离
+    monkeypatch.setattr(v2_vocab, "load_v2_wordlist_index", lambda: {})
     client = TestClient(create_app())
     lesson = db.create_v2_lesson(
         source_type="reading_text",
@@ -483,7 +564,7 @@ def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, 
     response = client.get(f"/api/v2/lessons/{lesson['id']}/intensive")
 
     assert response.status_code == 200
-    assert "first" not in response.json()["sentences"][0]["highlighted_words"]
+    assert response.json()["sentences"][0]["highlighted_words"] == []
 
 
 def test_media_intensive_reuses_playback_sentence_units_with_contiguous_timing(tmp_path, monkeypatch):
@@ -596,44 +677,3 @@ def test_intensive_export_writes_homepage_html_and_lesson_metadata(tmp_path, mon
 
     homepage_lessons = client.get("/api/lessons").json()
     assert all(item["filename"] != exported.name for item in homepage_lessons)
-
-
-def test_mastered_word_is_not_highlighted_in_future_intensive_lessons(tmp_path, monkeypatch):
-    import db
-    from fastapi_server import create_app
-    from webapp.fastapi_routes import v2_lessons as lesson_routes
-
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
-    monkeypatch.setattr(
-        lesson_routes,
-        "load_lists_for_keys",
-        lambda keys: [("test_vocab", {"first", "sentence"})],
-    )
-    client = TestClient(create_app())
-    lesson = db.create_v2_lesson(
-        source_type="reading_text",
-        source_url="manual:mastered-intensive",
-        title="Mastered Intensive",
-        lesson_mode="reading",
-    )
-    db.replace_v2_reading_blocks(
-        lesson["id"],
-        [{"index": 0, "text": "First sentence."}],
-    )
-    db.activate_word_review(
-        word="first",
-        source="manual",
-        lemma="first",
-        display_text="first",
-        target_type="word",
-    )
-    db.set_review_word_lifecycle("first", mastered=True)
-
-    response = client.get(
-        f"/api/v2/lessons/{lesson['id']}/intensive?wordlists=test_vocab"
-    )
-
-    assert response.status_code == 200
-    highlighted_words = response.json()["sentences"][0]["highlighted_words"]
-    assert "first" not in highlighted_words
-    assert "sentence" in highlighted_words
