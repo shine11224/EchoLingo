@@ -1014,6 +1014,15 @@ def get_sentence_translations(lesson_id: int):
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
     units = build_translation_units(db.get_v2_subtitle_segments(lesson_id))
+    if not units and str(lesson.get("source_type") or "").startswith("reading"):
+        # Reading 课 TTS 未完成时还没有字幕段：从阅读块取句，让并行翻译的缓存立即可见
+        from webapp.services.v2_tts import _synthesizable_sentences
+
+        units = [
+            {"text": sentence, "end": 0.0}
+            for block in db.get_v2_reading_blocks(lesson_id)
+            for sentence in _synthesizable_sentences(str(block.get("text") or ""))
+        ]
     seen = set()
     translations = {}
     fully_cached = bool(units)

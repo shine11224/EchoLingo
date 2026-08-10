@@ -71,14 +71,19 @@ def _resume_interrupted_translations() -> None:
     for path in db_paths:
         token = db.set_current_db_path(path)
         try:
-            from webapp.services.v2_translation import translate_lesson_subtitles
+            from webapp.services.v2_translation import translate_lesson_subtitles, translate_reading_blocks
             for lesson in db.list_v2_lessons():
-                if str(lesson.get("translation_status") or "") != "translating":
-                    continue
+                status = str(lesson.get("translation_status") or "")
                 if not int(lesson.get("translation_requested") or 0):
                     continue
+                is_reading = str(lesson.get("source_type") or "").startswith("reading")
+                # Reading：翻译与 TTS 解耦并行，pending（未启动）与 translating（被中断）都要恢复；
+                # 视频课翻译挂在字幕就绪后，只恢复 translating。
+                if status != "translating" and not (is_reading and status == "pending"):
+                    continue
+                fn = translate_reading_blocks if is_reading else translate_lesson_subtitles
                 db.spawn_with_db_context(
-                    translate_lesson_subtitles, int(lesson["id"]),
+                    fn, int(lesson["id"]),
                     name=f"resume-translate-{lesson['id']}")
         except Exception:
             pass
@@ -102,6 +107,18 @@ def _ensure_builtin_wordlists_async() -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _recover_stuck_reading_tts() -> None:
+    """启动自愈：重启杀掉进行中的 Reading TTS 后台线程后，重新合成卡 pending 的课程。"""
+    try:
+        from webapp.services.v2_tts import recover_stuck_reading_tts
+
+        recovered = recover_stuck_reading_tts()
+        if recovered:
+            print(f"[startup] recovered {recovered} stuck reading TTS job(s)")
+    except Exception:
+        pass
+
+
 def create_app() -> FastAPI:
     db.init_db()
     migrate_lessons_to_db()
@@ -110,6 +127,7 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         _resume_interrupted_translations()
         _ensure_builtin_wordlists_async()
+        _recover_stuck_reading_tts()
         yield
         try:
             from webapp.services.hy_translate import stop_local_server

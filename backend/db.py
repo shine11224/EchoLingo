@@ -190,6 +190,18 @@ def init_db(path: Path | None = None):
                     UNIQUE(source_type, source_url)
                 );
 
+                CREATE TABLE IF NOT EXISTS v2_media_uploads (
+                    id                TEXT PRIMARY KEY,
+                    original_filename TEXT NOT NULL DEFAULT '',
+                    stored_relpath    TEXT NOT NULL DEFAULT '',
+                    media_kind        TEXT NOT NULL DEFAULT '',
+                    size_bytes        INTEGER NOT NULL DEFAULT 0,
+                    duration_seconds  REAL NOT NULL DEFAULT 0,
+                    status            TEXT NOT NULL DEFAULT 'ready',
+                    created_at        TEXT NOT NULL DEFAULT '',
+                    consumed_at       TEXT NOT NULL DEFAULT ''
+                );
+
                 CREATE TABLE IF NOT EXISTS v2_subtitle_segments (
                     id         INTEGER PRIMARY KEY AUTOINCREMENT,
                     lesson_id  INTEGER NOT NULL REFERENCES v2_lessons(id) ON DELETE CASCADE,
@@ -236,6 +248,10 @@ def init_db(path: Path | None = None):
                     user_message           TEXT NOT NULL DEFAULT '',
                     ai_response            TEXT NOT NULL DEFAULT '',
                     context_mode           TEXT NOT NULL DEFAULT 'auto',
+                    coverage_status        TEXT NOT NULL DEFAULT '',
+                    external_knowledge_used INTEGER NOT NULL DEFAULT 0,
+                    citations_json         TEXT NOT NULL DEFAULT '[]',
+                    unsupported_json       TEXT NOT NULL DEFAULT '[]',
                     created_at             TEXT NOT NULL DEFAULT ''
                 );
 
@@ -407,6 +423,10 @@ def init_db(path: Path | None = None):
                 "ALTER TABLE v2_lessons ADD COLUMN media_kind TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE v2_phase_b_sentences ADD COLUMN sentence_id INTEGER REFERENCES v2_sentences(id) ON DELETE SET NULL",
                 "ALTER TABLE v2_chat_messages ADD COLUMN session_id INTEGER REFERENCES v2_chat_sessions(id) ON DELETE CASCADE",
+                "ALTER TABLE v2_chat_messages ADD COLUMN coverage_status TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_chat_messages ADD COLUMN external_knowledge_used INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_chat_messages ADD COLUMN citations_json TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE v2_chat_messages ADD COLUMN unsupported_json TEXT NOT NULL DEFAULT '[]'",
                 "ALTER TABLE v2_reading_blocks ADD COLUMN start_seconds REAL",
                 "ALTER TABLE v2_reading_blocks ADD COLUMN end_seconds REAL",
                 "ALTER TABLE v2_reading_blocks ADD COLUMN sentences_json TEXT NOT NULL DEFAULT '[]'",
@@ -604,6 +624,35 @@ def cache_word_analysis(
             (json.dumps(merged, ensure_ascii=False), normalized),
         )
     return merged
+
+
+def get_cached_word_analysis(
+    word: str,
+    *,
+    target_type: str = "word",
+    lemma: str = "",
+) -> Optional[dict]:
+    """读取已缓存的 /analyze-word 深度解析（cache-before-reserve 用）。
+
+    只认深度解析签名（en_definition/ielts_note），课程构建写入的 vocabulary
+    列表形态不算命中，避免把浅层缓存当深度解析返回。"""
+    normalized = normalize_vocab_target(word, target_type=target_type, lemma=lemma)
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT cached_analysis FROM words WHERE word=?",
+            (normalized,),
+        ).fetchone()
+    if row is None or not row["cached_analysis"]:
+        return None
+    try:
+        data = json.loads(row["cached_analysis"])
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data:
+        return None
+    if "en_definition" not in data and "ielts_note" not in data:
+        return None
+    return data
 
 
 def get_review_words(
@@ -2035,6 +2084,74 @@ def get_v2_lesson(lesson_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def get_v2_lesson_by_source(source_type: str, source_url: str) -> Optional[dict]:
+    """按 (source_type, source_url) 查课：建课幂等/崩溃恢复用（组合唯一）。"""
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_lessons WHERE source_type=? AND source_url=?",
+            (source_type, source_url),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ── v2_media_uploads：普通用户浏览器音视频上传暂存 ─────────────
+# status 流转：ready →（原子 consume）→ consumed；未消费可 → deleted。
+# 记录保存在当前用户自己的 vocab.db，跨用户天然不可见。
+
+def create_v2_media_upload(upload_id: str, original_filename: str, stored_relpath: str,
+                           media_kind: str, size_bytes: int, duration_seconds: float) -> dict:
+    with _db() as conn:
+        conn.execute(
+            "INSERT INTO v2_media_uploads"
+            " (id, original_filename, stored_relpath, media_kind, size_bytes, duration_seconds, status, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, 'ready', ?)",
+            (upload_id, original_filename, stored_relpath, media_kind,
+             int(size_bytes), float(duration_seconds), _now_iso()),
+        )
+    return get_v2_media_upload(upload_id)
+
+
+def get_v2_media_upload(upload_id: str) -> Optional[dict]:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_media_uploads WHERE id=?", (upload_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def consume_v2_media_upload(upload_id: str) -> bool:
+    """原子地将 ready → consumed；已被消费/删除或不存在返回 False。"""
+    with _db() as conn:
+        cur = conn.execute(
+            "UPDATE v2_media_uploads SET status='consumed', consumed_at=?"
+            " WHERE id=? AND status='ready'",
+            (_now_iso(), upload_id),
+        )
+    return cur.rowcount > 0
+
+
+def restore_v2_media_upload_ready(upload_id: str) -> bool:
+    """消费后失败回滚：consumed → ready；仅本轮获胜消费者可回滚（状态仍 consumed）。"""
+    with _db() as conn:
+        cur = conn.execute(
+            "UPDATE v2_media_uploads SET status='ready', consumed_at=''"
+            " WHERE id=? AND status='consumed'",
+            (upload_id,),
+        )
+    return cur.rowcount > 0
+
+
+def mark_v2_media_upload_deleted(upload_id: str) -> bool:
+    """仅未 consumed 的上传可删除；返回是否真的标记成功。"""
+    with _db() as conn:
+        cur = conn.execute(
+            "UPDATE v2_media_uploads SET status='deleted'"
+            " WHERE id=? AND status != 'consumed'",
+            (upload_id,),
+        )
+    return cur.rowcount > 0
+
+
 def list_v2_lessons(include_archived: bool = False) -> list[dict]:
     where = "" if include_archived else "WHERE lesson.archived=0"
     with _db() as conn:
@@ -2199,7 +2316,7 @@ def update_v2_translation_status(lesson_id: int, *, status: str | None = None,
 
 def set_v2_lesson_status(lesson_id: int, *, subtitle_status: str | None = None,
                          summary_status: str | None = None,
-                         subtitle_error: str = "", summary_error: str = "") -> None:
+                         subtitle_error: str | None = None, summary_error: str | None = None) -> None:
     now = _now_iso()
     sets = ["updated_at = ?"]
     params: list = [now]
@@ -2209,12 +2326,19 @@ def set_v2_lesson_status(lesson_id: int, *, subtitle_status: str | None = None,
     if summary_status is not None:
         sets.append("summary_status = ?")
         params.append(summary_status)
-    if subtitle_error:
+    # None=不动该列；显式空串=清除；状态转为非失败（pending/ready/取消）且未显式给错误时自动清除 stale error
+    if subtitle_error is not None:
         sets.append("subtitle_error = ?")
         params.append(subtitle_error)
-    if summary_error:
+    elif subtitle_status in ("pending", "ready", ""):
+        sets.append("subtitle_error = ?")
+        params.append("")
+    if summary_error is not None:
         sets.append("summary_error = ?")
         params.append(summary_error)
+    elif summary_status in ("pending", "ready", ""):
+        sets.append("summary_error = ?")
+        params.append("")
     params.append(lesson_id)
     with _db() as conn:
         conn.execute(
@@ -2319,6 +2443,23 @@ def get_v2_document_outline(lesson_id: int, content_hash: str) -> dict | None:
     return {"outline": outline, "updated_at": row["updated_at"]}
 
 
+def get_latest_v2_document_outline(lesson_id: int) -> dict | None:
+    """RAG 章节路由用：取最新缓存 outline，不限定 content_hash。"""
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT outline_json, updated_at FROM v2_document_outlines"
+            " WHERE lesson_id=? ORDER BY updated_at DESC LIMIT 1",
+            (lesson_id,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        outline = json.loads(row["outline_json"])
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return {"outline": outline, "updated_at": row["updated_at"]}
+
+
 def save_v2_document_outline(lesson_id: int, content_hash: str, outline: dict) -> dict:
     now = _now_iso()
     payload = json.dumps(outline, ensure_ascii=False)
@@ -2399,6 +2540,10 @@ def save_v2_chat_message(
     ai_response: str,
     context_mode: str = "auto",
     session_id: int | None = None,
+    coverage_status: str = "",
+    external_knowledge_used: bool = False,
+    citations: list[dict] | None = None,
+    unsupported: list[str] | None = None,
 ) -> dict:
     now = _now_iso()
     if session_id is None:
@@ -2418,12 +2563,18 @@ def save_v2_chat_message(
         cur = conn.execute(
             "INSERT INTO v2_chat_messages"
             " (lesson_id, session_id, timestamp_seconds, selected_start_seconds, selected_end_seconds,"
-            "  selected_segment_ids, user_message, ai_response, context_mode, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  selected_segment_ids, user_message, ai_response, context_mode,"
+            "  coverage_status, external_knowledge_used, citations_json, unsupported_json, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 lesson_id, session_id, timestamp_seconds, selected_start_seconds, selected_end_seconds,
                 json.dumps(selected_segment_ids, ensure_ascii=False),
-                user_message, ai_response, context_mode, now,
+                user_message, ai_response, context_mode,
+                coverage_status, int(bool(external_knowledge_used)),
+                json.dumps(citations or [], ensure_ascii=False),
+                # 有界：最多 5 条缺口说明
+                json.dumps([str(x) for x in (unsupported or [])][:5], ensure_ascii=False),
+                now,
             ),
         )
         row = conn.execute(
@@ -2433,8 +2584,23 @@ def save_v2_chat_message(
             "UPDATE v2_chat_sessions SET updated_at=? WHERE id=? AND lesson_id=?",
             (now, session_id, lesson_id),
         )
-    d = dict(row)
-    d["selected_segment_ids"] = json.loads(d["selected_segment_ids"])
+    return _normalize_chat_message(dict(row))
+
+
+def _normalize_chat_message(d: dict) -> dict:
+    d["selected_segment_ids"] = json.loads(d.get("selected_segment_ids") or "[]")
+    try:
+        d["citations"] = json.loads(d.pop("citations_json", None) or "[]")
+    except (TypeError, json.JSONDecodeError):
+        d["citations"] = []
+    try:
+        d["unsupported"] = json.loads(d.pop("unsupported_json", None) or "[]")
+    except (TypeError, json.JSONDecodeError):
+        d["unsupported"] = []
+    if not isinstance(d["unsupported"], list):
+        d["unsupported"] = []
+    d["unsupported"] = [str(x) for x in d["unsupported"]][:5]
+    d["external_knowledge_used"] = bool(d.get("external_knowledge_used"))
     return d
 
 
@@ -2456,9 +2622,7 @@ def get_v2_chat_history(
             ).fetchall()
     result = []
     for r in rows:
-        d = dict(r)
-        d["selected_segment_ids"] = json.loads(d["selected_segment_ids"])
-        result.append(d)
+        result.append(_normalize_chat_message(dict(r)))
     return result
 
 

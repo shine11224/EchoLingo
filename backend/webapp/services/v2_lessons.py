@@ -864,7 +864,7 @@ def _fetch_and_store_subtitles(lesson_id: int, url: str, translate: bool = False
         if translate:
             _translate_ancillary(lesson_id)
     except Exception as exc:
-        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc))
+        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc) or repr(exc))
         credit_meter.release_current(
             reason=f"core subtitle pipeline failed: {exc}"[:500])
         if translate:
@@ -926,7 +926,7 @@ def _import_local_media(lesson_id: int, media_path: str, transcript_path: str | 
         if translate:
             _translate_ancillary(lesson_id)
     except Exception as exc:
-        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc))
+        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc) or repr(exc))
         credit_meter.release_current(
             reason=f"core subtitle pipeline failed: {exc}"[:500])
         if translate:
@@ -961,7 +961,7 @@ def _import_bilibili_media(lesson_id: int, url: str, download_video: bool,
         if translate:
             _translate_ancillary(lesson_id)
     except Exception as exc:
-        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc))
+        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc) or repr(exc))
         credit_meter.release_current(
             reason=f"core subtitle pipeline failed: {exc}"[:500])
         if translate:

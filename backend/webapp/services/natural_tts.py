@@ -105,8 +105,10 @@ def _synthesize_edge_mp3_with_timestamps(
     edge_tts = _load_edge_tts()
 
     async def _run() -> list[dict]:
+        # 块级文本长、并发下服务端可能限流：接收窗口放宽到 180s（默认 60s 易误杀）
         communicate = edge_tts.Communicate(
-            text, voice=voice, rate=rate, pitch=pitch, boundary="WordBoundary"
+            text, voice=voice, rate=rate, pitch=pitch, boundary="WordBoundary",
+            connect_timeout=15, receive_timeout=180,
         )
         boundaries: list[dict] = []
         with open(mp3_path, "wb") as handle:

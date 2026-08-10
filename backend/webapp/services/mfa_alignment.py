@@ -20,7 +20,9 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import db
+from webapp.runtime import credit_meter
 from webapp.services.v2_translation import build_translation_units
+from webapp.storage import user_assets
 from webapp.storage.lessons import OUTPUT_DIR
 
 
@@ -37,7 +39,7 @@ _INTERVAL_RE = re.compile(
     re.DOTALL,
 )
 _SILENCE_LABELS = {"", "<eps>", "sil", "sp", "spn", "<unk>"}
-_RUNNING: set[int] = set()
+_RUNNING: set[tuple[str, int]] = set()
 _RUNNING_LOCK = threading.Lock()
 _MFA_PROCESS_LOCK = threading.Lock()
 _NUMBER_ONES = (
@@ -77,7 +79,11 @@ def _now() -> str:
 
 
 def alignment_directory(lesson_id: int) -> Path:
-    return OUTPUT_DIR / "v2_alignments" / str(int(lesson_id))
+    return user_assets.user_output_subdir(
+        "v2_alignments", str(int(lesson_id)),
+        fallback=OUTPUT_DIR / "v2_alignments" / str(int(lesson_id)),
+        create=False,
+    )
 
 
 def _result_path(lesson_id: int) -> Path:
@@ -164,25 +170,33 @@ def enqueue_lesson_alignment(lesson_id: int, *, force: bool = False) -> dict:
         raise ValueError("MFA alignment is only available for media lessons")
     if load_lesson_alignment(lesson_id) and not force:
         return get_alignment_status(lesson_id)
+    # 进行中集合按 (用户 scope, lesson_id)：不同用户相同 lesson_id 可同时排队
+    running_key = (user_assets.current_scope_key(), lesson_id)
     with _RUNNING_LOCK:
-        if lesson_id in _RUNNING:
+        if running_key in _RUNNING:
             return get_alignment_status(lesson_id)
-        _RUNNING.add(lesson_id)
+        _RUNNING.add(running_key)
     _write_json(
         _status_path(lesson_id),
         {"lesson_id": lesson_id, "status": "queued", "updated_at": _now(), "error": ""},
     )
     db.spawn_with_db_context(
-        _alignment_worker, lesson_id, force,
+        _alignment_worker, lesson_id, force, running_key,
         name=f"mfa-alignment-{lesson_id}",
     )
     return get_alignment_status(lesson_id)
 
 
-def _alignment_worker(lesson_id: int, force: bool) -> None:
+def _alignment_worker(lesson_id: int, force: bool, running_key: tuple[str, int] | None = None) -> None:
+    if running_key is None:
+        running_key = (user_assets.current_scope_key(), int(lesson_id))
     try:
         run_lesson_alignment(lesson_id, force=force)
+        # Task 7：force 重建是独立计费 operation，成功 settle；无上下文时 no-op
+        credit_meter.settle_current(actual_usage={"lesson_id": int(lesson_id)})
     except Exception as exc:
+        credit_meter.release_current(
+            reason=f"alignment rebuild failed: {exc}"[:500])
         try:
             _write_json(
                 _status_path(lesson_id),
@@ -197,7 +211,7 @@ def _alignment_worker(lesson_id: int, force: bool) -> None:
             pass
     finally:
         with _RUNNING_LOCK:
-            _RUNNING.discard(int(lesson_id))
+            _RUNNING.discard(running_key)
 
 
 def run_lesson_alignment(lesson_id: int, *, force: bool = False) -> dict:
@@ -222,6 +236,22 @@ def run_lesson_alignment(lesson_id: int, *, force: bool = False) -> dict:
         )
         command = _mfa_command()
         if not command:
+            # 云端无 MFA 环境：优先 Groq whisper-large-v3-turbo（秒级、词边界更准），
+            # 未配置/失败时回退本地 faster-whisper。paraformer 的 words 时间戳是整句
+            # 均匀插值（2026-08-07 实测 DashScope 原始返回），不能用于逐词音频对应。
+            from webapp.services.whisper_alignment import (
+                groq_available,
+                run_whisper_alignment,
+                whisper_available,
+            )
+
+            if groq_available():
+                try:
+                    return run_whisper_alignment(lesson_id, force=force, engine="groq")
+                except Exception as exc:
+                    print(f"[word-align] groq 失败（{exc}），回退 faster-whisper", flush=True)
+            if whisper_available():
+                return run_whisper_alignment(lesson_id, force=force)
             raise RuntimeError(
                 "MFA is unavailable; install the english-mfa environment or set MFA_COMMAND"
             )
@@ -312,11 +342,16 @@ def _is_media_lesson(lesson: dict) -> bool:
 def _resolve_lesson_audio(lesson: dict) -> Path:
     media_url = str(lesson.get("media_url") or "").strip()
     if media_url:
+        candidate: Path | None
         if media_url.startswith("/output/"):
-            candidate = (OUTPUT_DIR / media_url.removeprefix("/output/")).resolve()
+            # /output/ URL 只能解析到当前用户的 output root
+            candidate = user_assets.resolve_output_file(
+                media_url.removeprefix("/output/"), fallback=OUTPUT_DIR
+            )
         else:
-            candidate = Path(media_url).expanduser().resolve()
-        if candidate.exists() and candidate.is_file():
+            local = Path(media_url).expanduser().resolve()
+            candidate = local if local.is_file() else None
+        if candidate is not None:
             return candidate
     if str(lesson.get("source_type") or "") == "youtube":
         from sources.youtube import download_youtube_audio
@@ -738,3 +773,34 @@ def project_words_to_sentences(units: list[dict], aligned_words: list[dict]) -> 
             previous["end_seconds"] = boundary
             current["start_seconds"] = boundary
     return sentences
+
+
+def apply_aligned_unit_times(lesson_id: int, units: list[dict]) -> list[dict]:
+    """Override translation-unit start/end with real aligned times when available.
+
+    Units built from paraformer words carry uniformly interpolated times; when a
+    ready alignment exists (MFA or faster-whisper), its sentence boundaries are
+    real.  Matched by unit index + normalized text, same contract as the
+    intensive page.  Units without a confident match keep their original times.
+    """
+    alignment = load_lesson_alignment(lesson_id)
+    if not alignment:
+        return units
+    by_key = {
+        int(item.get("key", -1)): item
+        for item in alignment.get("sentences", [])
+        if isinstance(item, dict)
+    }
+    for position, unit in enumerate(units):
+        key = int(unit.get("index", position))
+        aligned = by_key.get(key)
+        if not aligned or aligned.get("boundary_confidence") not in {"high", "medium"}:
+            continue
+        aligned_text = " ".join(str(aligned.get("text") or "").split()).casefold()
+        unit_text = " ".join(str(unit.get("text") or "").split()).casefold()
+        if not aligned_text or aligned_text != unit_text:
+            continue
+        unit["start"] = float(aligned.get("start_seconds") or unit.get("start") or 0)
+        unit["end"] = float(aligned.get("end_seconds") or unit.get("end") or 0)
+        unit["timing_source"] = "alignment"
+    return units

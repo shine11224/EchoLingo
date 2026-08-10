@@ -13,7 +13,7 @@ import db
 from analyzer import SentenceAnalyzer
 from webapp.runtime import credit_meter
 from webapp.services.natural_tts import synthesize_natural_speech_with_timestamps
-from webapp.services.v2_translation import translate_lesson_subtitles
+from webapp.services.v2_translation import translate_reading_blocks
 from webapp.storage import user_assets
 from webapp.storage.lessons import OUTPUT_DIR
 
@@ -39,6 +39,27 @@ def cancel_reading_tts(lesson_id: int) -> bool:
         return True
 
 
+def recover_stuck_reading_tts() -> int:
+    """重启恢复：已声明生成音频、成品未落盘且仍 pending 的课程重新合成（块级缓存使命中块秒回）。"""
+    stuck = [
+        lesson for lesson in db.list_v2_lessons()
+        if lesson.get("media_kind") == "generated_audio"
+        and not str(lesson.get("media_url") or "")
+        and lesson.get("subtitle_status") == "pending"
+    ]
+    for lesson in stuck:
+        active_key = (user_assets.current_scope_key(), int(lesson["id"]))
+        with _ACTIVE_LOCK:
+            if active_key in _ACTIVE_LESSONS:
+                continue
+            _ACTIVE_LESSONS.add(active_key)
+        db.spawn_with_db_context(
+            _run_reading_tts, int(lesson["id"]), active_key,
+            name=f"reading-tts-recover-{lesson['id']}",
+        )
+    return len(stuck)
+
+
 def reading_tts_output_path(lesson_id: int) -> Path:
     return user_assets.user_output_subdir(
         "v2_assets", str(lesson_id),
@@ -62,11 +83,7 @@ def build_timed_reading_blocks(source_blocks: list[dict], segments: list[dict]) 
     timed_blocks = []
     segment_cursor = 0
     for block in source_blocks:
-        sentence_group = [
-            sentence
-            for sentence in SentenceAnalyzer._split_text_sentences(str(block.get("text") or ""))
-            if sentence.strip()
-        ]
+        sentence_group = _synthesizable_sentences(str(block.get("text") or ""))
         timed_sentences = segments[segment_cursor:segment_cursor + len(sentence_group)]
         segment_cursor += len(sentence_group)
         block_copy = dict(block)
@@ -105,6 +122,11 @@ def enqueue_reading_tts(lesson_id: int) -> bool:
         _run_reading_tts, lesson_id, active_key,
         name=f"reading-tts-{lesson_id}",
     )
+    # 翻译只依赖文本：与 TTS 并行跑，不再等音频完成
+    db.spawn_with_db_context(
+        translate_reading_blocks, lesson_id,
+        name=f"reading-translate-{lesson_id}",
+    )
     return True
 
 
@@ -119,11 +141,19 @@ def _run_reading_tts(lesson_id: int, active_key: tuple[str, int] | None = None) 
         db.update_v2_lesson_metadata(lesson_id, media_kind="")
         credit_meter.release_current(reason="reading_tts cancelled by user")
     except Exception as exc:
-        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc))
+        db.set_v2_lesson_status(lesson_id, subtitle_status="failed", subtitle_error=str(exc) or repr(exc))
         # 合成失败：撤回生成音频声明，课程回到「无精听」能力
         db.update_v2_lesson_metadata(lesson_id, media_kind="")
         # Task 8：合成失败释放 reading_tts 预授权（上下文 op 不存在时 no-op）
         credit_meter.release_current(reason=f"reading_tts failed: {exc}"[:500])
+    except BaseException as exc:
+        # 线程被 BaseException 杀死时也要留下可见失败，不允许无声卡 pending
+        try:
+            db.set_v2_lesson_status(lesson_id, subtitle_status="failed",
+                                    subtitle_error=f"fatal: {exc!r}"[:500])
+            db.update_v2_lesson_metadata(lesson_id, media_kind="")
+        finally:
+            raise
     else:
         credit_meter.settle_current(actual_usage={
             "engine": "sapi",
@@ -138,7 +168,19 @@ def _run_reading_tts(lesson_id: int, active_key: tuple[str, int] | None = None) 
             _CANCEL_REQUESTED.discard(active_key)
 
 
-_WORD_TOKEN = re.compile(r"[a-z0-9']+")
+_WORD_TOKEN = re.compile(r"[a-z0-9']+", re.IGNORECASE)
+_GARBAGE_CHARS = re.compile("�+")
+
+
+def _synthesizable_sentences(text: str) -> list[str]:
+    """断句并清理 PDF 提取残留：先剥掉  类替换字符（混合句不丢内容），
+    再剔除清理后无词字符的纯乱码句（edge_tts 会确定性拒收）。"""
+    sentences = []
+    for sentence in SentenceAnalyzer._split_text_sentences(text):
+        cleaned = " ".join(_GARBAGE_CHARS.sub("", sentence).split())
+        if cleaned and _WORD_TOKEN.search(cleaned):
+            sentences.append(cleaned)
+    return sentences
 
 
 def align_sentences_to_boundaries(
@@ -215,11 +257,7 @@ def build_reading_tts(lesson_id: int) -> dict:
     db.configure_v2_lesson_translation(lesson_id, requested=True)
     source_blocks = db.get_v2_reading_blocks(lesson_id)
     block_sentences = [
-        [
-            sentence
-            for sentence in SentenceAnalyzer._split_text_sentences(str(block.get("text") or ""))
-            if sentence.strip()
-        ]
+        _synthesizable_sentences(str(block.get("text") or ""))
         for block in source_blocks
     ]
     sentences = [sentence for group in block_sentences for sentence in group]
@@ -324,11 +362,9 @@ def build_reading_tts(lesson_id: int) -> dict:
         media_kind="generated_audio",
     )
     db.set_v2_lesson_status(lesson_id, subtitle_status="ready")
-    translation = translate_lesson_subtitles(lesson_id)
     return {
         "status": "ready",
         "sentence_count": len(segments),
         "characters": sum(len(sentence) for sentence in sentences),
         "duration": elapsed,
-        "translation": translation,
     }

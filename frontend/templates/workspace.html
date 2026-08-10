@@ -2879,9 +2879,16 @@ function renderSubtitleText(segment) {
   }).join('');
 }
 
+let readingPassageSignature = '';
+
 function renderReadingPassage() {
   const root = document.getElementById('reading-passage');
   if (!root) return;
+  // 轮询期间内容没变就跳过重渲染：innerHTML 重建会让页面高度瞬时塌缩、滚动被弹回顶部
+  const subtitleMode = document.getElementById('subtitle-mode')?.value || 'lookup';
+  const signature = `${readingBlocks.length}|${subtitleMode}|${Object.keys(sentenceTranslations).length}`;
+  if (readingBlocks.length && signature === readingPassageSignature && root.childElementCount > 0) return;
+  readingPassageSignature = signature;
   const renderVersion = ++readingRenderVersion;
   if (!readingBlocks.length) {
     root.innerHTML = '<p data-segment-index="" data-start-seconds="" data-end-seconds="" hidden></p><div class="empty-state">No reading passage blocks found.</div>';

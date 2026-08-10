@@ -154,12 +154,17 @@ def test_playback_units_hard_cap_splits_one_oversized_chunk_without_punctuation(
     ])
 
     assert len(units) == 3
-    assert all(len(_WORD_RE.findall(unit["text"])) <= MAX_TRANSLATION_UNIT_WORDS for unit in units)
+    for unit in units:
+        assert len(_WORD_RE.findall(unit["text"])) <= MAX_TRANSLATION_UNIT_WORDS
+    # 均衡切分，不出现可均衡时的无意义小尾巴
     assert min(len(_WORD_RE.findall(unit["text"])) for unit in units) >= 30
+    # 文本无丢失无重复
     assert [token for unit in units for token in unit["text"].split()] == tokens
+    # 时间戳单调且连续
     assert units[0]["start"] == 0.0
     assert units[-1]["end"] == 50.0
     for prev, curr in zip(units, units[1:]):
+        assert prev["start"] <= prev["end"]
         assert curr["start"] == prev["end"]
 
 
@@ -199,9 +204,16 @@ def test_playback_units_hard_cap_splits_oversized_chunk_among_mixed_chunks():
         " ".join(oversized[40:]),
         "Short bridge Final sentence here.",
     ]
-    assert all(len(_WORD_RE.findall(unit["text"])) <= MAX_TRANSLATION_UNIT_WORDS for unit in units)
+    for unit in units:
+        assert len(_WORD_RE.findall(unit["text"])) <= MAX_TRANSLATION_UNIT_WORDS
+    # 顺序与覆盖：全部 token 依次出现且无重复
     expected_tokens = [token for segment in segments for token in segment["text"].split()]
     assert [token for unit in units for token in unit["text"].split()] == expected_tokens
+    # 时间轴单调
+    for prev, curr in zip(units, units[1:]):
+        assert prev["start"] <= prev["end"]
+        assert curr["start"] >= prev["start"]
+        assert curr["end"] >= prev["end"]
     assert units[0]["start"] == 0.0
     assert units[-1]["end"] == 46.0
 
@@ -293,7 +305,8 @@ def test_reading_selection_translation_uses_hy_mt_and_reuses_cache(tmp_path, mon
         "translation": "混元:A selected sentence.",
         "engine": "hy-mt",
     }
-    assert second.json() == first.json()
+    # Task 8：缓存命中额外携带零消耗计费标记（首次翻译无该字段）
+    assert second.json() == {**first.json(), "credits": {"charged": 0, "cached": True}}
     assert calls == ["A selected sentence."]
 
 
@@ -324,3 +337,63 @@ def test_translation_endpoints_do_not_fallback_when_hy_mt_is_unavailable(tmp_pat
     assert selection.status_code == 503
     assert sentences.status_code == 503
     assert "混元翻译引擎未就绪" in selection.json()["detail"]
+
+
+def test_translate_reading_blocks_translates_from_blocks_without_segments(tmp_path, monkeypatch):
+    """Reading 翻译以阅读块句子为源：无字幕段也能跑，乱码句跳过，缓存按文本键。"""
+    import db
+    from webapp.services import v2_translation
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_upload",
+        source_url="upload:reading-translate",
+        title="Reading Translate",
+        lesson_mode="reading",
+        media_kind="generated_audio",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [
+        {"index": 1, "text": "First real sentence. "},
+        {"index": 2, "text": "Second real sentence."},
+    ])
+    db.configure_v2_lesson_translation(lesson["id"], requested=True)
+    monkeypatch.setattr(v2_translation, "hy_ready", lambda: True)
+    monkeypatch.setattr(v2_translation, "hy_translate", lambda text: f"中:{text}")
+
+    result = v2_translation.translate_reading_blocks(lesson["id"])
+
+    assert result == {"status": "ready", "done": 2, "total": 2}
+    assert db.get_v2_sentence("First real sentence.")["translation"] == "中:First real sentence."
+    assert db.get_v2_sentence("Second real sentence.")["translation"] == "中:Second real sentence."
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["translation_status"] == "ready"
+    assert saved["translation_done"] == 2
+
+
+def test_translate_reading_blocks_marks_failure_with_error(tmp_path, monkeypatch):
+    import db
+    from webapp.services import v2_translation
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:reading-translate-fail",
+        title="Reading Translate Fail",
+        lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [{"index": 1, "text": "Some sentence."}])
+    monkeypatch.setattr(v2_translation, "hy_ready", lambda: True)
+
+    def boom(text):
+        raise RuntimeError("hy-mt down")
+
+    monkeypatch.setattr(v2_translation, "hy_translate", boom)
+
+    result = v2_translation.translate_reading_blocks(lesson["id"])
+
+    assert result["status"] == "failed"
+    saved = db.get_v2_lesson(lesson["id"])
+    assert saved["translation_status"] == "failed"
+    assert "hy-mt down" in saved["translation_error"]

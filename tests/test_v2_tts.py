@@ -50,7 +50,7 @@ def test_build_reading_tts_creates_course_audio_and_timed_subtitles(tmp_path, mo
     translated = []
     monkeypatch.setattr(
         v2_tts,
-        "translate_lesson_subtitles",
+        "translate_reading_blocks",
         lambda lesson_id: translated.append(lesson_id) or {"status": "ready"},
     )
 
@@ -64,7 +64,7 @@ def test_build_reading_tts_creates_course_audio_and_timed_subtitles(tmp_path, mo
     assert updated["media_url"].endswith(f"/{lesson['id']}/reading.wav")
     assert updated["duration"] == 0.2
     assert updated["translation_requested"] == 1
-    assert translated == [lesson["id"]]
+    assert translated == []  # 翻译与 TTS 解耦：build 不再触发翻译
     assert v2_lessons.get_available_modes(updated) == ["listening", "reading"]
     segments = db.get_v2_subtitle_segments(lesson["id"])
     assert [segment["text"] for segment in segments] == ["First sentence.", "Second sentence!"]
@@ -181,7 +181,7 @@ def test_build_reading_tts_retries_transient_synthesis_failure(tmp_path, monkeyp
         ]
 
     monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", flaky)
-    monkeypatch.setattr(v2_tts, "translate_lesson_subtitles", lambda lid: {"status": "ready"})
+    monkeypatch.setattr(v2_tts, "translate_reading_blocks", lambda lid: {"status": "ready"})
 
     result = v2_tts.build_reading_tts(lesson["id"])
 
@@ -284,7 +284,7 @@ def test_build_reading_tts_synthesizes_once_per_block(tmp_path, monkeypatch):
         return [{"text": text.split()[0], "offset": 0.0, "duration": 0.05}]
 
     monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", fake)
-    monkeypatch.setattr(v2_tts, "translate_lesson_subtitles", lambda lid: {"status": "ready"})
+    monkeypatch.setattr(v2_tts, "translate_reading_blocks", lambda lid: {"status": "ready"})
 
     result = v2_tts.build_reading_tts(lesson["id"])
 
@@ -329,7 +329,7 @@ def test_cancel_reading_tts_restores_no_audio_state(tmp_path, monkeypatch):
         return [{"text": text.split()[0], "offset": 0.0, "duration": 0.05}]
 
     monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", fake)
-    monkeypatch.setattr(v2_tts, "translate_lesson_subtitles", lambda lid: {"status": "ready"})
+    monkeypatch.setattr(v2_tts, "translate_reading_blocks", lambda lid: {"status": "ready"})
 
     v2_tts._run_reading_tts(lesson["id"])
 
@@ -367,7 +367,7 @@ def test_cancel_reading_tts_without_active_job_leaves_no_flag(tmp_path, monkeypa
         return [{"text": "Only", "offset": 0.0, "duration": 0.05}]
 
     monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", fake)
-    monkeypatch.setattr(v2_tts, "translate_lesson_subtitles", lambda lid: {"status": "ready"})
+    monkeypatch.setattr(v2_tts, "translate_reading_blocks", lambda lid: {"status": "ready"})
 
     v2_tts._run_reading_tts(lesson["id"])
 
@@ -399,6 +399,175 @@ def test_reading_tts_cancel_route(tmp_path, monkeypatch):
         "was_running": False,
     }
     assert client.post("/api/v2/lessons/99999/reading/tts/cancel").status_code == 404
+
+
+def test_recover_stuck_reading_tts_requeues_only_stuck_lessons(tmp_path, monkeypatch):
+    """重启恢复：只对「声明了生成音频 + 成品未落盘 + 仍 pending」的课程重新合成。"""
+    import db
+    from webapp.services import v2_tts
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    stuck = db.create_v2_lesson(
+        source_type="reading_upload", source_url="upload:stuck", title="Stuck",
+        lesson_mode="reading", media_kind="generated_audio",
+    )
+    db.set_v2_lesson_status(stuck["id"], subtitle_status="pending")
+    ready = db.create_v2_lesson(
+        source_type="reading_upload", source_url="upload:ready", title="Ready",
+        lesson_mode="reading", media_kind="generated_audio",
+        media_url="/output/v2_assets/x/reading.wav",
+    )
+    db.set_v2_lesson_status(ready["id"], subtitle_status="ready")
+    db.create_v2_lesson(
+        source_type="reading_text", source_url="manual:plain", title="Plain", lesson_mode="reading",
+    )
+
+    spawned = []
+    monkeypatch.setattr(db, "spawn_with_db_context", lambda fn, *a, **k: spawned.append((fn, a)))
+
+    assert v2_tts.recover_stuck_reading_tts() == 1
+    assert len(spawned) == 1
+    fn, args = spawned[0]
+    assert fn is v2_tts._run_reading_tts
+    assert args[0] == stuck["id"]
+
+
+def test_build_reading_tts_skips_unspeakable_garbage_blocks(tmp_path, monkeypatch):
+    """纯乱码块（如 ''）跳过；混合乱码句先剥  字符再合成，不丢句子内容。"""
+    import db
+    from webapp.services import v2_tts
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(v2_tts, "OUTPUT_DIR", tmp_path / "output")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_upload",
+        source_url="upload:tts-garbage",
+        title="TTS Garbage",
+        lesson_mode="reading",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [
+        {"index": 1, "text": "The  result holds."},
+        {"index": 2, "text": ""},
+        {"index": 3, "text": "Real sentence two."},
+    ])
+
+    calls = []
+
+    def fake(text, output_path):
+        calls.append(text)
+        _make_wav(output_path)
+        return [{"text": text.split()[0], "offset": 0.0, "duration": 0.05}]
+
+    monkeypatch.setattr(v2_tts, "synthesize_natural_speech_with_timestamps", fake)
+    monkeypatch.setattr(v2_tts, "translate_reading_blocks", lambda lid: {"status": "ready"})
+
+    result = v2_tts.build_reading_tts(lesson["id"])
+
+    assert result["status"] == "ready"
+    assert sorted(calls) == ["Real sentence two.", "The result holds."]
+    segments = db.get_v2_subtitle_segments(lesson["id"])
+    assert [segment["text"] for segment in segments] == ["The result holds.", "Real sentence two."]
+    timed_blocks = db.get_v2_reading_blocks(lesson["id"])
+    assert timed_blocks[1]["start_seconds"] is None  # 纯乱码块不占时间轴
+    assert timed_blocks[1]["sentences"] == []
+    assert timed_blocks[2]["sentences"][0]["text"] == "Real sentence two."
+
+
+def test_set_v2_lesson_status_clears_stale_error_on_pending(tmp_path, monkeypatch):
+    """重新入队/重试时必须清掉旧的失败错误，否则旧错误会被误读为新失败。"""
+    import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:status-clear",
+        title="Status Clear",
+        lesson_mode="reading",
+    )
+    db.set_v2_lesson_status(lesson["id"], subtitle_status="failed", subtitle_error="old error")
+    assert db.get_v2_lesson(lesson["id"])["subtitle_error"] == "old error"
+
+    db.set_v2_lesson_status(lesson["id"], subtitle_status="pending")
+    updated = db.get_v2_lesson(lesson["id"])
+    assert updated["subtitle_status"] == "pending"
+    assert updated["subtitle_error"] == ""
+
+
+def test_run_reading_tts_failure_stores_repr_for_empty_message(tmp_path, monkeypatch):
+    """空消息异常（如 TimeoutError）落库为 repr，不再出现 failed 却无错误文本。"""
+    import db
+    from webapp.services import v2_tts
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_upload",
+        source_url="upload:empty-exc",
+        title="Empty Exc",
+        lesson_mode="reading",
+        media_kind="generated_audio",
+    )
+
+    def boom(_lesson_id):
+        raise TimeoutError()
+
+    monkeypatch.setattr(v2_tts, "build_reading_tts", boom)
+
+    v2_tts._run_reading_tts(lesson["id"])
+
+    updated = db.get_v2_lesson(lesson["id"])
+    assert updated["subtitle_status"] == "failed"
+    assert "TimeoutError" in updated["subtitle_error"]
+
+
+def test_enqueue_reading_tts_spawns_translation_in_parallel(tmp_path, monkeypatch):
+    """翻译只依赖文本：与 TTS 同时各起一个后台任务，不再等音频完成。"""
+    import db
+    from webapp.services import v2_tts
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        source_type="reading_text",
+        source_url="manual:tts-parallel",
+        title="TTS Parallel",
+        lesson_mode="reading",
+    )
+    spawned = []
+    monkeypatch.setattr(db, "spawn_with_db_context", lambda fn, *a, **k: spawned.append(fn))
+
+    assert v2_tts.enqueue_reading_tts(lesson["id"]) is True
+
+    assert spawned == [v2_tts._run_reading_tts, v2_tts.translate_reading_blocks]
+
+
+def test_sentence_translations_falls_back_to_reading_blocks(tmp_path, monkeypatch):
+    """Reading 课 TTS 未完成（无字幕段）时，翻译路由从阅读块取句返回已缓存译文。"""
+    import db
+    from fastapi.testclient import TestClient
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="reading_upload",
+        source_url="upload:trans-fallback",
+        title="Translation Fallback",
+        lesson_mode="reading",
+        media_kind="generated_audio",
+    )
+    db.replace_v2_reading_blocks(lesson["id"], [
+        {"index": 1, "text": "First sentence here. Second sentence here."},
+    ])
+    db.upsert_v2_sentence("First sentence here.", translation="第一句。")
+
+    response = client.get(f"/api/v2/lessons/{lesson['id']}/sentence-translations")
+
+    assert response.status_code == 200
+    assert response.json()["translations"] == {"First sentence here.": "第一句。"}
 
 
 def test_run_reading_tts_failure_clears_generated_audio(tmp_path, monkeypatch):

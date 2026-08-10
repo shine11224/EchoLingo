@@ -278,6 +278,69 @@ def build_translation_units(segments: list[dict]) -> list[dict]:
     return out
 
 
+def translate_reading_blocks(lesson_id: int) -> dict:
+    """Reading 课批量翻译：以阅读块句子为源，与 TTS 合成解耦并行运行。
+
+    翻译缓存按文本键（v2_sentence），TTS 完成后字幕段复用同一份缓存。
+    """
+    from webapp.services.v2_tts import _synthesizable_sentences
+
+    blocks = db.get_v2_reading_blocks(lesson_id)
+    texts: list[str] = []
+    seen: set[str] = set()
+    for block in blocks:
+        for sentence in _synthesizable_sentences(str(block.get("text") or "")):
+            normalized = " ".join(sentence.split())
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                texts.append(normalized)
+    total = len(texts)
+    if not texts:
+        error = "No reading sentences are available for Hy-MT translation"
+        db.update_v2_translation_status(
+            lesson_id, status="failed", done=0, total=0, ready=False, error=error
+        )
+        return {"status": "failed", "done": 0, "total": 0, "error": error}
+    if not hy_ready():
+        error = "Hy-MT translation model is not ready"
+        db.update_v2_translation_status(
+            lesson_id, status="failed", done=0, total=total, ready=False, error=error
+        )
+        return {"status": "failed", "done": 0, "total": total, "error": error}
+
+    db.update_v2_translation_status(
+        lesson_id, status="translating", done=0, total=total,
+        buffer_seconds=0, rate=0, ready=False, error="",
+    )
+    done = 0
+    try:
+        for text in texts:
+            cached = db.get_v2_sentence(text)
+            translation = str((cached or {}).get("translation") or "").strip()
+            if not translation:
+                translation = hy_translate(text)
+                if not translation:
+                    raise RuntimeError("Hy-MT returned an empty translation")
+                db.upsert_v2_sentence(text, translation=translation)
+            done += 1
+            db.update_v2_translation_status(
+                lesson_id, status="translating", done=done, total=total,
+                buffer_seconds=0, rate=0, ready=False,
+            )
+    except Exception as exc:
+        db.update_v2_translation_status(
+            lesson_id, status="failed", done=done, total=total,
+            ready=False, error=str(exc) or repr(exc),
+        )
+        return {"status": "failed", "done": done, "total": total, "error": str(exc) or repr(exc)}
+
+    db.update_v2_translation_status(
+        lesson_id, status="ready", done=total, total=total,
+        buffer_seconds=0, ready=True, error="",
+    )
+    return {"status": "ready", "done": total, "total": total}
+
+
 def translate_lesson_subtitles(lesson_id: int) -> dict:
     units = build_translation_units(db.get_v2_subtitle_segments(lesson_id))
     total = len(units)
