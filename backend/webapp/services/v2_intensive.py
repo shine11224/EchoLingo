@@ -176,7 +176,15 @@ def build_intensive_document(
                     if str(sentence.get("text") or "").strip()
                 ]
             else:
-                pairs = [(text, {}) for text in _split_reading_text(block.get("text", ""))]
+                # 无 TTS 的块：与翻译管线同一把断句尺（_synthesizable_sentences）。
+                # 若用本地启发式重切，会把 "(Bornmann and Mutz, 2015)" 在数字前断开，
+                # 碎片单元从未被翻译，中文随之丢失。
+                from webapp.services.v2_tts import _synthesizable_sentences
+
+                pairs = [
+                    (text, {})
+                    for text in _synthesizable_sentences(block.get("text", ""))
+                ]
             for sentence_index, (text, timed) in enumerate(pairs):
                 key = reading_sentence_key(block_index, sentence_index)
                 saved = saved_by_key.get(key) or saved_by_text.get(_normalize_sentence(text))

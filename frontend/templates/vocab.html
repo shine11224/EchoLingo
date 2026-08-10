@@ -363,7 +363,9 @@
 
 </div>
 
-<script src="/static/natural-tts.js?v=20260805-1"></script>
+<script src="/static/elt_credits.js?v=20260809-1"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script src="/static/natural-tts.js?v=20260809-1"></script>
 <script>
   // ── Data & State ──────────────────────────────────────
   let vocabData = {};       // word → entry
@@ -434,7 +436,13 @@
           return fs && new Date(fs + 'T00:00:00') >= cutoff;
         });
       } else {
-        entries = entries.filter(([, e]) => (e.level || '').toLowerCase() === currentFilter);
+        // 词表筛选：按词表成员资格过滤；词表尚未载入时先显示加载态，载入完成后重渲染
+        const wordSet = wordlistWordsCache[currentFilter];
+        if (!wordSet) {
+          list.innerHTML = '<div class="empty-state"><p>词表载入中…</p></div>';
+          return;
+        }
+        entries = entries.filter(([w]) => wordSet.has(w.toLowerCase()));
       }
     }
 
@@ -667,7 +675,7 @@
     status.textContent = '正在调用 AI，约 10 秒…';
 
     try {
-      const res  = await fetch('/api/vocab-story', {
+      const res  = await eltCredits.billableFetch('vocab_story', '/api/vocab-story', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ words: [..._storyWordSet], learner_level, theme, force_new: forceNew }),
@@ -791,12 +799,37 @@
       });
   }
 
+  // 词表筛选按「词是否属于该词表」过滤：entry.level 存的是来源标记（v2/自由文本），
+  // 与词表 key 永不匹配，旧等值比较导致点任何自带词表都为空。
+  const wordlistWordsCache = {};
+  let wordlistFilterToken = 0;
+  async function ensureWordlistWords(key) {
+    if (wordlistWordsCache[key]) return wordlistWordsCache[key];
+    let words = [];
+    try {
+      const resp = await fetch(`/wordlists/${encodeURIComponent(key)}`);
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        words = Array.isArray(data.words) ? data.words : Object.keys(data.words || {});
+      }
+    } catch (err) { /* 网络失败按空集处理，避免卡死筛选 */ }
+    wordlistWordsCache[key] = new Set(words.map(w => String(w).toLowerCase()));
+    return wordlistWordsCache[key];
+  }
+
   // ── Filter / Sort ──────────────────────────────────────
   function setFilter(val, btn) {
     currentFilter = val;
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderList();
+    const fixed = ['all', 'due', 'today', 'recent'];
+    if (!fixed.includes(val) && !wordlistWordsCache[val]) {
+      const token = ++wordlistFilterToken;
+      ensureWordlistWords(val).then(() => {
+        if (token === wordlistFilterToken && currentFilter === val) renderList();
+      });
+    }
   }
 
   function setSort(val) {
@@ -819,7 +852,7 @@
     hintEl.textContent = '生成中…';
     hintEl.classList.remove('placeholder');
     try {
-      const res  = await fetch('/api/hint', {
+      const res  = await eltCredits.billableFetch('practice_hint', '/api/hint', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ english: example, vocab: [word], pattern_template: '' }),
@@ -859,7 +892,7 @@
     resultEl.innerHTML = '<span style="color:var(--muted)">DeepSeek 分析中…</span>';
 
     try {
-      const res  = await fetch('/api/practice', {
+      const res  = await eltCredits.billableFetch('practice_evaluation', '/api/practice', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
