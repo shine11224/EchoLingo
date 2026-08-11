@@ -111,6 +111,22 @@
   }
 
   async function fetchTtsBlob(text) {
+    // Task 8：用户主动点击 → 先 POST prepare（缓存优先、只对新合成计费），
+    // 再 GET 播放缓存；单用户/公开库 prepare 同样可用（后端计费 no-op）。
+    const credits = global.eltCredits;
+    if (credits && typeof credits.billableFetch === 'function') {
+      const prepResp = await credits.billableFetch('sentence_tts', '/api/tts/natural/prepare', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      });
+      if (!prepResp.ok) throw new Error(`Natural TTS prepare failed: ${prepResp.status}`);
+      const prep = await prepResp.json();
+      const audioUrl = (prep && prep.audio_url) || `/api/tts/natural?text=${encodeURIComponent(text)}`;
+      const cached = await global.fetch(audioUrl);
+      if (!cached.ok) throw new Error(`Natural TTS playback failed: ${cached.status}`);
+      return cached.blob();
+    }
+    // 未加载 elt_credits.js 的页面（旧缓存 HTML）：保持旧 GET 直通行为
     const response = await global.fetch(`/api/tts/natural?text=${encodeURIComponent(text)}`);
     if (!response.ok) throw new Error(`Natural TTS failed: ${response.status}`);
     return response.blob();

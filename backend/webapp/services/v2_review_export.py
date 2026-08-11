@@ -8,6 +8,7 @@ from pathlib import Path
 
 import db
 from webapp.services.natural_tts import is_current_tts_audio, synthesize_natural_speech
+from webapp.storage import user_assets
 from webapp.storage.lessons import OUTPUT_DIR
 
 
@@ -16,7 +17,9 @@ def export_review_html(lesson_id: int) -> dict:
     if not lesson:
         raise ValueError(f"Lesson {lesson_id} not found")
 
-    export_dir = OUTPUT_DIR / "v2_exports" / str(lesson_id)
+    export_dir = user_assets.user_output_subdir(
+        "v2_exports", str(lesson_id), fallback=OUTPUT_DIR / "v2_exports" / str(lesson_id)
+    )
     audio_dir = export_dir / "audio"
     export_dir.mkdir(parents=True, exist_ok=True)
     audio_dir.mkdir(parents=True, exist_ok=True)

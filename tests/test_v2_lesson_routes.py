@@ -172,16 +172,21 @@ def test_capabilities_reading_pdf_lesson_without_media(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     client = TestClient(create_app())
     lesson = db.create_v2_lesson(
-        source_type="reading_pdf", source_url="reading://pdf-caps",
-        title="PDF passage", lesson_mode="reading",
+        source_type="reading_pdf",
+        source_url="reading://pdf-caps",
+        title="PDF passage",
+        lesson_mode="reading",
     )
     db.replace_v2_reading_blocks(lesson["id"], [{"index": 1, "text": "A paragraph."}])
 
     status = client.get(f"/api/v2/lessons/{lesson['id']}/status").json()
+
     assert status["capabilities"] == {"can_listen": False, "can_read": True}
     assert status["available_modes"] == ["reading"]
+
     rejected = client.patch(f"/api/v2/lessons/{lesson['id']}/mode", json={"mode": "listening"})
     assert rejected.status_code == 400
+
     library = client.get("/api/v2/lessons/library").json()["lessons"]
     entry = next(c for c in library if c["id"] == lesson["id"])
     assert entry["capabilities"] == {"can_listen": False, "can_read": True}
@@ -196,10 +201,13 @@ def test_capabilities_youtube_lesson_can_listen(tmp_path, monkeypatch):
     lesson = db.create_v2_lesson(
         source_type="youtube",
         source_url="https://www.youtube.com/watch?v=abc123def45",
-        video_id="abc123def45", title="Demo",
+        video_id="abc123def45",
+        title="Demo",
     )
     db.replace_v2_reading_blocks(lesson["id"], [{"index": 1, "text": "A paragraph."}])
+
     status = client.get(f"/api/v2/lessons/{lesson['id']}/status").json()
+
     assert status["capabilities"] == {"can_listen": True, "can_read": True}
 
 
@@ -252,6 +260,7 @@ def _stub_subtitle_pipeline(monkeypatch, service, title):
     monkeypatch.setattr(service, "source_bundle_to_segment_dicts", lambda b: [])
     monkeypatch.setattr(service, "_store_media_segments", lambda *a, **k: None)
     monkeypatch.setattr(service, "_enqueue_media_alignment", lambda *a, **k: None)
+    monkeypatch.setattr(service.credit_meter, "settle_current", lambda *a, **k: None)
 
 
 def test_youtube_subtitle_fetch_backfills_real_title(tmp_path, monkeypatch):
@@ -260,12 +269,15 @@ def test_youtube_subtitle_fetch_backfills_real_title(tmp_path, monkeypatch):
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     _stub_subtitle_pipeline(monkeypatch, service, "Real Video Title")
+
     lesson = db.create_v2_lesson(
         source_type="youtube",
         source_url="https://www.youtube.com/watch?v=abc123def45",
-        video_id="abc123def45", title="YouTube Lesson abc123def45",
+        video_id="abc123def45",
+        title="YouTube Lesson abc123def45",
     )
     service._fetch_and_store_subtitles(lesson["id"], lesson["source_url"])
+
     saved = db.get_v2_lesson(lesson["id"])
     assert saved["title"] == "Real Video Title"
     assert saved["subtitle_status"] == "ready"
@@ -277,12 +289,15 @@ def test_youtube_subtitle_fetch_blank_title_keeps_fallback(tmp_path, monkeypatch
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     _stub_subtitle_pipeline(monkeypatch, service, "   ")
+
     lesson = db.create_v2_lesson(
         source_type="youtube",
         source_url="https://www.youtube.com/watch?v=abc123def45",
-        video_id="abc123def45", title="YouTube Lesson abc123def45",
+        video_id="abc123def45",
+        title="YouTube Lesson abc123def45",
     )
     service._fetch_and_store_subtitles(lesson["id"], lesson["source_url"])
+
     saved = db.get_v2_lesson(lesson["id"])
     assert saved["title"] == "YouTube Lesson abc123def45"
     assert saved["subtitle_status"] == "ready"
@@ -1832,3 +1847,304 @@ def test_reading_saved_sentence_accepts_frontend_payload_shape(tmp_path, monkeyp
 
     assert response.status_code == 200, response.text
     assert response.json()["ok"] is True
+
+
+# ── 普通用户浏览器音视频上传（Task 3）─────────────────────────
+
+
+def _upload_env(tmp_path, monkeypatch, *, duration=120.0, kind="local_video"):
+    """单用户上传测试环境：隔离 DB/output/uploads，桩掉 ffprobe 与后台导入。"""
+    import db
+    import webapp.services.v2_lessons as service
+    from webapp.storage import user_assets
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(user_assets, "GLOBAL_OUTPUT_DIR", tmp_path / "global-output")
+    monkeypatch.setattr(service, "OUTPUT_DIR", tmp_path / "global-output")
+    monkeypatch.setattr(
+        service, "_probe_uploaded_media", lambda path: (duration, kind))
+    monkeypatch.setattr(service, "enqueue_local_import", lambda *a, **k: None)
+    from fastapi_server import create_app
+    return service, TestClient(create_app())
+
+
+def _post_media(client, name="lesson.mp4", payload=b"fake-media-bytes"):
+    return client.post(
+        "/api/v2/lessons/media-uploads",
+        files={"file": (name, payload, "application/octet-stream")},
+    )
+
+
+def test_media_upload_returns_quote_and_ready_record(tmp_path, monkeypatch):
+    import db
+    service, client = _upload_env(tmp_path, monkeypatch, duration=120.0)
+
+    resp = _post_media(client)
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["upload_id"] if "upload_id" in data else data["id"]
+    upload_id = data.get("upload_id") or data["id"]
+    assert data["media_kind"] == "local_video"
+    assert data["duration_seconds"] == 120.0
+    assert data["quote"] == {
+        "operation_type": "course_build_media",
+        "points": 10,  # 120s → 2 分钟 × 5 分
+        "rate_version": "shadow-v1",
+        "mode": "shadow",
+    }
+    record = db.get_v2_media_upload(upload_id)
+    assert record["status"] == "ready"
+    stored = tmp_path / "global-output" / "uploads" / upload_id / "lesson.mp4"
+    assert stored.is_file() and stored.read_bytes() == b"fake-media-bytes"
+
+
+def test_media_upload_rejects_bad_extension_and_leaves_no_staging(tmp_path, monkeypatch):
+    _, client = _upload_env(tmp_path, monkeypatch)
+
+    resp = _post_media(client, name="evil.exe")
+
+    assert resp.status_code == 400
+    uploads_root = tmp_path / "global-output" / "uploads"
+    assert not uploads_root.exists() or not any(uploads_root.iterdir())
+
+
+def test_media_upload_rejects_fake_media_and_cleans_staging(tmp_path, monkeypatch):
+    import webapp.services.v2_lessons as service
+    _, client = _upload_env(tmp_path, monkeypatch)
+
+    def fake_probe(path):
+        raise service.MediaUploadError("无法识别的媒体文件")
+
+    monkeypatch.setattr(service, "_probe_uploaded_media", fake_probe)
+    resp = _post_media(client, name="fake.mp4")  # 扩展名合法但内容不是媒体
+
+    assert resp.status_code == 400
+    uploads_root = tmp_path / "global-output" / "uploads"
+    assert not uploads_root.exists() or not any(uploads_root.iterdir())
+
+
+def test_media_upload_over_size_limit_413_and_cleans_staging(tmp_path, monkeypatch):
+    monkeypatch.setenv("ELT_MEDIA_UPLOAD_MAX_MB", "1")
+    _, client = _upload_env(tmp_path, monkeypatch)
+
+    resp = _post_media(client, payload=b"x" * (1024 * 1024 + 8))
+
+    assert resp.status_code == 413
+    uploads_root = tmp_path / "global-output" / "uploads"
+    assert not uploads_root.exists() or not any(uploads_root.iterdir())
+
+
+def test_uploaded_media_start_consumes_upload_and_copies_media(tmp_path, monkeypatch):
+    import db
+    _, client = _upload_env(tmp_path, monkeypatch, duration=90.0, kind="local_audio")
+    upload = _post_media(client, name="talk.mp3").json()
+    upload_id = upload.get("upload_id") or upload["id"]
+
+    resp = client.post("/api/v2/lessons/start", json={
+        "source_type": "uploaded_media",
+        "upload_id": upload_id,
+        "whisper_model": "groq",
+        "local_path": "/etc/passwd",  # 普通用户上送路径字段必须被忽略
+    }, headers={"Idempotency-Key": "test-key-1"})
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["lesson"]["source_type"] == "uploaded_media"
+    assert data["lesson"]["media_kind"] == "local_audio"
+    lesson_id = int(data["lesson"]["id"])
+    media_url = data["lesson"]["media_url"]
+    assert media_url.startswith("/output/v2_assets/")
+    copied = tmp_path / "global-output" / "v2_assets" / str(lesson_id) / "talk.mp3"
+    assert copied.is_file()
+    record = db.get_v2_media_upload(upload_id)
+    assert record["status"] == "consumed" and record["consumed_at"]
+
+    # 同一 upload 不能二次消费
+    again = client.post("/api/v2/lessons/start", json={
+        "source_type": "uploaded_media", "upload_id": upload_id,
+    })
+    assert again.status_code == 409
+
+
+def test_uploaded_media_start_unknown_upload_404(tmp_path, monkeypatch):
+    _, client = _upload_env(tmp_path, monkeypatch)
+    resp = client.post("/api/v2/lessons/start", json={
+        "source_type": "uploaded_media", "upload_id": "nonexistent",
+    })
+    assert resp.status_code == 404
+
+
+def test_media_upload_delete_then_start_409(tmp_path, monkeypatch):
+    _, client = _upload_env(tmp_path, monkeypatch)
+    upload = _post_media(client).json()
+    upload_id = upload.get("upload_id") or upload["id"]
+
+    assert client.delete(f"/api/v2/lessons/media-uploads/{upload_id}").status_code == 200
+    assert client.delete(f"/api/v2/lessons/media-uploads/{upload_id}").status_code == 404
+    resp = client.post("/api/v2/lessons/start", json={
+        "source_type": "uploaded_media", "upload_id": upload_id,
+    })
+    assert resp.status_code == 404  # 已删除的上传与不存在同等语义
+
+
+def test_local_path_requires_admin_in_multiuser(tmp_path, monkeypatch):
+    """多用户模式普通用户走 local_path 建课：后端 404（管理员私有入口保持）。"""
+    import importlib
+    pytest.importorskip("webapp.auth.store", reason="auth 仅私有库/云端，公开库跳过")
+    monkeypatch.setenv("ELT_AUTH_ENABLED", "1")
+    monkeypatch.setenv("ELT_AUTH_DB", str(tmp_path / "auth.db"))
+    monkeypatch.setenv("ELT_USERS_ROOT", str(tmp_path / "users"))
+    import webapp.auth.store as store_mod
+    importlib.reload(store_mod)
+    import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "default" / "vocab.db")
+    db._initialized_paths.clear()
+    import fastapi_server
+    importlib.reload(fastapi_server)
+    client = TestClient(fastapi_server.create_app())
+
+    code = store_mod.create_invite_code(created_by="may")
+    resp = client.post("/api/auth/register", json={
+        "username": "alice", "password": "secret6", "invite_code": code})
+    assert resp.status_code == 200
+
+    media = tmp_path / "sample.mp3"
+    media.write_bytes(b"fake")
+    resp = client.post("/api/v2/lessons/start", json={
+        "source_type": "local", "local_path": str(media)})
+    assert resp.status_code == 404
+
+    store_mod.create_user("boss", "adminpass1", is_admin=True)
+    client.post("/api/auth/login", json={"username": "boss", "password": "adminpass1"})
+    import webapp.services.v2_lessons as service
+    monkeypatch.setattr(service, "enqueue_local_import", lambda *a, **k: None)
+    monkeypatch.setattr(service, "OUTPUT_DIR", tmp_path / "users" / "boss" / "output")
+    resp = client.post("/api/v2/lessons/start", json={
+        "source_type": "local", "local_path": str(media)})
+    assert resp.status_code == 200
+    monkeypatch.delenv("ELT_AUTH_ENABLED")
+
+
+# ── 上传建课：并发安全 claim + 失败回滚（Task 3 复审）─────────
+
+
+def _service_upload(tmp_path, monkeypatch, name="talk.mp4", duration=60.0):
+    """service 级上传（不走路由），返回 (service, upload 记录)。"""
+    import io
+    import webapp.services.v2_lessons as service
+    from webapp.storage import user_assets
+    import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    monkeypatch.setattr(user_assets, "GLOBAL_OUTPUT_DIR", tmp_path / "global-output")
+    monkeypatch.setattr(service, "OUTPUT_DIR", tmp_path / "global-output")
+    monkeypatch.setattr(service, "_probe_uploaded_media", lambda p: (duration, "local_video"))
+    upload = service.save_media_upload(name, io.BytesIO(b"fake-media"))
+    return service, upload
+
+
+def test_uploaded_media_missing_file_not_consumed_and_retryable(tmp_path, monkeypatch):
+    import db
+    service, upload = _service_upload(tmp_path, monkeypatch)
+    stored = tmp_path / "global-output" / "uploads" / upload["id"] / "talk.mp4"
+    stored.unlink()  # 暂存文件丢失
+
+    with pytest.raises(FileNotFoundError):
+        service.start_uploaded_media_lesson(upload["id"])
+    assert db.get_v2_media_upload(upload["id"])["status"] == "ready"
+    assert db.list_v2_lessons() == []
+
+    # 补齐文件后可原样重试并成功消费
+    stored.write_bytes(b"fake-media")
+    monkeypatch.setattr(service, "enqueue_local_import", lambda *a, **k: None)
+    result = service.start_uploaded_media_lesson(upload["id"])
+    assert result["lesson"]["source_type"] == "uploaded_media"
+    assert db.get_v2_media_upload(upload["id"])["status"] == "consumed"
+
+
+def test_uploaded_media_copy_failure_rolls_back(tmp_path, monkeypatch):
+    import db
+    service, upload = _service_upload(tmp_path, monkeypatch)
+    real_copy = service._copy_media_for_lesson
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(service, "_copy_media_for_lesson", boom)
+    with pytest.raises(RuntimeError, match="disk full"):
+        service.start_uploaded_media_lesson(upload["id"])
+
+    assert db.get_v2_media_upload(upload["id"])["status"] == "ready"
+    assert db.list_v2_lessons() == []
+    assert not (tmp_path / "global-output" / "v2_assets").exists()
+
+    # 回滚后可重试成功
+    monkeypatch.setattr(service, "_copy_media_for_lesson", real_copy)
+    monkeypatch.setattr(service, "enqueue_local_import", lambda *a, **k: None)
+    result = service.start_uploaded_media_lesson(upload["id"])
+    assert result["lesson"]["source_type"] == "uploaded_media"
+    assert db.get_v2_media_upload(upload["id"])["status"] == "consumed"
+
+
+def test_uploaded_media_enqueue_failure_rolls_back(tmp_path, monkeypatch):
+    import db
+    service, upload = _service_upload(tmp_path, monkeypatch)
+
+    def boom(*a, **k):
+        raise RuntimeError("queue broken")
+
+    monkeypatch.setattr(service, "enqueue_local_import", boom)
+    with pytest.raises(RuntimeError, match="queue broken"):
+        service.start_uploaded_media_lesson(upload["id"])
+
+    # upload 恢复 ready；lesson 与已复制资产全部清除
+    assert db.get_v2_media_upload(upload["id"])["status"] == "ready"
+    assert db.list_v2_lessons() == []
+    assets_root = tmp_path / "global-output" / "v2_assets"
+    assert not assets_root.exists() or not any(assets_root.iterdir())
+    # 暂存文件保留，可重试
+    assert (tmp_path / "global-output" / "uploads" / upload["id"] / "talk.mp4").is_file()
+
+
+def test_uploaded_media_concurrent_start_single_consume(tmp_path, monkeypatch):
+    """并发消费同一 upload：只有一个获胜者，另一个 409，upload 终态 consumed。"""
+    import threading
+    import db
+    service, upload = _service_upload(tmp_path, monkeypatch)
+    monkeypatch.setattr(service, "enqueue_local_import", lambda *a, **k: None)
+
+    results, errors = [], []
+    barrier = threading.Barrier(2)
+
+    def worker():
+        try:
+            barrier.wait(timeout=10)
+            results.append(service.start_uploaded_media_lesson(upload["id"]))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert len(results) == 1
+    assert len(errors) == 1 and isinstance(errors[0], service.MediaUploadError)
+    assert db.get_v2_media_upload(upload["id"])["status"] == "consumed"
+    assert len(db.list_v2_lessons()) == 1
+
+
+def test_uploaded_media_missing_file_route_404_and_ready(tmp_path, monkeypatch):
+    """路由层：暂存文件缺失返回 404，upload 保持 ready。"""
+    import db
+    _, client = _upload_env(tmp_path, monkeypatch)
+    upload = _post_media(client, name="talk.mp4").json()
+    stored = tmp_path / "global-output" / "uploads" / upload["upload_id"] / "talk.mp4"
+    stored.unlink()
+
+    resp = client.post("/api/v2/lessons/start", json={
+        "source_type": "uploaded_media", "upload_id": upload["upload_id"]})
+    assert resp.status_code == 404
+    assert db.get_v2_media_upload(upload["upload_id"])["status"] == "ready"

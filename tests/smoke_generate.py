@@ -18,10 +18,10 @@ PYTHON = sys.executable
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke checks for the lesson generation pipeline.")
-    parser.add_argument("--server", default="http://localhost:5173", help="Running FastAPI server URL.")
-    parser.add_argument("--skip-server", action="store_true", help="Skip API checks against FastAPI.")
+    parser.add_argument("--server", default="http://localhost:5173", help="Running Flask server URL.")
+    parser.add_argument("--skip-server", action="store_true", help="Skip API checks against Flask.")
     parser.add_argument("--skip-local-cli", action="store_true", help="Skip local file + transcript CLI smoke.")
-    parser.add_argument("--test-client", action="store_true", help="Check FastAPI routes in-process instead of localhost.")
+    parser.add_argument("--test-client", action="store_true", help="Check Flask routes in-process instead of localhost.")
     parser.add_argument("--live-submit", action="store_true", help="Submit live URL jobs from SMOKE_* env vars.")
     parser.add_argument("--wait-seconds", type=int, default=0, help="Optional seconds to poll live jobs.")
     args = parser.parse_args()
@@ -64,7 +64,7 @@ def check_server(server: str) -> list[str]:
 
     schema = get_json(f"{server}/api/pipeline/schema")
     steps = (schema or {}).get("steps") or []
-    expected = ["init", "download", "subtitle", "whisper_load", "whisper_transcribe", "resegment_translate", "ipa_annotate", "analyze", "render"]
+    expected = ["init", "download", "subtitle", "whisper_load", "whisper_transcribe", "resegment_translate", "analyze", "render"]
     got = [s.get("id") for s in steps]
     if got != expected:
         failures.append(f"pipeline schema mismatch: {got}")
@@ -97,13 +97,12 @@ def check_server(server: str) -> list[str]:
 
 def check_test_client() -> list[str]:
     failures: list[str] = []
-    print("[server] checking FastAPI test client", flush=True)
+    print("[server] checking Flask test client", flush=True)
     sys.path.insert(0, str(ROOT / "backend"))
-    from fastapi.testclient import TestClient
-    from fastapi_server import create_app
+    from server import app
 
-    client = TestClient(create_app())
-    health = client.get("/health").json() or {}
+    client = app.test_client()
+    health = client.get("/health").get_json() or {}
     env = health.get("environment") or {}
     required = ["python", "ffmpeg", "sqlite", "keys"]
     missing = [key for key in required if key not in env]
@@ -112,8 +111,8 @@ def check_test_client() -> list[str]:
     else:
         print("[server] environment diagnostics ok")
 
-    schema = client.get("/api/pipeline/schema").json() or {}
-    expected = ["init", "download", "subtitle", "whisper_load", "whisper_transcribe", "resegment_translate", "ipa_annotate", "analyze", "render"]
+    schema = client.get("/api/pipeline/schema").get_json() or {}
+    expected = ["init", "download", "subtitle", "whisper_load", "whisper_transcribe", "resegment_translate", "analyze", "render"]
     got = [s.get("id") for s in schema.get("steps", [])]
     if got != expected:
         failures.append(f"pipeline schema mismatch: {got}")
@@ -126,7 +125,7 @@ def check_test_client() -> list[str]:
         ("LOCAL_PATH_REQUIRED", {"source_type": "local", "url": ""}),
     ]
     for expected_code, payload in cases:
-        data = client.post("/api/generate", json=payload).json() or {}
+        data = client.post("/api/generate", json=payload).get_json() or {}
         code = (data.get("error_info") or {}).get("code")
         if code != expected_code:
             failures.append(f"{expected_code} error_info.code mismatch: {code!r}")

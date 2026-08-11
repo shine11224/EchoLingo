@@ -8,26 +8,18 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from webapp.storage.lessons import OUTPUT_DIR, extract_js_var
+from webapp.storage import user_assets
+from webapp.storage.lessons import BASE_DIR, OUTPUT_DIR, extract_js_var
 
 router = APIRouter()
 
-_TEMPLATE_DIR = OUTPUT_DIR.parent / "frontend" / "templates"
+_TEMPLATE_DIR = BASE_DIR / "frontend" / "templates"
 _V2_INTENSIVE_EXPORT_RE = re.compile(r"^v2-intensive-(\d+)\.html$")
 
 
 def _safe_output_path(filename: str) -> Path | None:
-    """Resolve filename inside OUTPUT_DIR; return None on traversal or missing file."""
-    if not filename or "\x00" in filename:
-        return None
-    candidate = (OUTPUT_DIR / filename).resolve()
-    try:
-        candidate.relative_to(OUTPUT_DIR.resolve())
-    except ValueError:
-        return None
-    if not candidate.is_file():
-        return None
-    return candidate
+    """Resolve filename inside the current user's output root; None on traversal or missing file."""
+    return user_assets.resolve_output_file(filename, fallback=OUTPUT_DIR)
 
 
 @router.get("/output/{filename:path}")

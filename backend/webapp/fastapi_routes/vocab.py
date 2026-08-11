@@ -11,15 +11,34 @@ from typing import Any, List, Optional
 from urllib.parse import quote
 
 import db
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse, Response
 from prompts import STORY_CHAT_SYSTEM_PROMPT, STORY_PROMPT
 from pydantic import BaseModel
 from webapp.runtime import ai_config
+from webapp.runtime import credit_meter
 from webapp.services.v2_vocab import lookup_word_meaning
+from webapp.storage import user_assets
 from webapp.storage.lessons import OUTPUT_DIR, extract_js_var
 
 router = APIRouter()
+
+
+def _billing_error_response(exc: Exception) -> JSONResponse:
+    """计费异常统一映射：402 不足（结构化载荷）/409 语义冲突/400 缺 key。"""
+    status, detail = credit_meter.billing_error(exc)
+    if isinstance(detail, dict):
+        return JSONResponse({"error": detail.get("code", "billing_error"),
+                             "error_info": detail}, status_code=status)
+    return JSONResponse({"error": str(detail)}, status_code=status)
+
+
+def _begin(request: Request, operation_type: str, **kwargs):
+    try:
+        return credit_meter.begin_sync_operation(request, operation_type, **kwargs), None
+    except (credit_meter.InsufficientCredits,
+            credit_meter.OperationConflictError, ValueError) as exc:
+        return None, _billing_error_response(exc)
 
 # GET /vocab (serve vocab.html) is intentionally left in Flask — template rendering
 # stays in Flask until a shared Jinja2 setup is added in a later phase.
@@ -93,7 +112,7 @@ def _legacy_lesson_audio(meta: dict, sentence: str, cache: dict) -> dict | None:
     if not filename:
         return None
     if filename not in cache:
-        html_path = OUTPUT_DIR / filename
+        html_path = user_assets.current_output_root(OUTPUT_DIR) / filename
         try:
             raw = html_path.read_text(encoding="utf-8")
             source_match = re.search(r'<source\s+[^>]*src=["\']([^"\']+)["\']', raw, re.I)
@@ -337,7 +356,7 @@ def delete_vocab_story_history(story_id: int):
 
 
 @router.post("/api/vocab-story")
-def vocab_story(body: Optional[VocabStoryBody] = Body(default=None)):
+def vocab_story(body: Optional[VocabStoryBody] = Body(default=None), request: Request = None):
     data = body or VocabStoryBody()
     words = list(dict.fromkeys(
         w.strip().lower() for w in (data.words or []) if w.strip()
@@ -348,13 +367,21 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None)):
     today = datetime.date.today().isoformat()
     cache_key = today + "|" + ",".join(sorted(words))
 
+    # cache-before-reserve：当日同词故事直接免费返回，不产生 operation
     cached = db.get_story(cache_key)
     if cached and not data.force_new:
         try:
             parsed = json.loads(cached)
-            return {"story": parsed.get("story_content", cached), "used_words": parsed.get("used_words", []), "review_questions": parsed.get("review_questions", [])}
+            return {"story": parsed.get("story_content", cached), "used_words": parsed.get("used_words", []), "review_questions": parsed.get("review_questions", []), "credits": {"charged": 0, "cached": True}}
         except (json.JSONDecodeError, TypeError):
-            return {"story": cached}
+            return {"story": cached, "credits": {"charged": 0, "cached": True}}
+
+    begun, error = _begin(request, "vocab_story", quantity=1)
+    if error:
+        return error
+    (op, replay) = begun
+    if replay is not None:
+        return replay
 
     all_words = db.get_all_words()
     details = []
@@ -374,18 +401,24 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None)):
         if "api.deepseek.com" in str(ai_config.AI_BASE_URL or "").lower()
         else ai_config.AI_MODEL
     )
-    resp = ai_config.client.chat.completions.create(
-        model=story_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=2500,
-        timeout=90,
-        response_format={"type": "json_object"},
-    )
+    try:
+        resp = ai_config.client.chat.completions.create(
+            model=story_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=2500,
+            timeout=90,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:
+        # AI/网络异常：释放预授权
+        credit_meter.release_sync(op, reason=f"vocab_story request failed: {exc}"[:500])
+        return JSONResponse({"error": f"AI 请求失败：{exc}"}, status_code=502)
     choice = resp.choices[0]
     finish_reason = str(getattr(choice, "finish_reason", "") or "").strip().lower()
     raw = str(choice.message.content or "").strip()
     if not raw:
+        credit_meter.release_sync(op, reason=f"vocab_story empty response (finish={finish_reason})")
         if finish_reason == "length":
             return JSONResponse(
                 {"error": "AI 输出被截断，请重试生成"},
@@ -404,6 +437,8 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None)):
         used_words = parsed.get("used_words", [])
         review_questions = parsed.get("review_questions", [])
     except (json.JSONDecodeError, TypeError):
+        # 格式校验失败：同样释放，不扣分
+        credit_meter.release_sync(op, reason=f"vocab_story invalid JSON (finish={finish_reason})")
         if finish_reason == "length":
             return JSONResponse(
                 {"error": "AI 输出被截断，请重试生成"},
@@ -412,6 +447,7 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None)):
         return JSONResponse({"error": "AI 返回格式异常，请重试"}, status_code=502)
 
     if not story_content:
+        credit_meter.release_sync(op, reason="vocab_story missing story_content field")
         return JSONResponse({"error": "AI 未返回有效故事字段，请重试"}, status_code=502)
 
     parsed["story_content"] = story_content
@@ -424,7 +460,12 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None)):
         learner_level=data.learner_level,
         theme=data.theme,
     )
-    return {"story": story_content, "used_words": used_words or [], "review_questions": review_questions or []}
+    payload = {"story": story_content, "used_words": used_words or [],
+               "review_questions": review_questions or []}
+    credit_meter.settle_sync(op, actual_usage=credit_meter.usage_from_response(
+        resp, model=story_model, extra={"words": len(words), "force_new": data.force_new}),
+        response=payload)
+    return payload
 
 
 # ── Phase 4C ──────────────────────────────────────────────────────────────
@@ -478,25 +519,38 @@ def _translate_story_selection(text: str) -> str:
 
 
 @router.post("/api/story-translate")
-def translate_story_selection(body: StorySelectionBody):
+def translate_story_selection(body: StorySelectionBody, request: Request = None):
     text = " ".join(body.text.split())
     if not text:
         return JSONResponse({"error": "选区不能为空"}, status_code=400)
     if len(text) > 4000:
         return JSONResponse({"error": "选区不能超过 4000 字符"}, status_code=400)
+    # cache-before-reserve：已缓存翻译免费返回
     cached = db.get_v2_sentence(text)
     translation = str((cached or {}).get("translation") or "").strip()
-    if not translation:
-        try:
-            translation = _translate_story_selection(text)
-        except RuntimeError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=503)
-        db.upsert_v2_sentence(text, translation=translation)
+    if translation:
+        return {"translation": translation, "engine": "hy-mt",
+                "credits": {"charged": 0, "cached": True}}
+    begun, error = _begin(request, "story_translation")
+    if error:
+        return error
+    (op, replay) = begun
+    if replay is not None:
+        return replay
+    try:
+        translation = _translate_story_selection(text)
+    except RuntimeError as exc:
+        credit_meter.release_sync(op, reason=f"story_translation failed: {exc}"[:500])
+        return JSONResponse({"error": str(exc)}, status_code=503)
+    db.upsert_v2_sentence(text, translation=translation)
+    credit_meter.settle_sync(op, actual_usage={
+        "engine": "hy-mt", "characters": len(text)},
+        response={"translation": translation, "engine": "hy-mt"})
     return {"translation": translation, "engine": "hy-mt"}
 
 
 @router.post("/api/story-chat")
-def story_chat(body: StoryChatBody):
+def story_chat(body: StoryChatBody, request: Request = None):
     story = " ".join(body.story.split())[:8000]
     selection = " ".join(body.selection.split())[:2000]
     message = " ".join(body.message.split())[:1000]
@@ -504,6 +558,13 @@ def story_chat(body: StoryChatBody):
         return JSONResponse({"error": "问题不能为空"}, status_code=400)
     if not story:
         return JSONResponse({"error": "请先生成故事"}, status_code=400)
+
+    begun, error = _begin(request, "story_chat")
+    if error:
+        return error
+    (op, replay) = begun
+    if replay is not None:
+        return replay
 
     messages = [{"role": "system", "content": STORY_CHAT_SYSTEM_PROMPT}]
     context = f"故事原文：\n{story}"
@@ -532,9 +593,13 @@ def story_chat(body: StoryChatBody):
         )
         answer = str(resp.choices[0].message.content or "").strip()
     except Exception as exc:
+        credit_meter.release_sync(op, reason=f"story_chat failed: {exc}"[:500])
         return JSONResponse({"error": str(exc)}, status_code=502)
     if not answer:
+        credit_meter.release_sync(op, reason="story_chat empty response")
         return JSONResponse({"error": "AI 未返回内容，请重试"}, status_code=502)
+    credit_meter.settle_sync(op, actual_usage=credit_meter.usage_from_response(
+        resp, model=chat_model), response={"answer": answer})
     return {"answer": answer}
 
 

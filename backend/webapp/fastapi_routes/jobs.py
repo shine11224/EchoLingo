@@ -16,6 +16,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from webapp.constants import PIPELINE_SCHEMA
 from webapp.runtime import jobs as job_runtime
+from webapp.runtime.access import require_admin
+from webapp.storage import user_assets
 from webapp.storage.job_logs import append_job_log, make_job_log_path, resolve_log_file, tail_log
 
 router = APIRouter()
@@ -37,7 +39,9 @@ def _err404(message: str) -> JSONResponse:
 # 鈹€鈹€ Phase 5A read-only endpoints 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 @router.get("/api/jobs")
-def api_jobs():
+def api_jobs(request: Request):
+    # 全局 legacy 任务池仅管理员可见（含任务 URL/日志路径）
+    require_admin(request)
     job_runtime._cleanup_old_jobs()
     return {
         jid: {
@@ -60,7 +64,8 @@ def api_jobs():
 
 
 @router.get("/api/generate/status/{job_id}")
-def api_generate_status(job_id: str):
+def api_generate_status(job_id: str, request: Request):
+    require_admin(request)
     job = job_runtime._jobs.get(job_id)
     if not job:
         return _err404("job not found")
@@ -85,7 +90,8 @@ def api_generate_status(job_id: str):
 
 
 @router.get("/api/logs/{filename:path}")
-def api_read_log(filename: str):
+def api_read_log(filename: str, request: Request):
+    require_admin(request)
     log_path = resolve_log_file(filename)
     if not log_path:
         return _err404("log not found")
@@ -98,7 +104,8 @@ def api_read_log(filename: str):
 # 鈹€鈹€ Phase 5B cancel 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 @router.post("/api/generate/cancel/{job_id}")
-def api_generate_cancel(job_id: str):
+def api_generate_cancel(job_id: str, request: Request):
+    require_admin(request)
     job = job_runtime._jobs.get(job_id)
     if not job:
         return _err404("job not found")
@@ -117,6 +124,8 @@ def api_generate_cancel(job_id: str):
 
 @router.post("/api/generate")
 async def api_generate(request: Request):
+    # 旧版 generate 下载/转录链路仅管理员可用（多用户模式非管理员 404）
+    require_admin(request)
     try:
         data = await request.json()
         if not isinstance(data, dict):
@@ -225,7 +234,9 @@ async def api_generate(request: Request):
                 job_runtime._advance_step(job, "render")
                 append_job_log(lp, "[STEP:render]")
                 renderer = LessonRenderer(job_runtime.BASE_DIR / "frontend" / "templates")
-                output_path = renderer.render(bundle, analyses, job_runtime.OUTPUT_DIR)
+                output_path = renderer.render(
+                    bundle, analyses, user_assets.current_output_root(job_runtime.OUTPUT_DIR)
+                )
                 output_file = output_path.name
 
                 job_runtime._complete_current_step(job)
@@ -262,7 +273,8 @@ async def api_generate(request: Request):
     if whisper not in {"groq", "base", "medium", "large-v3"}:
         return _json_error("CONFIG_ERROR", 400, f"unsupported whisper_model: {whisper}", step="init", detail=whisper)
 
-    cmd += ["--output-dir", str(job_runtime.OUTPUT_DIR), "--analysis-mode", analysis, "--whisper-model", whisper]
+    cmd += ["--output-dir", str(user_assets.current_output_root(job_runtime.OUTPUT_DIR)),
+            "--analysis-mode", analysis, "--whisper-model", whisper]
     if not ai_segmentation:
         cmd += ["--disable-ai-segmentation"]
     if not ai_ipa:

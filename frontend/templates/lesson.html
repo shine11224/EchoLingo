@@ -1461,7 +1461,9 @@
 
   {% if source_type == "youtube" %}
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="/static/natural-tts.js?v=20260805-1"></script>
+  <script src="/static/elt_credits.js?v=20260809-1"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script src="/static/natural-tts.js?v=20260809-1"></script>
   {% endif %}
   <script>
     const segments = {{ segments_json | tojson }};
@@ -3332,7 +3334,7 @@
       // 3. 调用 DeepSeek API
       target.textContent = '分析中...';
       try {
-        const resp = await fetch(apiUrl('/analyze-word'), {
+        const resp = await eltCredits.billableFetch('word_analysis', apiUrl('/analyze-word'), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ word, sentence })
@@ -3436,7 +3438,7 @@
       if (!resultDiv) return;
       resultDiv.textContent = '正在生成候选发音提示...';
       try {
-        const resp = await fetch(apiUrl('/analyze-connected-speech'), {
+        const resp = await eltCredits.billableFetch('connected_speech', apiUrl('/analyze-connected-speech'), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -3486,7 +3488,7 @@
         const matched = matchPattern(text);
         const pattern_template = matched?.template || analysis.pattern?.template || '';
         const vocab = (analysis.vocabulary || []).map(v => v.word).filter(Boolean);
-        const resp = await fetch(apiUrl('/api/hint'), {
+        const resp = await eltCredits.billableFetch('practice_hint', apiUrl('/api/hint'), {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ english: text, pattern_template, vocab })
         });
@@ -3518,7 +3520,7 @@
       resultEl.classList.remove('hidden');
       resultEl.textContent = userAnswer ? '批改中…' : '生成范例中…';
       try {
-        const resp = await fetch(apiUrl('/api/practice'), {
+        const resp = await eltCredits.billableFetch('practice_evaluation', apiUrl('/api/practice'), {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ hint_cn: hintCn, user_answer: userAnswer,
             english: text, pattern_template, vocab })
@@ -3588,7 +3590,7 @@
       btn && (btn.textContent = '生成中…', btn.disabled = true);
       try {
         const english = analyses[idx]?.text || segments[idx]?.text || '';
-        const resp = await fetch(apiUrl('/api/oral-analysis'), {
+        const resp = await eltCredits.billableFetch('oral_analysis', apiUrl('/api/oral-analysis'), {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ english })
         });

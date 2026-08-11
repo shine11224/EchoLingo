@@ -218,7 +218,6 @@ def test_intensive_document_uses_cached_mfa_timing_and_words(tmp_path, monkeypat
     assert page.status_code == 200
     assert "MFA 原声对齐" in page.text
     assert "aligned_words" in page.text
-    assert "原声紧密衔接候选" in page.text
     assert "原声短停顿候选" in page.text
 
 

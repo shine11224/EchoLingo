@@ -37,6 +37,10 @@ def test_translation_runtime_starts_lazily_and_reaps_on_shutdown(
 ):
     from webapp.services import hy_translate
 
+    # 隔离本机 .env：create_app 加载后 HY_TRANSLATE_API_KEY 会让 ensure_ready 走云端快路径
+    monkeypatch.delenv("HY_TRANSLATE_API_KEY", raising=False)
+    monkeypatch.delenv("ELT_DEPLOYMENT", raising=False)
+
     class FakeProcess:
         returncode = None
 

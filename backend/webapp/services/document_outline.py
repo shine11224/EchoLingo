@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import db
 from prompts import DOCUMENT_OUTLINE_PROMPT
 from webapp.runtime import ai_config
+from webapp.runtime import credit_meter
 
 _OUTLINE_JOBS: dict[int, dict] = {}
 _OUTLINE_JOBS_LOCK = threading.Lock()
@@ -185,7 +186,11 @@ def _run_document_outline_job(lesson_id: int, force: bool, content_hash: str) ->
     try:
         result = generate_document_outline(lesson_id, force=force)
         state = {"status": "ready", "content_hash": content_hash, **result}
+        # Task 7：force 重生成是独立计费 operation，成功 settle；无上下文时 no-op
+        credit_meter.settle_current(actual_usage={"lesson_id": int(lesson_id)})
     except Exception as exc:
+        credit_meter.release_current(
+            reason=f"outline regenerate failed: {exc}"[:500])
         state = {
             "status": "error",
             "content_hash": content_hash,

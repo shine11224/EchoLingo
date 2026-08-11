@@ -7,6 +7,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import db
 from webapp.services.v2_intensive import build_intensive_document
+from webapp.storage import user_assets
 from webapp.storage.lessons import BASE_DIR, OUTPUT_DIR
 
 
@@ -26,7 +27,7 @@ def export_intensive_html(lesson_id: int) -> dict:
     )
     html = environment.get_template("intensive.html").render(lesson_id=lesson_id)
 
-    output_dir = Path(OUTPUT_DIR)
+    output_dir = user_assets.current_output_root(OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / filename
     output_path.write_text(html, encoding="utf-8")
