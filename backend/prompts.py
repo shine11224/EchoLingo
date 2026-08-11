@@ -596,3 +596,79 @@ DOCUMENT_OUTLINE_PROMPT = """\
 材料信息（duration_seconds 为总时长，candidates 为可选起点）：
 {document_json}
 """
+
+
+# ── 单课 RAG 问答（Task 9：路由 / 回答 / 无内容复核）──────────────────
+
+LESSON_RAG_SYSTEM_PROMPT = """\
+你是英语学习助手，服务于当前这一门课程（视频字幕或阅读文章）。
+
+硬性规则：
+1. 默认只能依据用户消息中 <candidate> 块提供的内容回答；未获用户明确允许，不得使用外部知识或常识补写。
+2. 引用证据只能使用服务器提供的 candidate id（如 "c003"），禁止编造 id、时间戳、segment/sentence 编号或 lesson_id。
+3. 只输出 JSON，不输出 markdown、注释或额外解释。
+4. 用中文回答。
+"""
+
+LESSON_RAG_ROUTE_PROMPT = """\
+请根据用户问题，从课程章节中选出最可能包含答案的章节（最多 4 个）。
+中文问题也可能对应英文字幕内容，请按语义判断，不要只做词面匹配。
+
+课程：{lesson_title}
+章节列表（preview 为该章开头原文片段，keywords 为该章高频内容词，均可作为语义判断依据）：
+{chapters_json}
+
+最近对话（可能为空）：
+{history_text}
+
+用户问题：{question}
+
+只返回 JSON：
+{{"chapters": [章节 index 整数数组，按相关度排序，最多 4 个]}}
+"""
+
+LESSON_RAG_ANSWER_PROMPT = """\
+请回答用户关于当前课程的问题。
+
+课程：{lesson_title}
+允许使用外部知识：{allow_external}
+
+候选内容块（只能使用这些内容作为课程内依据）：
+{candidates_text}
+
+最近对话（可能为空）：
+{history_text}
+
+用户问题：{question}
+
+回答规则：
+1. coverage 只能取 "full" / "partial" / "none"：
+   - full：候选内容完整回答了问题的所有方面；
+   - partial：候选内容只回答了问题的一部分，answer 中必须逐项说明“课程中讲到了什么”与“课程没有回答什么”，未覆盖点同时写入 unsupported 数组；
+   - none：候选内容与问题无关。此时 answer 只写一句说明课程中没有对应内容，不得用常识或外部知识补写答案。
+2. citations 数组最多 3 项，每项只有 candidate_id 字段，只能引用上面出现过的 candidate id；不得输出时间戳或句子编号。
+3. coverage 为 full 时必须至少引用一个 candidate；none 时 citations 必须为空数组。
+4. 若允许使用外部知识且课程内内容不足：课程内回答写在前，外部补充单独成段并以“【外部补充】”开头，external_knowledge_used 置 true；外部补充部分不得附任何 candidate 引用。未允许外部知识时 external_knowledge_used 必须为 false，且不写任何外部补充。
+
+只返回 JSON：
+{{
+  "answer": "中文回答",
+  "coverage": "full|partial|none",
+  "citations": [{{"candidate_id": "c001"}}],
+  "unsupported": ["问题中未被课程覆盖的点"],
+  "external_knowledge_used": false
+}}
+"""
+
+LESSON_RAG_ABSENCE_PROMPT = """\
+用户前一轮判断认为课程中没有问题的答案。请独立复核：以下候选内容块中，是否有任何一块真正回答了用户问题（哪怕只回答一部分）？
+中文问题也可能对应英文内容，请按语义判断。
+
+用户问题：{question}
+
+候选内容块：
+{candidates_text}
+
+只返回 JSON：
+{{"found": true 或 false, "candidate_ids": ["真正相关的 candidate id，没有则空数组"]}}
+"""
