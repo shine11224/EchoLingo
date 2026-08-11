@@ -1552,6 +1552,68 @@
     </div>
     <div id="gen-form">
       <div class="course-builder">
+        <!-- 链接导入卡：仅单用户/公开库模式由 initAuthBadge 揭示；
+             多用户模式保持隐藏（平台链接导入走管理员私有页）。 -->
+        <section class="course-source-card" id="link-source-card" style="display:none">
+          <div class="course-source-head">
+            <div>
+              <h3 class="course-source-title">链接与文件导入</h3>
+              <div class="course-source-note">支持 B站 / YouTube / 文章链接、百度网盘分享链接，也可以选择本地音视频或 PDF 文件。</div>
+            </div>
+            <span class="source-badge" id="source-badge">未选择</span>
+          </div>
+          <div class="url-row">
+            <input class="url-input" type="text" id="url-input"
+                   placeholder="粘贴 B站 / YouTube / 网盘链接，或填入本地文件路径…"
+                   oninput="detectSource(this.value)">
+            <button type="button" id="browse-file-btn" onclick="browseLocalFile()"
+                    title="选择本地音视频文件"
+                    style="flex-shrink:0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);cursor:pointer;font-size:13px;white-space:nowrap;">
+              📂 选择文件
+            </button>
+          </div>
+          <div class="course-settings">
+            <div class="settings-label">转录设置</div>
+            <div class="options-row">
+              <div class="opt-group hidden" id="bili-opts">
+                <span>集数</span>
+                <input class="page-input" type="number" id="bili-page" min="1" placeholder="P1">
+                <select id="download-mode">
+                  <option value="audio">仅音频（快）</option>
+                  <option value="video">含视频</option>
+                </select>
+              </div>
+              <div class="opt-group hidden" id="yt-opts">
+                <span>YouTube</span>
+                <select id="youtube-download">
+                  <option value="subtitle-only">嵌入视频（默认）</option>
+                  <option value="audio">仅音频（盲听）</option>
+                </select>
+              </div>
+              <div class="opt-group hidden" id="baidu-opts">
+                <span>网盘</span>
+                <input class="page-input" type="text" id="baidu-pan-pwd-inline" maxlength="4" placeholder="提取码" style="width:76px;">
+                <span id="baidu-pan-inline-progress" style="font-size:12px;color:#666;"></span>
+              </div>
+              <div class="opt-group">
+                <span>Whisper</span>
+                <select id="link-whisper-model" onchange="onLinkWhisperModelChange(this.value)">
+                  <option value="groq">large-v3（Groq，最快）</option>
+                  <option value="large-v3">large-v3（本地，最准）</option>
+                  <option value="medium">medium（本地，均衡）</option>
+                  <option value="base">base（本地，最快）</option>
+                  <option value="paraformer">Paraformer（云端，阿里云百炼）</option>
+                </select>
+                <span class="groq-net-hint" id="link-groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
+                  <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
+                </span>
+              </div>
+              <div id="link-groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
+              <div id="link-dashscope-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置千问 Key — 请先在设置 → API 设置填写（阿里云百炼 API-KEY）</div>
+            </div>
+          </div>
+        </section>
+
         <!-- 默认隐藏：由 initAuthBadge 在单用户模式或登录后揭示；
              首页统一使用浏览器文件上传，不暴露服务器路径或平台链接入口。 -->
         <section class="course-source-card" id="media-source-card" style="display:none">
@@ -1598,6 +1660,25 @@
               <div id="groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
             </div>
           </div>
+        </section>
+
+        <section class="course-source-card" id="baidu-pan-source-card" style="display:none">
+          <div class="course-source-head">
+            <div>
+              <h3 class="course-source-title">百度网盘导入</h3>
+              <div class="course-source-note">粘贴百度网盘单文件分享链接，服务器下载后生成课程（≤500MB）。</div>
+            </div>
+            <span class="source-badge" id="baidu-pan-badge">未开始</span>
+          </div>
+          <div class="reading-upload-row">
+            <input id="baidu-pan-link" type="text" placeholder="https://pan.baidu.com/s/1…"
+                   style="flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
+            <input id="baidu-pan-pwd" type="text" placeholder="提取码" maxlength="4"
+                   style="width:76px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
+            <button class="reading-upload-btn" type="button" id="baidu-pan-start-btn"
+                    onclick="startBaiduPanImport()">开始导入</button>
+          </div>
+          <div id="baidu-pan-progress-text" style="font-size:12px;color:#666;margin-top:6px;"></div>
         </section>
 
         <section class="course-source-card">
@@ -2588,6 +2669,129 @@ function setBadge(id, label, kind = '') {
   badge.className = kind ? `source-badge ${kind}` : 'source-badge';
 }
 
+// ── 链接导入（单用户/公开库模式）──────────────
+let _detectedMediaSource = '';
+let _lessonCheckTimer = null;
+
+function onLinkWhisperModelChange(val) {
+  const warn = document.getElementById('link-groq-key-warn');
+  if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
+  const hint = document.getElementById('link-groq-net-hint');
+  if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
+  const dashWarn = document.getElementById('link-dashscope-key-warn');
+  if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
+}
+
+async function browseLocalFile() {
+  const btn = document.getElementById('browse-file-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '选择中…'; }
+  try {
+    const resp = await fetch('/api/browse-file', { method: 'POST' });
+    const data = await resp.json();
+    if (data.path) {
+      const inp = document.getElementById('url-input');
+      inp.value = data.path;
+      detectSource(data.path);
+    }
+  } catch (e) {
+    console.warn('browse-file failed:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📂 选择文件'; }
+  }
+}
+
+function isLocalMediaPath(value) {
+  return /^file:\/\//i.test(value)
+      || /^[a-zA-Z]:[\\/]/.test(value)
+      || /\.(mp4|m4a|mp3|wav|ogg|flac|aac|webm|mov|mkv)$/i.test(value);
+}
+
+function isLocalTextPath(value) {
+  return /\.(md|txt)$/i.test(value);
+}
+
+function isReadingPdfPath(value) {
+  return /^file:\/\//i.test(value) && /\.pdf$/i.test(value)
+      || /^[a-zA-Z]:[\\/].*\.pdf$/i.test(value)
+      || /\.pdf$/i.test(value);
+}
+
+function detectSource(url) {
+  const biliOpts = document.getElementById('bili-opts');
+  const ytOpts = document.getElementById('yt-opts');
+  const baiduOpts = document.getElementById('baidu-opts');
+  const showOnly = (el) => {
+    if (biliOpts) biliOpts.classList.toggle('hidden', el !== biliOpts);
+    if (ytOpts) ytOpts.classList.toggle('hidden', el !== ytOpts);
+    if (baiduOpts) baiduOpts.classList.toggle('hidden', el !== baiduOpts);
+  };
+  url = (url || '').trim();
+  if (!url) {
+    setBadge('source-badge', '未选择');
+    showOnly(null);
+    _detectedMediaSource = '';
+    _hideLessonHint(); return;
+  }
+  if (url.includes('bilibili.com') || url.includes('b23.tv')) {
+    setBadge('source-badge', '📺 B站', 'bilibili');
+    showOnly(biliOpts);
+    _detectedMediaSource = 'bilibili';
+    clearTimeout(_lessonCheckTimer);
+    _lessonCheckTimer = setTimeout(() => _checkExistingLesson(url), 600);
+  } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    setBadge('source-badge', '▶ YouTube', 'youtube');
+    showOnly(ytOpts);
+    _detectedMediaSource = 'youtube';
+  } else if (url.includes('pan.baidu.com') || url.includes('yun.baidu.com')) {
+    setBadge('source-badge', '☁️ 网盘', 'article');
+    showOnly(baiduOpts);
+    _detectedMediaSource = 'baidu_pan';
+  } else if (isReadingPdfPath(url)) {
+    setBadge('source-badge', '📖 PDF 路径', 'reading');
+    showOnly(null);
+    _detectedMediaSource = 'reading_pdf';
+  } else if (isLocalTextPath(url)) {
+    setBadge('source-badge', '📄 文本路径', 'local');
+    showOnly(null);
+    _detectedMediaSource = 'text';
+  } else if (isLocalMediaPath(url)) {
+    setBadge('source-badge', '🎬 本地音视频', 'local');
+    showOnly(null);
+    _detectedMediaSource = 'local';
+  } else {
+    setBadge('source-badge', '📰 文章链接', 'article');
+    showOnly(null);
+    _detectedMediaSource = 'article';
+  }
+}
+
+async function _checkExistingLesson(url) {
+  try {
+    const data = await fetch('/api/lesson/check?url=' + encodeURIComponent(url)).then(r => r.json());
+    if (data.has_lesson) {
+      const label = data.has_transcript_cache ? '转录缓存已存在' : '已有课程可复用转录';
+      _showLessonHint(`⚡ ${label}，将跳过 Whisper 直接重新分析`);
+    } else {
+      _hideLessonHint();
+    }
+  } catch (_) { _hideLessonHint(); }
+}
+function _showLessonHint(msg) {
+  let el = document.getElementById('lesson-reuse-hint');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'lesson-reuse-hint';
+    el.style.cssText = 'font-size:12px;color:#2a7a3b;margin-top:4px;padding:4px 8px;background:#e8f5e9;border-radius:6px;';
+    document.getElementById('url-input')?.closest('.course-source-card')?.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function _hideLessonHint() {
+  const el = document.getElementById('lesson-reuse-hint');
+  if (el) el.style.display = 'none';
+}
+
 function detectReadingText(value) {
   const text = String(value || '').trim();
   if (!text) {
@@ -2794,28 +2998,34 @@ async function uploadReadingFile(file) {
 }
 
 async function startGeneration() {
+  const url = document.getElementById('url-input')?.value.trim() || '';
   const readingText = document.getElementById('reading-text-input')?.value.trim() || '';
   const readingFile = getReadingFile();
+  if (url) detectSource(url);
   if (readingText) detectReadingText(readingText);
   if (readingFile) _detectedTextSource = 'reading_upload';
 
   const selectedMediaFile = document.getElementById('user-media-file-input')?.files?.[0] || null;
-  const hasMediaInput = Boolean(_userMediaUpload);
+  const hasMediaInput = Boolean(_userMediaUpload) || Boolean(url);
   const hasTextInput = Boolean(readingText || readingFile);
-  if (selectedMediaFile && !hasMediaInput) {
+  if (selectedMediaFile && !_userMediaUpload) {
     alert('音视频正在上传，请稍候');
     return;
   }
   if (!hasMediaInput && !hasTextInput) {
-    alert('请先选择音视频文件，或上传、粘贴文本');
+    alert('请先选择音视频文件、粘贴视频链接，或上传、粘贴文本');
     return;
   }
   if (hasMediaInput && hasTextInput) {
     alert('音视频课程和文本课程请分开生成：本次只保留一个来源再开始');
     return;
   }
+  if (Boolean(_userMediaUpload) && Boolean(url)) {
+    alert('浏览器上传和链接导入请分开生成：本次只保留一个来源再开始');
+    return;
+  }
 
-  _detectedSource = hasTextInput ? _detectedTextSource : 'uploaded_media';
+  _detectedSource = hasTextInput ? _detectedTextSource : (url ? _detectedMediaSource : 'uploaded_media');
   if (!_detectedSource) { alert('无法识别课程来源，请检查输入'); return; }
 
   if (_detectedSource === 'uploaded_media') {
@@ -2824,6 +3034,200 @@ async function startGeneration() {
   }
   if (_detectedSource === 'reading_upload') {
     await uploadReadingFile(readingFile);
+    return;
+  }
+
+  // 百度网盘链接：服务器转存下载后按文件类型路由（音视频 → 媒体建课；文本 → Reading 课程）
+  if (_detectedSource === 'baidu_pan') {
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('gen-btn').textContent = '导入中…';
+    startInlineProgress('正在解析网盘分享链接…');
+    try {
+      const resp = await fetch('/api/v2/lessons/baidu-pan/imports', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          share_link: url,
+          pwd: document.getElementById('baidu-pan-pwd-inline')?.value.trim() || '',
+        }),
+      });
+      const job = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(job.detail || '网盘导入失败');
+      await _waitBaiduPanImport(job.job_id, (j) => {
+        const stageLabel = {queued: '排队中…', transferring: '转存到服务器网盘…', downloading: '下载到服务器…'};
+        setInlineProgress(40, `${j.filename || ''} ${stageLabel[j.status] || '处理中…'}`);
+      }).then(async (ready) => {
+        if (ready.file_kind === 'text') {
+          setInlineProgress(70, '正在创建 Reading 课程…');
+          const r = await fetch('/api/v2/lessons/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              source_type: 'reading_file',
+              local_path: ready.local_path,
+              tts: document.getElementById('text-tts')?.checked || false,
+            }),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.detail || '无法开始 Reading');
+          const workspaceUrl = data.workspace_url || (data.job_id ? await pollReadingUpload(data.job_id) : '');
+          if (!workspaceUrl) throw new Error('Reading 导入完成，但没有课程地址');
+          finishInlineProgress('完成，正在打开 Reading 工作台…');
+          window.location.href = workspaceUrl;
+          return;
+        }
+        // 音视频：走与浏览器上传相同的 v2 建课链路，Whisper 模型取本卡选择
+        _userMediaUpload = {
+          upload_id: ready.upload_id, filename: ready.filename,
+          media_kind: ready.media_kind, duration_seconds: ready.duration_seconds,
+          quote: ready.quote,
+        };
+        setInlineProgress(70, '网盘下载完成，正在创建课程…');
+        const lr = await fetch('/api/v2/lessons/start', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()},
+          body: JSON.stringify({
+            source_type: 'uploaded_media',
+            upload_id: ready.upload_id,
+            whisper_model: document.getElementById('link-whisper-model').value,
+            translate: true,
+          }),
+        });
+        const ldata = await lr.json().catch(() => ({}));
+        if (!lr.ok) throw new Error(ldata.detail || '无法开始课程');
+        finishInlineProgress('完成，正在打开工作台…');
+        window.location.href = ldata.workspace_url;
+      });
+    } catch(e) {
+      failInlineProgress(e.message);
+      alert(e.message);
+      document.getElementById('gen-btn').disabled = false;
+      document.getElementById('gen-btn').textContent = '▶ 开始生成';
+    }
+    return;
+  }
+
+  // 链接导入：B站 / YouTube / 本地音视频路径 → v2 工作台
+  if (['youtube', 'bilibili', 'local'].includes(_detectedSource)) {
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('gen-btn').textContent = '启动中…';
+    startInlineProgress('正在创建音视频课程…');
+    try {
+      const payload = {
+        source_type: _detectedSource,
+        url: _detectedSource === 'local' ? '' : url,
+        local_path: _detectedSource === 'local' ? url : '',
+        title: '',
+        text: '',
+        download_mode: document.getElementById('download-mode').value,
+        bilibili_page: document.getElementById('bili-page').value || '',
+        whisper_model: document.getElementById('link-whisper-model').value,
+        translate: true,
+      };
+      const resp = await fetch('/api/v2/lessons/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || '无法开始课程');
+      if (payload.translate && data.lesson?.id) {
+        await waitForTranslationReadiness(data.lesson.id, data.workspace_url);
+      } else {
+        finishInlineProgress('完成，正在打开工作台…');
+      }
+      window.location.href = data.workspace_url;
+    } catch(e) {
+      failInlineProgress(e.message);
+      alert(e.message);
+      document.getElementById('gen-btn').disabled = false;
+      document.getElementById('gen-btn').textContent = '▶ 开始生成';
+    }
+    return;
+  }
+
+  // 本地 PDF 路径 → Reading 课程
+  if (_detectedSource === 'reading_pdf') {
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('gen-btn').textContent = '启动中…';
+    runStageProgress([
+      { percent: 15, label: '正在读取本地 PDF 路径…' },
+      { percent: 45, label: '正在提取 PDF 文本层…' },
+      { percent: 72, label: '必要时执行 OCR 识别…' },
+      { percent: 90, label: '正在创建 Reading 课程…' },
+    ]);
+    try {
+      const resp = await fetch('/api/v2/lessons/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          source_type: 'reading_pdf',
+          local_path: url,
+          tts: document.getElementById('text-tts').checked,
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || '无法开始 Reading');
+      finishInlineProgress('完成，正在打开 Reading 工作台…');
+      window.location.href = data.workspace_url;
+    } catch(e) {
+      failInlineProgress(e.message);
+      alert(e.message);
+      document.getElementById('gen-btn').disabled = false;
+      document.getElementById('gen-btn').textContent = '▶ 开始生成';
+    }
+    return;
+  }
+
+  // 文章链接 / 本地文本路径 → 传统生成流水线
+  if (['article', 'text'].includes(_detectedSource)) {
+    const payload = {
+      url: _detectedSource === 'text' ? '' : url,
+      source_type: _detectedSource,
+      local_path: _detectedSource === 'text' ? url : undefined,
+      download_mode: document.getElementById('download-mode').value,
+      youtube_download: document.getElementById('youtube-download').value,
+      bilibili_page: document.getElementById('bili-page').value || '',
+      analysis_mode: 'auto',
+      ai_segmentation: false,
+      ai_ipa: false,
+      whisper_model: document.getElementById('link-whisper-model').value,
+    };
+
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('gen-btn').textContent = '生成中…';
+    startInlineProgress('任务已提交，正在启动生成流水线…');
+    document.getElementById('cancel-btn').classList.add('hidden');
+    document.getElementById('progress-wrap').classList.remove('hidden');
+    document.getElementById('progress-done').classList.add('hidden');
+    document.getElementById('progress-error').classList.add('hidden');
+    document.getElementById('copy-feedback').classList.add('hidden');
+    document.getElementById('progress-log').textContent = '';
+
+    try {
+      const res  = await fetch('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      const data = await res.json();
+      if (res.status === 409) {
+        showGenError(data.error || '该视频正在生成中，请等待完成或刷新页面查看进度', { errorInfo: data.error_info });
+        document.getElementById('gen-btn').disabled = false;
+        document.getElementById('gen-btn').textContent = '▶ 开始生成';
+        document.getElementById('cancel-btn').classList.add('hidden');
+        return;
+      }
+      if (data.error) {
+        showGenError(data.error, { errorInfo: data.error_info });
+        document.getElementById('gen-btn').disabled = false;
+        document.getElementById('gen-btn').textContent = '▶ 开始生成';
+        return;
+      }
+      _currentJobId = data.job_id;
+      document.getElementById('cancel-btn').classList.remove('hidden');
+      _pollStatus(data.job_id);
+    } catch(e) {
+      showGenError(e.message);
+      document.getElementById('gen-btn').disabled = false;
+      document.getElementById('gen-btn').textContent = '▶ 开始生成';
+    }
     return;
   }
 
@@ -3090,6 +3494,12 @@ function showCopyFeedback(message, isError = false) {
 }
 
 function resetForm() {
+  const urlInput = document.getElementById('url-input');
+  if (urlInput) { urlInput.value = ''; detectSource(''); }
+  const baiduPwd = document.getElementById('baidu-pan-pwd-inline');
+  if (baiduPwd) baiduPwd.value = '';
+  const baiduProg = document.getElementById('baidu-pan-inline-progress');
+  if (baiduProg) baiduProg.textContent = '';
   document.getElementById('reading-text-input').value = '';
   clearReadingFileSelection();
   cancelUserMediaUpload();
@@ -6892,8 +7302,11 @@ async function initAuthBadge() {
     }
   } catch (e) { /* 信号不明：保持隐藏 */ }
   if (authEnabled === false) {
-    // 单用户/公开库模式：显示浏览器文件上传入口
-    if (mediaCard) mediaCard.style.display = '';
+    // 单用户/公开库模式：只显示统一链接导入卡（本地文件走"选择文件"按钮），
+    // 不再单独显示浏览器上传卡，避免两个音视频入口并列重复。
+    const linkCard = document.getElementById('link-source-card');
+    if (linkCard) linkCard.style.display = '';
+    onLinkWhisperModelChange(document.getElementById('link-whisper-model')?.value || '');
     return;
   }
   if (authEnabled !== true) return;
@@ -6949,6 +7362,111 @@ async function refreshCreditBadge(summary) {
     el.style.display = '';
   }
 }
+// ── 百度网盘导入 ───────────────────────────────────────────
+let _baiduPanPoll = null;
+async function initBaiduPanCard() {
+  try {
+    const resp = await fetch('/api/v2/lessons/baidu-pan/capability');
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.enabled) {
+      document.getElementById('baidu-pan-source-card').style.display = '';
+    }
+  } catch (_) {}
+}
+async function startBaiduPanImport() {
+  const link = document.getElementById('baidu-pan-link').value.trim();
+  const pwd = document.getElementById('baidu-pan-pwd').value.trim();
+  const text = document.getElementById('baidu-pan-progress-text');
+  const badge = document.getElementById('baidu-pan-badge');
+  const btn = document.getElementById('baidu-pan-start-btn');
+  if (!link) { alert('请先粘贴百度网盘分享链接'); return; }
+  btn.disabled = true;
+  badge.textContent = '导入中';
+  text.textContent = '正在解析分享链接…';
+  try {
+    const resp = await fetch('/api/v2/lessons/baidu-pan/imports', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({share_link: link, pwd}),
+    });
+    const job = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(job.detail || '导入失败');
+    pollBaiduPanImport(job.job_id);
+  } catch (e) {
+    text.textContent = '';
+    badge.textContent = '未开始';
+    btn.disabled = false;
+    alert(e.message);
+  }
+}
+// Promise 版网盘导入轮询：统一链接卡内联流程用，ready 后 resolve(job)，失败 reject。
+function _waitBaiduPanImport(jobId, onProgress) {
+  return new Promise((resolve, reject) => {
+    const timer = setInterval(async () => {
+      try {
+        const resp = await fetch(`/api/v2/lessons/baidu-pan/imports/${jobId}`);
+        const job = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(job.detail || '状态查询失败');
+        if (job.status === 'ready') {
+          clearInterval(timer);
+          resolve(job);
+          return;
+        }
+        if (job.status === 'failed') throw new Error(job.error || '导入失败');
+        if (onProgress) onProgress(job);
+      } catch (e) {
+        clearInterval(timer);
+        reject(e);
+      }
+    }, 2500);
+  });
+}
+
+function pollBaiduPanImport(jobId) {
+  const text = document.getElementById('baidu-pan-progress-text');
+  const badge = document.getElementById('baidu-pan-badge');
+  const btn = document.getElementById('baidu-pan-start-btn');
+  const stageLabel = {queued: '排队中…', transferring: '转存到服务器网盘…', downloading: '下载到服务器…'};
+  clearInterval(_baiduPanPoll);
+  _baiduPanPoll = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/v2/lessons/baidu-pan/imports/${jobId}`);
+      const job = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(job.detail || '状态查询失败');
+      if (job.status === 'ready') {
+        clearInterval(_baiduPanPoll);
+        _baiduPanPoll = null;
+        // 复用浏览器上传的建课链路：填充同一状态，confirmUserMediaLesson 原样可用
+        _userMediaUpload = {
+          upload_id: job.upload_id, filename: job.filename,
+          media_kind: job.media_kind, duration_seconds: job.duration_seconds,
+          quote: job.quote,
+        };
+        const mins = Math.max(1, Math.ceil((job.duration_seconds || 0) / 60));
+        document.getElementById('user-media-quote-text').textContent =
+          `${job.filename} · ${job.media_kind === 'local_video' ? '视频' : '音频'} · 约 ${mins} 分钟` +
+          ` · 预计消耗 ${job.quote.points} 积分（${job.quote.rate_version}）`;
+        document.getElementById('user-media-quote').style.display = '';
+        text.textContent = '导入完成，点击下方「▶ 开始生成」建课';
+        badge.textContent = '已导入';
+        btn.disabled = false;
+        return;
+      }
+      if (job.status === 'failed') {
+        throw new Error(job.error || '导入失败');
+      }
+      text.textContent = `${job.filename} · ${stageLabel[job.status] || '处理中…'}`;
+    } catch (e) {
+      clearInterval(_baiduPanPoll);
+      _baiduPanPoll = null;
+      text.textContent = '';
+      badge.textContent = '未开始';
+      btn.disabled = false;
+      alert(e.message);
+    }
+  }, 2500);
+}
+initBaiduPanCard();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}
 function onUserMediaSelected() {

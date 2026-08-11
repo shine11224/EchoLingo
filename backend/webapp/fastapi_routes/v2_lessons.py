@@ -48,6 +48,7 @@ from webapp.services.v2_vocab import (
     remember_word_meaning,
 )
 from webapp.services.v2_translation import build_translation_units
+from webapp.services import baidu_pan
 
 router = APIRouter(prefix="/api/v2/lessons", tags=["v2-lessons"])
 
@@ -83,6 +84,11 @@ class StartLessonBody(BaseModel):
     tts: bool = False
     title: str = ""
     text: str = ""
+
+
+class BaiduPanImportBody(BaseModel):
+    share_link: str
+    pwd: str = ""
 
 
 class ProgressBody(BaseModel):
@@ -204,7 +210,7 @@ def start_lesson(body: StartLessonBody, request: Request):
     source_type = (body.source_type or "").lower()
     # 平台链接与服务器本地路径建课仅管理员可用（多用户模式非管理员 404）；
     # 普通用户走浏览器上传（uploaded_media）或文本课程
-    if source_type in {"youtube", "bilibili", "local", "local_audio", "local_video", "reading_pdf"}:
+    if source_type in {"youtube", "bilibili", "local", "local_audio", "local_video", "reading_pdf", "reading_file"}:
         require_admin(request)
     if source_type == "youtube":
         result = service.start_youtube_lesson(url=body.url, translate=True)
@@ -271,6 +277,28 @@ def start_lesson(body: StartLessonBody, request: Request):
             raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    if source_type == "reading_file":
+        # 服务器本地路径的 txt/md/docx/pdf（如网盘导入产物）→ 复用上传解析管线
+        path = body.local_path or body.url
+        if not path:
+            raise HTTPException(status_code=400, detail="Reading file path required")
+        try:
+            return service.start_reading_file_lesson(
+                path, tts=body.tts,
+                username=str(request.scope.get("elt_username") or ""),
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
+            )
+        except InsufficientCredits as e:
+            raise HTTPException(status_code=402,
+                                detail=credit_meter.insufficient_payload(e))
+        except credit_meter.OperationConflictError as e:
+            raise HTTPException(status_code=409, detail=e.detail or str(e))
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except service.ReadingUploadBusyError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     if source_type == "uploaded_media":
         # 普通用户浏览器上传建课：只认 upload_id，忽略任何 local_path/url 字段；
         # 上传记录在当前用户 DB，跨用户 upload_id 自然 404。
@@ -331,6 +359,35 @@ def delete_media_upload(upload_id: str):
         return {"ok": True}
     except service.MediaUploadError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/baidu-pan/capability")
+def baidu_pan_capability():
+    return baidu_pan.capability()
+
+
+@router.post("/baidu-pan/imports")
+def create_baidu_pan_import(body: BaiduPanImportBody, request: Request):
+    try:
+        return baidu_pan.start_import(
+            body.share_link, body.pwd,
+            username=str(request.scope.get("elt_username") or ""),
+        )
+    except baidu_pan.BaiduPanBusyError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except baidu_pan.BaiduPanError as e:
+        raise HTTPException(status_code=400, detail=baidu_pan.friendly_message(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/baidu-pan/imports/{import_id}")
+def baidu_pan_import_status(import_id: str, request: Request):
+    try:
+        return baidu_pan.get_import_status(
+            import_id, username=str(request.scope.get("elt_username") or ""))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

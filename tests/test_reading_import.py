@@ -300,3 +300,48 @@ def test_dehyphenate_joins_when_merged_word_attested_elsewhere():
 
     assert "flummoxified parser" in result
     assert "flummox-ified" not in result
+
+
+def test_extract_text_from_upload_routes_doc(monkeypatch):
+    from webapp.services import reading_import
+
+    monkeypatch.setattr(reading_import, "extract_text_from_doc_bytes", lambda c: "doc text")
+    assert reading_import.extract_text_from_upload("作文.doc", b"x") == "doc text"
+
+
+def test_doc_fallback_chain_order(monkeypatch):
+    from webapp.services import reading_import
+
+    calls = []
+
+    def _make(name, result=None, fail=None):
+        def _extract(content):
+            calls.append(name)
+            if fail:
+                raise ValueError(fail)
+            return result
+        _extract.__name__ = name
+        return _extract
+
+    monkeypatch.setattr(reading_import, "_doc_text_via_word_com", _make("word", fail="no word"))
+    monkeypatch.setattr(reading_import, "_doc_text_via_soffice", _make("soffice", result=""))
+    monkeypatch.setattr(reading_import, "_doc_text_via_catdoc", _make("catdoc", result="hello"))
+    monkeypatch.setattr(reading_import, "_doc_text_via_antiword", _make("antiword", result="x"))
+
+    assert reading_import.extract_text_from_doc_bytes(b"doc") == "hello"
+    assert calls == ["word", "soffice", "catdoc"]
+
+
+def test_doc_all_converters_fail(monkeypatch):
+    import pytest
+    from webapp.services import reading_import
+
+    def _fail(content):
+        raise ValueError("unavailable")
+
+    for name in ("_doc_text_via_word_com", "_doc_text_via_soffice",
+                 "_doc_text_via_catdoc", "_doc_text_via_antiword"):
+        monkeypatch.setattr(reading_import, name, _fail)
+
+    with pytest.raises(ValueError, match="另存为 .docx"):
+        reading_import.extract_text_from_doc_bytes(b"doc")

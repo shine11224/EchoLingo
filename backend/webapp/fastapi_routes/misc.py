@@ -19,11 +19,18 @@ from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 from webapp.runtime import ai_config
+from webapp.runtime import credit_meter
 from webapp.runtime import heartbeat as heartbeat_state
+from webapp.runtime.access import require_admin
 from webapp.services import dicts as dict_service
-from webapp.services.natural_tts import synthesize_natural_speech
+from webapp.services.natural_tts import (
+    ENGINE_VERSION as NATURAL_TTS_ENGINE,
+    is_current_tts_audio,
+    synthesize_natural_speech,
+)
 from webapp.services.v2_vocab import clear_vocab_caches
 from webapp.services.errors import error_payload
+from webapp.storage import user_assets
 from webapp.storage.lessons import OUTPUT_DIR, extract_js_var
 
 router = APIRouter()
@@ -47,6 +54,11 @@ def _json_error(code: str, status: int, message: str | None = None, **kwargs) ->
 def health():
     def key_status(value: str) -> str:
         return "configured" if value else "missing"
+
+    def auth_enabled() -> bool:
+        """运行模式信号：与 require_admin() 共用 access 的唯一权威判断。"""
+        from webapp.runtime.access import multiuser_enabled
+        return multiuser_enabled()
 
     def check_ffmpeg() -> dict:
         conda_root = Path(sys.executable).parent
@@ -157,6 +169,7 @@ def health():
 
     return {
         "status": "ok",
+        "auth_enabled": auth_enabled(),
         "environment": {
             "python": python_info,
             "ffmpeg": ffmpeg_info,
@@ -174,24 +187,93 @@ def health():
     }
 
 
-@router.get("/api/tts/natural")
-def natural_tts_preview(text: str = ""):
+def _natural_tts_path(normalized: str) -> Path:
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return user_assets.user_output_subdir(
+        "tts_preview", fallback=NATURAL_TTS_PREVIEW_DIR
+    ) / f"{digest}.wav"
+
+
+def _natural_tts_validate(text: str) -> tuple[str, JSONResponse | None]:
     normalized = " ".join(str(text or "").split())
     if not normalized:
-        return JSONResponse({"error": "text required"}, status_code=400)
+        return "", JSONResponse({"error": "text required"}, status_code=400)
     if len(normalized) > 500:
-        return JSONResponse({"error": "text too long"}, status_code=400)
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    audio_path = NATURAL_TTS_PREVIEW_DIR / f"{digest}.wav"
-    try:
-        synthesize_natural_speech(normalized, audio_path)
-    except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=502)
+        return "", JSONResponse({"error": "text too long"}, status_code=400)
+    return normalized, None
+
+
+def _natural_tts_audio_url(normalized: str) -> str:
+    from urllib.parse import quote as urlquote
+    return f"/api/tts/natural?text={urlquote(normalized)}"
+
+
+@router.get("/api/tts/natural")
+def natural_tts_preview(text: str = ""):
+    normalized, error = _natural_tts_validate(text)
+    if error is not None:
+        return error
+    audio_path = _natural_tts_path(normalized)
+    if credit_meter.billing_active():
+        # 计费模式：GET 只读缓存，绝不在 miss 时静默合成（新合成走 POST prepare）
+        if not is_current_tts_audio(audio_path, normalized):
+            return JSONResponse(
+                {"code": "prepare_required",
+                 "prepare_url": "/api/tts/natural/prepare"},
+                status_code=409)
+        if not audio_path.exists():
+            return JSONResponse({"error": "audio cache missing"}, status_code=404)
+    else:
+        try:
+            synthesize_natural_speech(normalized, audio_path)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
     return FileResponse(
         audio_path,
         media_type="audio/wav",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
+
+
+@router.post("/api/tts/natural/prepare")
+def natural_tts_prepare(request: Request, body: dict | None = None):
+    """显式合成入口（Task 8 sentence_tts）：缓存优先，只对新合成计费。"""
+    normalized, error = _natural_tts_validate((body or {}).get("text", ""))
+    if error is not None:
+        return error
+    audio_path = _natural_tts_path(normalized)
+    audio_url = _natural_tts_audio_url(normalized)
+    if is_current_tts_audio(audio_path, normalized) and audio_path.exists():
+        return {"audio_url": audio_url, "cached": True,
+                "credits": {"charged": 0, "cached": True}}
+
+    try:
+        op, replay = credit_meter.begin_sync_operation(
+            request, "sentence_tts",
+            char_count=len(normalized),
+            reference_type="tts_preview",
+            reference_id=audio_path.stem)
+    except (credit_meter.InsufficientCredits,
+            credit_meter.OperationConflictError, ValueError) as exc:
+        status, detail = credit_meter.billing_error(exc)
+        return JSONResponse(detail if isinstance(detail, dict) else {"error": detail},
+                            status_code=status)
+    if replay is not None:
+        return replay
+
+    try:
+        synthesize_natural_speech(normalized, audio_path)
+    except Exception as exc:
+        credit_meter.release_sync(op, reason=f"sentence_tts failed: {exc}"[:500])
+        return JSONResponse({"error": str(exc)}, status_code=502)
+
+    payload = {"audio_url": audio_url, "cached": False}
+    credit_meter.settle_sync(op, actual_usage={
+        "engine": NATURAL_TTS_ENGINE,
+        "characters": len(normalized),
+        "audio_path": audio_path.name,
+    }, response=payload)
+    return payload
 
 
 @router.get("/api/lesson/check")
@@ -203,7 +285,7 @@ def api_lesson_check(url: str = ""):
     if not match:
         return {"has_lesson": False, "has_transcript_cache": False}
     bvid = match.group(0)
-    output_dir = ai_config.BASE_DIR / "output"
+    output_dir = user_assets.current_output_root(ai_config.BASE_DIR / "output")
     cache_dir = ai_config.BASE_DIR / ".cache" / "bilibili"
     audio_path = cache_dir / f"{bvid}.m4a"
     has_transcript_cache = False
@@ -226,8 +308,8 @@ def api_export_lesson(filename: str, format: str = Query(default="markdown")):
     if not safe or Path(safe).suffix.lower() != ".html":
         return _json_error("UNKNOWN_ERROR", 400, "invalid filename")
 
-    html_path = OUTPUT_DIR / safe
-    if not html_path.exists():
+    html_path = user_assets.resolve_output_file(safe, fallback=OUTPUT_DIR)
+    if html_path is None:
         return _json_error("UNKNOWN_ERROR", 404, "lesson not found")
 
     raw = html_path.read_text(encoding="utf-8")
@@ -312,7 +394,10 @@ def api_export_lesson(filename: str, format: str = Query(default="markdown")):
 
 
 @router.post("/api/browse-file")
-async def api_browse_file():
+async def api_browse_file(request: Request):
+    # 服务器端文件选择对话框仅管理员可用（多用户模式非管理员 404）
+    require_admin(request)
+
     def _browse() -> dict:
         try:
             import tkinter as tk
@@ -547,13 +632,15 @@ async def api_transcribe(audio: UploadFile = File(default=None)):
 
 
 @router.get("/api/download-audio/{youtube_id}")
-def api_download_audio(youtube_id: str):
+def api_download_audio(youtube_id: str, request: Request):
+    # YouTube 音频下载链路仅管理员可用（多用户模式非管理员 404）
+    require_admin(request)
     import subprocess
 
     ytid = re.sub(r"[^a-zA-Z0-9_-]", "", youtube_id)
     if not ytid:
         return JSONResponse({"ok": False, "error": "invalid youtube_id"}, status_code=400)
-    audio_path = OUTPUT_DIR / f"{ytid}.m4a"
+    audio_path = user_assets.current_output_root(OUTPUT_DIR) / f"{ytid}.m4a"
     if audio_path.exists() and audio_path.stat().st_size > 0:
         return {"ok": True, "audio_file": f"{ytid}.m4a", "cached": True}
     tmp_path = audio_path.with_suffix(".m4a.tmp")

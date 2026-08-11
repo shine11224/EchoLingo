@@ -351,9 +351,11 @@ def extract_text_from_upload(filename: str, content: bytes) -> str:
         return _decode_text(content)
     if suffix == ".docx":
         return extract_text_from_docx_bytes(content)
+    if suffix == ".doc":
+        return extract_text_from_doc_bytes(content)
     if suffix == ".pdf":
         return extract_text_from_pdf_bytes(content)
-    raise ValueError("Unsupported reading file type. Use txt, docx, or pdf.")
+    raise ValueError("Unsupported reading file type. Use txt, doc, docx, or pdf.")
 
 
 def _decode_text(content: bytes) -> str:
@@ -363,6 +365,124 @@ def _decode_text(content: bytes) -> str:
         except UnicodeDecodeError:
             continue
     return content.decode("utf-8", errors="replace")
+
+
+def extract_text_from_doc_bytes(content: bytes) -> str:
+    """老二进制 .doc 文本提取，按可用转换器链式回退：
+
+    Word COM（本机 Windows + Office）→ LibreOffice → catdoc → antiword（云端容器内置）。
+    全部不可用时明确报错提示另存 docx，不静默失败。
+    """
+    errors: list[str] = []
+    for extractor in (
+        _doc_text_via_word_com,
+        _doc_text_via_soffice,
+        _doc_text_via_catdoc,
+        _doc_text_via_antiword,
+    ):
+        try:
+            text = extractor(content)
+        except Exception as exc:
+            errors.append(str(exc))
+            continue
+        if text and text.strip():
+            return text
+        errors.append(f"{extractor.__name__} 提取结果为空")
+    raise ValueError(
+        f".doc 解析失败（{'; '.join(errors) or '无可用转换器'}），请将文件另存为 .docx 再导入"
+    )
+
+
+def _doc_tmp_path(content: bytes) -> str:
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_file:
+        tmp_file.write(content)
+        return tmp_file.name
+
+
+def _doc_text_via_word_com(content: bytes) -> str:
+    import pythoncom
+    import win32com.client
+    tmp_path = _doc_tmp_path(content)
+    pythoncom.CoInitialize()
+    word = None
+    try:
+        word = win32com.client.DispatchEx("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = 0
+        doc = word.Documents.Open(
+            os.path.abspath(tmp_path),
+            ConfirmConversions=False, ReadOnly=True,
+            AddToRecentFiles=False, Visible=False,
+        )
+        try:
+            return str(doc.Content.Text or "")
+        finally:
+            doc.Close(False)
+    finally:
+        if word is not None:
+            try:
+                word.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
+        os.unlink(tmp_path)
+
+
+def _doc_text_via_soffice(content: bytes) -> str:
+    import subprocess
+    import tempfile
+    binary = shutil.which("soffice") or shutil.which("libreoffice")
+    if not binary:
+        raise ValueError("soffice 未安装")
+    tmp_path = _doc_tmp_path(content)
+    try:
+        with tempfile.TemporaryDirectory() as out_dir:
+            subprocess.run(
+                [binary, "--headless", "--convert-to", "txt:Text",
+                 "--outdir", out_dir, tmp_path],
+                capture_output=True, timeout=120, check=True,
+            )
+            txt_path = Path(out_dir) / (Path(tmp_path).stem + ".txt")
+            return txt_path.read_text(encoding="utf-8", errors="replace")
+    finally:
+        os.unlink(tmp_path)
+
+
+def _doc_text_via_catdoc(content: bytes) -> str:
+    import subprocess
+    binary = shutil.which("catdoc")
+    if not binary:
+        raise ValueError("catdoc 未安装")
+    tmp_path = _doc_tmp_path(content)
+    try:
+        proc = subprocess.run(
+            [binary, "-d", "utf-8", tmp_path],
+            capture_output=True, timeout=60,
+        )
+        if proc.returncode != 0:
+            raise ValueError(f"catdoc 退出码 {proc.returncode}")
+        return proc.stdout.decode("utf-8", errors="replace")
+    finally:
+        os.unlink(tmp_path)
+
+
+def _doc_text_via_antiword(content: bytes) -> str:
+    import subprocess
+    binary = shutil.which("antiword")
+    if not binary:
+        raise ValueError("antiword 未安装")
+    tmp_path = _doc_tmp_path(content)
+    try:
+        proc = subprocess.run(
+            [binary, "-m", "UTF-8.txt", tmp_path],
+            capture_output=True, timeout=60,
+        )
+        if proc.returncode != 0:
+            raise ValueError(f"antiword 退出码 {proc.returncode}")
+        return proc.stdout.decode("utf-8", errors="replace")
+    finally:
+        os.unlink(tmp_path)
 
 
 def extract_text_from_docx_bytes(content: bytes) -> str:

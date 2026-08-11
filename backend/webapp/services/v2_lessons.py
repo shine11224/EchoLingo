@@ -585,6 +585,18 @@ def start_reading_pdf_lesson(local_path: str, *, title: str = "", tts: bool = Fa
                                      source_kind="reading_pdf")
 
 
+def start_reading_file_lesson(local_path: str, *, tts: bool = False,
+                              username: str = "", idempotency_key: str = "") -> dict:
+    """服务器本地路径的 txt/md/docx/pdf（如网盘导入产物）：读 bytes 后复用上传解析管线。"""
+    file_path = _resolve_local_path(local_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"Reading file not found: {file_path}")
+    return start_reading_upload_lesson(
+        file_path.name, file_path.read_bytes(), tts=tts,
+        username=username, idempotency_key=idempotency_key,
+    )
+
+
 def start_reading_upload_lesson(filename: str, content: bytes, *, tts: bool = False,
                                 username: str = "", idempotency_key: str = "") -> dict:
     if not content:
