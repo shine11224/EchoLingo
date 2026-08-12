@@ -376,6 +376,9 @@ def test_multiuser_baidu_pan_card_routes_text_frontend_contract():
     assert 'id="baidu-pan-tts"' in html
     assert "baidu-pan-tts')" in fn, "多用户网盘卡文本建课未读卡内 TTS 开关"
     assert 'id="baidu-pan-tts-inline"' in html
+    # 两处网盘文本建课（统一卡 + 多用户旧卡）都必须走 billableFetch：
+    # 云端计费模式 tts 勾选时 reading_tts 要求 Idempotency-Key（2026-08-12 报错回归）
+    assert html.count("billableFetch('reading_tts', '/api/v2/lessons/start'") >= 2
 
 
 def test_transfer_share_error_envelope_raises_real_reason(monkeypatch):
