@@ -147,11 +147,21 @@ def transfer_share(url: str, pwd: str, target_dir: str) -> list[dict]:
         data = json.loads(out)
     except json.JSONDecodeError:
         raise BaiduPanError(f"转存结果解析失败：{out[:200]}")
+    # bdpan 3.8.x 失败时退出码仍为 0，输出失败信封 {"code":1,"error":"...","data":null}；
+    # 不识别会把真实错误吞掉，误报「仅支持单文件分享」（2026-08-12 云端实测）。
+    if not isinstance(data, dict):
+        raise BaiduPanError(f"转存结果解析失败：{out[:200]}")
+    if data.get("error") or data.get("code") not in (None, 0):
+        raise BaiduPanError(str(data.get("error") or f"网盘转存失败（code={data.get('code')}）"))
     return list(data.get("files") or [])
 
 
 def download_file(remote_path: str, local_path: Path, *, timeout: int = 1800) -> None:
+    local_path = Path(local_path)
     _run_cli(["download", remote_path, str(local_path)], timeout=timeout)
+    # bdpan 3.8.x 失败也可能退出 0（仅打印 Error + usage），须以下载产物校验
+    if not local_path.exists() or local_path.stat().st_size == 0:
+        raise BaiduPanError(f"下载失败或产物为空：{remote_path}")
 
 
 def remove_remote(remote_path: str) -> None:

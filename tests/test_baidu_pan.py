@@ -135,11 +135,19 @@ class TestCliOperations:
         baidu_pan.transfer_share("https://pan.baidu.com/s/1abc", "", "dir/x")
         assert "-p" not in calls[0]
 
-    def test_download_and_rm_args(self, monkeypatch):
-        calls = self._patch_run(monkeypatch, ["ok", "ok"])
-        baidu_pan.download_file("dir/x/a.mp3", "/tmp/a.mp3")
+    def test_download_and_rm_args(self, monkeypatch, tmp_path):
+        calls = []
+        target = tmp_path / "a.mp3"
+        def fake_run(args, **kwargs):
+            calls.append(list(args))
+            if args[1] == "download":
+                target.write_bytes(b"mp3")
+            return MagicMock(returncode=0, stdout="ok", stderr="")
+        monkeypatch.setattr(baidu_pan.subprocess, "run", fake_run)
+        monkeypatch.setattr(baidu_pan, "_bin", lambda: "/usr/bin/bdpan")
+        baidu_pan.download_file("dir/x/a.mp3", str(target))
         baidu_pan.remove_remote("dir/x")
-        assert calls[0][1] == "download" and "dir/x/a.mp3" in calls[0] and "/tmp/a.mp3" in calls[0]
+        assert calls[0][1] == "download" and "dir/x/a.mp3" in calls[0] and str(target) in calls[0]
         assert calls[1][1] == "rm" and "dir/x" in calls[1]
 
 
@@ -364,3 +372,35 @@ def test_multiuser_baidu_pan_card_routes_text_frontend_contract():
     assert "file_kind" in fn, "多用户网盘卡未按 file_kind 路由文本导入"
     assert "reading_file" in fn, "多用户网盘卡文本导入未走 reading_file 建课"
     assert "local_path" in fn
+
+
+def test_transfer_share_error_envelope_raises_real_reason(monkeypatch):
+    """bdpan 3.8.x 失败时退出码仍为 0，输出失败信封 {"code":1,"error":"..."}。
+    回归 2026-08-12：失败信封被当空文件列表，误报「仅支持单文件分享」。"""
+    monkeypatch.setattr(
+        baidu_pan, "_run_cli",
+        lambda *a, **k: '{"code": 1, "data": null, "error": "转存失败: 该分享链接需要提取码，请补充提取码后重试"}')
+    with pytest.raises(baidu_pan.BaiduPanError, match="需要提取码"):
+        baidu_pan.transfer_share("https://pan.baidu.com/s/1abcDEF-_Xy", "", "x")
+
+
+def test_transfer_share_success_envelope_returns_files(monkeypatch):
+    """成功信封 {"count":1,"files":[...]} 正常返回文件列表。"""
+    monkeypatch.setattr(
+        baidu_pan, "_run_cli",
+        lambda *a, **k: '{"count": 1, "files": [{"name": "a.doc", "path": "/x/a.doc", "size": 1, "is_dir": false}]}')
+    files = baidu_pan.transfer_share("https://pan.baidu.com/s/1abcDEF-_Xy", "", "x")
+    assert len(files) == 1 and files[0]["name"] == "a.doc"
+
+
+def test_download_file_verifies_artifact(tmp_path, monkeypatch):
+    """bdpan 3.8.x 下载失败也可能退出 0，须以产物存在且非空校验。"""
+    monkeypatch.setattr(baidu_pan, "_run_cli", lambda *a, **k: "")
+    with pytest.raises(baidu_pan.BaiduPanError, match="下载失败"):
+        baidu_pan.download_file("/x/a.doc", tmp_path / "a.doc")
+    target = tmp_path / "b.doc"
+    def fake_ok(*a, **k):
+        target.write_bytes(b"doc")
+        return ""
+    monkeypatch.setattr(baidu_pan, "_run_cli", fake_ok)
+    baidu_pan.download_file("/x/b.doc", target)
