@@ -57,7 +57,7 @@ from webapp.storage.lessons import migrate_lessons_to_db
 
 
 def _resume_interrupted_translations() -> None:
-    """服务重启后继续被中断的句子翻译（状态停留在 translating 的课程）。
+    """服务重启后继续被中断或因瞬时上游错误失败的句子翻译。
 
     多用户模式下遍历 resources/users/*/vocab.db 逐一恢复。"""
     import os as _os
@@ -71,6 +71,7 @@ def _resume_interrupted_translations() -> None:
     for path in db_paths:
         token = db.set_current_db_path(path)
         try:
+            from webapp.services.hy_translate import is_retryable_translation_error
             from webapp.services.v2_translation import translate_lesson_subtitles, translate_reading_blocks
             for lesson in db.list_v2_lessons():
                 status = str(lesson.get("translation_status") or "")
@@ -78,8 +79,19 @@ def _resume_interrupted_translations() -> None:
                     continue
                 is_reading = str(lesson.get("source_type") or "").startswith("reading")
                 # Reading：翻译与 TTS 解耦并行，pending（未启动）与 translating（被中断）都要恢复；
-                # 视频课翻译挂在字幕就绪后，只恢复 translating。
-                if status != "translating" and not (is_reading and status == "pending"):
+                # 429/5xx/超时等瞬时错误可安全续跑，逐句缓存会跳过已完成部分；
+                # 401/配置错误等永久故障不自动重试，避免每次启动重复失败。
+                retryable_failure = (
+                    status == "failed"
+                    and is_retryable_translation_error(
+                        str(lesson.get("translation_error") or "")
+                    )
+                )
+                if (
+                    status != "translating"
+                    and not (is_reading and status == "pending")
+                    and not retryable_failure
+                ):
                     continue
                 fn = translate_reading_blocks if is_reading else translate_lesson_subtitles
                 db.spawn_with_db_context(
