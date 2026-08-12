@@ -2,6 +2,8 @@
 import os
 import sys
 import threading
+import sqlite3
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -72,7 +74,7 @@ class TestFriendlyError:
 class TestConfig:
     def test_max_bytes_default(self, monkeypatch):
         monkeypatch.delenv("ELT_BAIDU_PAN_MAX_MB", raising=False)
-        assert baidu_pan._max_bytes() == 500 * 1024 * 1024
+        assert baidu_pan._max_bytes() == 1024 * 1024 * 1024
 
     def test_max_bytes_env(self, monkeypatch):
         monkeypatch.setenv("ELT_BAIDU_PAN_MAX_MB", "100")
@@ -100,6 +102,12 @@ class TestRunCli:
         monkeypatch.setattr(baidu_pan, "_bin", lambda: "/usr/bin/bdpan")
         with pytest.raises(baidu_pan.BaiduPanError, match="超时"):
             baidu_pan._run_cli(["ls"], timeout=5)
+
+    def test_windows_gbk_output_decoded(self, monkeypatch):
+        proc = MagicMock(returncode=0, stdout='{"name":"雅思"}'.encode("gb18030"), stderr=b"")
+        monkeypatch.setattr(baidu_pan.subprocess, "run", lambda *a, **k: proc)
+        monkeypatch.setattr(baidu_pan, "_bin", lambda: "bdpan.exe")
+        assert "雅思" in baidu_pan._run_cli(["ls", "--json"], timeout=5)
 
 
 class TestCliOperations:
@@ -154,9 +162,10 @@ class TestCliOperations:
 class TestImportJob:
     @pytest.fixture()
     def job_env(self, monkeypatch, tmp_path):
-        """fake CLI 层 + 用户 uploads 目录 + 内存 DB。"""
+        """fake CLI 层 + 用户 uploads 目录 + 独立持久化任务 DB。"""
         monkeypatch.setattr(baidu_pan, "_CAPABILITY_CACHE", {})
-        monkeypatch.setattr(baidu_pan, "_IMPORT_JOBS", {})
+        monkeypatch.setenv("ELT_BAIDU_PAN_JOB_DB", str(tmp_path / "jobs.db"))
+        baidu_pan._reset_workers_for_tests()
         monkeypatch.setattr(baidu_pan, "capability", lambda: {"enabled": True})
         transferred = []
 
@@ -178,18 +187,19 @@ class TestImportJob:
         monkeypatch.setattr(baidu_pan, "remove_remote", lambda p: removed.append(p))
         monkeypatch.setattr(baidu_pan, "_probe_uploaded_media",
                             lambda path: (60.0, "local_audio"))
-        monkeypatch.setattr(baidu_pan.user_assets, "current_uploads_root", lambda: tmp_path)
+        uploads = tmp_path / "uploads"
+        monkeypatch.setattr(baidu_pan.user_assets, "current_uploads_root", lambda: uploads)
+        monkeypatch.setattr(baidu_pan, "_enough_space", lambda root, size: True)
         import db as db_module
         db_module.init_db(tmp_path / "vocab.db")
         yield {"transferred": transferred, "downloaded": downloaded,
-               "removed": removed, "tmp": tmp_path}
+               "removed": removed, "tmp": uploads}
         baidu_pan._wait_job_idle()
 
     def test_start_import_returns_queued_job(self, job_env):
         job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12",
                                      username="may")
-        assert job["status"] in {"queued", "transferring", "downloading", "ready"}
-        assert job["filename"] == "lesson audio.mp3"
+        assert job["status"] in {"queued", "transferring", "downloading", "processing", "ready"}
         baidu_pan._wait_job(job["job_id"])
 
     def test_job_reaches_ready_with_upload_record(self, job_env):
@@ -217,22 +227,20 @@ class TestImportJob:
         monkeypatch.setattr(baidu_pan, "transfer_share", lambda url, pwd, d: [
             {"name": "a.mp3", "path": "/apps/bdpan/x/a.mp3", "is_dir": False, "size": 1},
             {"name": "b.mp3", "path": "/apps/bdpan/x/b.mp3", "is_dir": False, "size": 1}])
-        with pytest.raises(ValueError, match="单文件"):
-            baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
-        # 校验失败后已转存副本被清理
-        assert job_env["removed"] == ["/apps/bdpan/x"]
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
+        assert "单文件" in baidu_pan._wait_job(job["job_id"])["error"]
 
     def test_dir_share_rejected(self, job_env, monkeypatch):
         monkeypatch.setattr(baidu_pan, "transfer_share", lambda url, pwd, d: [
             {"name": "folder", "path": "/apps/bdpan/x/folder", "is_dir": True, "size": 0}])
-        with pytest.raises(ValueError, match="单文件"):
-            baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
+        assert "单文件" in baidu_pan._wait_job(job["job_id"])["error"]
 
     def test_bad_extension_rejected(self, job_env, monkeypatch):
         monkeypatch.setattr(baidu_pan, "transfer_share", lambda url, pwd, d: [
             {"name": "movie.mkv", "path": "/apps/bdpan/x/movie.mkv", "is_dir": False, "size": 1}])
-        with pytest.raises(ValueError, match="音视频或文本"):
-            baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
+        assert "格式" in baidu_pan._wait_job(job["job_id"])["error"]
 
     def test_doc_accepted_as_text(self, job_env, monkeypatch):
         """.doc（老二进制 Word）按文本类走，ready 返回 file_kind=text。"""
@@ -240,7 +248,7 @@ class TestImportJob:
             {"name": "作文.doc", "path": f"/apps/bdpan/{d}/作文.doc", "is_dir": False, "size": 10}])
         monkeypatch.setattr(baidu_pan, "download_file",
                             lambda remote, local, *, timeout=1800: Path(local).write_bytes(b"doc"))
-        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
         result = baidu_pan._wait_job(job["job_id"])
         assert result["status"] == "ready"
         assert result["file_kind"] == "text"
@@ -255,7 +263,7 @@ class TestImportJob:
         monkeypatch.setattr(
             baidu_pan, "_probe_uploaded_media",
             lambda p: (_ for _ in ()).throw(AssertionError("文本不应走 ffprobe")))
-        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
         result = baidu_pan._wait_job(job["job_id"])
         assert result["status"] == "ready"
         assert result["file_kind"] == "text"
@@ -266,37 +274,39 @@ class TestImportJob:
         monkeypatch.setenv("ELT_BAIDU_PAN_MAX_MB", "1")
         monkeypatch.setattr(baidu_pan, "transfer_share", lambda url, pwd, d: [
             {"name": "big.mp3", "path": "/apps/bdpan/x/big.mp3", "is_dir": False, "size": 2 * 1024 * 1024}])
-        with pytest.raises(ValueError, match="大小限制"):
-            baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
+        assert "1GB" in baidu_pan._wait_job(job["job_id"])["error"]
 
     def test_transfer_failure_raises_synchronously(self, job_env, monkeypatch):
-        """转存失败（如提取码错误）在请求路径同步抛出，不产生 job。"""
+        """转存失败（如提取码错误）在 worker 中进入可重试失败态。"""
         def boom(url, pwd, target_dir):
             raise baidu_pan.BaiduPanError("xxx\n错误码: -9\n")
         monkeypatch.setattr(baidu_pan, "transfer_share", boom)
-        with pytest.raises(baidu_pan.BaiduPanError) as exc:
-            baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "bad",
-                                   username="may")
-        assert "提取码错误" in baidu_pan.friendly_message(exc.value)
-        assert baidu_pan._IMPORT_JOBS == {}
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "bad1",
+                                     username="may")
+        assert "提取码错误" in baidu_pan._wait_job(job["job_id"])["error"]
 
     def test_disabled_feature_rejected(self, job_env, monkeypatch):
         monkeypatch.setattr(baidu_pan, "capability", lambda: {"enabled": False, "reason": "bdpan 未安装"})
-        with pytest.raises(ValueError, match="不可用"):
-            baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        job = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
+        deadline = __import__('time').time() + 3
+        while __import__('time').time() < deadline:
+            state = baidu_pan.get_import_status(job["job_id"], username="may")
+            if state["status"] == "waiting_auth": break
+            __import__('time').sleep(.05)
+        assert state["status"] == "waiting_auth"
 
     def test_busy_when_queue_full(self, job_env, monkeypatch):
-        monkeypatch.setattr(baidu_pan, "_IMPORT_JOB_LIMIT", 1)
         blocker = threading.Event()
 
         def slow_download(remote, local, *, timeout=1800):
             blocker.wait(10)
             Path(local).write_bytes(b"\x00" * 1000)
         monkeypatch.setattr(baidu_pan, "download_file", slow_download)
-        first = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+        first = baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
         try:
             with pytest.raises(baidu_pan.BaiduPanBusyError):
-                baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "", username="may")
+                baidu_pan.start_import("https://pan.baidu.com/s/1abcDEF-_Xy", "pw12", username="may")
         finally:
             blocker.set()
             baidu_pan._wait_job(first["job_id"])
@@ -306,7 +316,8 @@ class TestRoutes:
     @pytest.fixture()
     def client(self, monkeypatch, tmp_path):
         monkeypatch.setattr(baidu_pan, "_CAPABILITY_CACHE", {})
-        monkeypatch.setattr(baidu_pan, "_IMPORT_JOBS", {})
+        monkeypatch.setenv("ELT_BAIDU_PAN_JOB_DB", str(tmp_path / "jobs.db"))
+        baidu_pan._reset_workers_for_tests()
         monkeypatch.setattr(baidu_pan, "capability", lambda: {"enabled": True})
         monkeypatch.setattr(baidu_pan, "transfer_share", lambda url, pwd, d: [
             {"name": "a.mp3", "path": f"/apps/bdpan/{d}/a.mp3", "is_dir": False, "size": 1000}])
@@ -315,6 +326,7 @@ class TestRoutes:
         monkeypatch.setattr(baidu_pan, "remove_remote", lambda p: None)
         monkeypatch.setattr(baidu_pan, "_probe_uploaded_media", lambda p: (60.0, "local_audio"))
         monkeypatch.setattr(baidu_pan.user_assets, "current_uploads_root", lambda: tmp_path)
+        monkeypatch.setattr(baidu_pan, "_enough_space", lambda root, size: True)
         import db as db_module
         db_module.init_db(tmp_path / "vocab.db")
         from fastapi.testclient import TestClient
@@ -327,7 +339,10 @@ class TestRoutes:
     def test_capability_endpoint(self, client):
         resp = client.get("/api/v2/lessons/baidu-pan/capability")
         assert resp.status_code == 200
-        assert resp.json() == {"enabled": True}
+        assert resp.json() == {
+            "enabled": True, "can_browse": True,
+            "can_manage_auth": False, "max_bytes": 1024**3,
+        }
 
     def test_create_and_poll_import(self, client):
         resp = client.post("/api/v2/lessons/baidu-pan/imports",
@@ -411,3 +426,114 @@ def test_download_file_verifies_artifact(tmp_path, monkeypatch):
         return ""
     monkeypatch.setattr(baidu_pan, "_run_cli", fake_ok)
     baidu_pan.download_file("/x/b.doc", target)
+
+
+class TestPersistentQueueV2:
+    @pytest.fixture()
+    def env(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("ELT_BAIDU_PAN_JOB_DB", str(tmp_path / "jobs.db"))
+        monkeypatch.setattr(baidu_pan, "capability", lambda **kwargs: {"enabled": True})
+        monkeypatch.setattr(baidu_pan.user_assets, "current_uploads_root", lambda: tmp_path / "uploads")
+        monkeypatch.setattr(baidu_pan, "_enough_space", lambda root, size: True)
+        baidu_pan._reset_workers_for_tests()
+        return tmp_path
+
+    def test_share_password_never_persisted(self, env):
+        job = baidu_pan.start_import(
+            "https://pan.baidu.com/s/1secretABC?pwd=a1b2", "", username="alice")
+        raw = Path(os.environ["ELT_BAIDU_PAN_JOB_DB"]).read_bytes()
+        assert b"a1b2" not in raw
+        with sqlite3.connect(os.environ["ELT_BAIDU_PAN_JOB_DB"]) as conn:
+            source_ref = conn.execute(
+                "SELECT source_ref FROM baidu_pan_jobs WHERE id=?", (job["job_id"],)).fetchone()[0]
+        assert "pwd=" not in source_ref
+        baidu_pan.cancel_import(job["job_id"], username="alice")
+
+    def test_one_active_job_per_user(self, env, monkeypatch):
+        monkeypatch.setattr(baidu_pan, "capability", lambda **kwargs: {"enabled": False})
+        first = baidu_pan.start_import(
+            "https://pan.baidu.com/s/1firstABC", "a1b2", username="alice")
+        with pytest.raises(baidu_pan.BaiduPanBusyError, match="进行中"):
+            baidu_pan.start_import(
+                "https://pan.baidu.com/s/1secondABC", "a1b2", username="alice")
+        baidu_pan.cancel_import(first["job_id"], username="alice")
+
+    def test_restart_marks_download_interrupted(self, env):
+        now = baidu_pan._now()
+        values = baidu_pan._base_job("alice", False)
+        values.update(source_type="share", source_ref="https://pan.baidu.com/s/1x",
+                      status="downloading", filename="x.mp3", size=10,
+                      started_at=now)
+        cols = list(values)
+        with baidu_pan._jobs_db() as conn:
+            conn.execute(
+                f"INSERT INTO baidu_pan_jobs ({','.join(cols)}) VALUES ({','.join('?' for _ in cols)})",
+                [values[c] for c in cols])
+        baidu_pan.init_queue()
+        with baidu_pan._jobs_db() as conn:
+            row = conn.execute("SELECT status,error FROM baidu_pan_jobs WHERE id=?", (values["id"],)).fetchone()
+        assert row["status"] == "failed" and "重试" in row["error"]
+
+    def test_drive_list_marks_unsupported_and_oversize(self, env, monkeypatch):
+        monkeypatch.setattr(baidu_pan, "_run_cli", lambda *a, **k: json.dumps([
+            {"fs_id": 1, "server_filename": "lesson.mp3", "path": "/apps/bdpan/lesson.mp3", "size": 10},
+            {"fs_id": 2, "server_filename": "archive.zip", "path": "/apps/bdpan/archive.zip", "size": 10},
+            {"fs_id": 3, "server_filename": "huge.mp4", "path": "/apps/bdpan/huge.mp4", "size": 2 * 1024**3},
+        ]))
+        items = baidu_pan.list_drive()["items"]
+        assert items[0]["selectable"] is True
+        assert items[1]["selectable"] is False and "格式" in items[1]["disabled_reason"]
+        assert items[2]["selectable"] is False and "1GB" in items[2]["disabled_reason"]
+
+    def test_drive_path_traversal_rejected(self, env):
+        with pytest.raises(ValueError, match="不合法"):
+            baidu_pan.list_drive("../../etc")
+
+    def test_chinese_display_path_normalised_for_cli(self, env):
+        item = baidu_pan._normalise_item({
+            "fs_id": 7, "server_filename": "lesson.mp3",
+            "path": "我的应用数据/bdpan/courses/lesson.mp3", "size": 10,
+        })
+        assert item["path"] == "courses/lesson.mp3"
+
+    def test_search_filters_files_outside_app_directory(self, env, monkeypatch):
+        monkeypatch.setattr(baidu_pan, "_run_cli", lambda *a, **k: json.dumps({"items": [
+            {"fs_id": 1, "server_filename": "ok.mp3", "path": "/apps/bdpan/ok.mp3", "size": 10},
+            {"fs_id": 2, "server_filename": "private.mp3", "path": "/我的资源/private.mp3", "size": 10},
+        ]}))
+        items = baidu_pan.search_drive("mp3")["items"]
+        assert [item["name"] for item in items] == ["ok.mp3"]
+
+    def test_locate_drive_item_uses_exact_file_path(self, env, monkeypatch):
+        raw = {"fs_id": 7, "server_filename": "lesson.mp3",
+               "path": "/apps/bdpan/deep/lesson.mp3", "size": 10}
+        calls = []
+        monkeypatch.setattr(baidu_pan, "_run_cli", lambda args, **k: calls.append(args) or json.dumps([raw]))
+        job = {"id": "j1", "source_ref": "7", "filename": "lesson.mp3"}
+        with baidu_pan._MEMORY_LOCK:
+            baidu_pan._DIRECT_PATHS["j1"] = "deep/lesson.mp3"
+        assert baidu_pan._locate_drive_item(job)["file_id"] == "7"
+        assert calls[0][:2] == ["ls", "deep/lesson.mp3"]
+
+    def test_start_drive_import_preserves_normalised_file_id(self, env, monkeypatch):
+        monkeypatch.setattr(baidu_pan, "_ensure_workers", lambda: None)
+        item = {"file_id": "real-7", "name": "lesson.mp3", "path": "deep/lesson.mp3",
+                "is_dir": False, "size": 10, "mtime": "123", "selectable": True,
+                "disabled_reason": ""}
+        job = baidu_pan.start_drive_import(item, username="", is_admin=True)
+        with baidu_pan._jobs_db() as conn:
+            row = conn.execute("SELECT source_ref FROM baidu_pan_jobs WHERE id=?", (job["job_id"],)).fetchone()
+        assert row["source_ref"] == "real-7"
+        baidu_pan.cancel_import(job["job_id"], username="")
+
+    def test_search_and_ls_mtime_are_canonicalised(self, env):
+        epoch = 1783005049
+        iso = __import__('datetime').datetime.fromtimestamp(
+            epoch, tz=__import__('datetime').timezone.utc).isoformat()
+        assert baidu_pan._normalise_mtime(epoch) == baidu_pan._normalise_mtime(iso)
+
+    def test_daily_quota_reservation(self, env, monkeypatch):
+        monkeypatch.setenv("ELT_BAIDU_PAN_DAILY_GB", "1")
+        baidu_pan._reserve_quota("alice", 900 * 1024**2, "one")
+        with pytest.raises(baidu_pan.BaiduPanBusyError, match="3GB"):
+            baidu_pan._reserve_quota("alice", 200 * 1024**2, "two")

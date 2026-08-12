@@ -137,6 +137,8 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from webapp.services import baidu_pan
+        baidu_pan.init_queue()
         _resume_interrupted_translations()
         _ensure_builtin_wordlists_async()
         _recover_stuck_reading_tts()

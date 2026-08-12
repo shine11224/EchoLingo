@@ -91,6 +91,22 @@ class BaiduPanImportBody(BaseModel):
     pwd: str = ""
 
 
+class BaiduPanDriveImportBody(BaseModel):
+    file_id: str
+    name: str
+    path: str
+    size: int
+    mtime: str = ""
+
+
+class BaiduPanPasswordBody(BaseModel):
+    pwd: str
+
+
+class BaiduPanRetryBody(BaseModel):
+    pwd: str = ""
+
+
 class ProgressBody(BaseModel):
     last_position_seconds: float = 0
     last_segment_index: int = 0
@@ -383,17 +399,30 @@ def delete_media_upload(upload_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+def _baidu_identity(request: Request) -> tuple[str, bool]:
+    return (
+        str(request.scope.get("elt_username") or ""),
+        is_admin_request(request) or not multiuser_enabled(),
+    )
+
+
 @router.get("/baidu-pan/capability")
-def baidu_pan_capability():
-    return baidu_pan.capability()
+def baidu_pan_capability(request: Request, refresh: bool = False):
+    data = baidu_pan.capability(refresh=refresh) if refresh else baidu_pan.capability()
+    _username, privileged = _baidu_identity(request)
+    data["can_browse"] = bool(privileged and data.get("enabled"))
+    data["can_manage_auth"] = bool(multiuser_enabled() and is_admin_request(request))
+    data["max_bytes"] = baidu_pan._max_bytes()
+    return data
 
 
 @router.post("/baidu-pan/imports")
 def create_baidu_pan_import(body: BaiduPanImportBody, request: Request):
     try:
+        username, privileged = _baidu_identity(request)
         return baidu_pan.start_import(
             body.share_link, body.pwd,
-            username=str(request.scope.get("elt_username") or ""),
+            username=username, is_admin=privileged,
         )
     except baidu_pan.BaiduPanBusyError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -410,6 +439,80 @@ def baidu_pan_import_status(import_id: str, request: Request):
             import_id, username=str(request.scope.get("elt_username") or ""))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/baidu-pan/imports")
+def baidu_pan_import_list(request: Request, limit: int = 50):
+    username, privileged = _baidu_identity(request)
+    return {"jobs": baidu_pan.list_imports(
+        username=username, is_admin=bool(multiuser_enabled() and privileged), limit=limit)}
+
+
+@router.post("/baidu-pan/imports/{import_id}/cancel")
+def baidu_pan_import_cancel(import_id: str, request: Request):
+    username, _ = _baidu_identity(request)
+    try:
+        return baidu_pan.cancel_import(import_id, username=username)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/baidu-pan/imports/{import_id}/password")
+def baidu_pan_import_password(import_id: str, body: BaiduPanPasswordBody, request: Request):
+    username, _ = _baidu_identity(request)
+    try:
+        return baidu_pan.supply_password(import_id, body.pwd, username=username)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/baidu-pan/imports/{import_id}/retry")
+def baidu_pan_import_retry(import_id: str, body: BaiduPanRetryBody, request: Request):
+    username, _ = _baidu_identity(request)
+    try:
+        return baidu_pan.retry_import(import_id, username=username, pwd=body.pwd)
+    except baidu_pan.BaiduPanBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValueError, baidu_pan.BaiduPanError) as e:
+        raise HTTPException(status_code=400, detail=baidu_pan.friendly_message(e))
+
+
+@router.get("/baidu-pan/drive")
+def baidu_pan_drive_list(request: Request, path: str = "", page: int = 1,
+                         page_size: int = 50, order: str = "time", desc: bool = True):
+    _username, privileged = _baidu_identity(request)
+    if not privileged:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        return baidu_pan.list_drive(path, page=page, page_size=page_size,
+                                    order=order, desc=desc)
+    except (ValueError, baidu_pan.BaiduPanError) as e:
+        raise HTTPException(status_code=400, detail=baidu_pan.friendly_message(e))
+
+
+@router.get("/baidu-pan/drive/search")
+def baidu_pan_drive_search(request: Request, q: str, page: int = 1, page_size: int = 50):
+    _username, privileged = _baidu_identity(request)
+    if not privileged:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        return baidu_pan.search_drive(q, page=page, page_size=page_size)
+    except (ValueError, baidu_pan.BaiduPanError) as e:
+        raise HTTPException(status_code=400, detail=baidu_pan.friendly_message(e))
+
+
+@router.post("/baidu-pan/drive/imports")
+def baidu_pan_drive_import(body: BaiduPanDriveImportBody, request: Request):
+    username, privileged = _baidu_identity(request)
+    if not privileged:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        return baidu_pan.start_drive_import(
+            body.model_dump(), username=username, is_admin=privileged)
+    except baidu_pan.BaiduPanBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except (PermissionError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/reading/upload")

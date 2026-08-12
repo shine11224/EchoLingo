@@ -989,6 +989,23 @@
     }
     .gen-settings-title { font-size: 13px; font-weight: 600; color: #4a6741; margin-bottom: 10px; }
     .gen-settings-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .pan-tabs { display:flex; gap:4px; padding:4px; width:max-content; background:#edf1ea; border-radius:9px; margin:10px 0; }
+    .pan-tab { border:0; background:transparent; color:#62705d; border-radius:7px; padding:6px 12px; cursor:pointer; font-size:13px; }
+    .pan-tab.active { background:#fff; color:#2f4c29; box-shadow:0 1px 5px rgba(47,76,41,.12); font-weight:600; }
+    .pan-browser { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fbfcfa; }
+    .pan-toolbar { display:flex; gap:8px; align-items:center; padding:9px; border-bottom:1px solid var(--line); background:#f5f7f3; }
+    .pan-crumb { flex:1; min-width:0; font-size:12px; color:#52634d; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pan-files { max-height:330px; overflow:auto; }
+    .pan-file { display:grid; grid-template-columns:minmax(0,1fr) 90px 125px; gap:10px; align-items:center; padding:9px 12px; border-bottom:1px solid #edf0eb; font-size:12px; cursor:pointer; }
+    .pan-file:last-child { border-bottom:0; }
+    .pan-file:hover { background:#f2f6ef; }
+    .pan-file.disabled { color:#9b9f98; cursor:not-allowed; }
+    .pan-file.selected { background:#e7f0e3; box-shadow:inset 3px 0 #587852; }
+    .pan-file-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pan-empty { padding:28px; text-align:center; color:#8b9287; font-size:13px; }
+    .pan-task { margin-top:9px; padding:9px 11px; border:1px solid #e2e7de; border-radius:8px; background:#fafbf9; font-size:12px; color:#64705e; }
+    .pan-progress { height:5px; border-radius:9px; overflow:hidden; background:#e4e8e1; margin-top:7px; }
+    .pan-progress > i { display:block; height:100%; background:#5f8058; transition:width .4s ease; }
     .gen-setting-item { display: flex; align-items: center; gap: 8px; }
     .gen-setting-item label { font-size: 13px; color: var(--muted); white-space: nowrap; }
     .gen-setting-item select {
@@ -1617,6 +1634,52 @@
           </div>
         </section>
 
+        <section class="course-source-card" id="baidu-pan-source-card" style="display:none">
+          <div class="course-source-head">
+            <div>
+              <h3 class="course-source-title">百度网盘导入</h3>
+              <div class="course-source-note">分享链接导入，或从已授权网盘中选择一个文件（≤1GB）。</div>
+            </div>
+            <span class="source-badge" id="baidu-pan-badge">未开始</span>
+          </div>
+          <div class="pan-tabs">
+            <button class="pan-tab active" id="pan-tab-share" type="button" onclick="switchPanMode('share')">分享链接</button>
+            <button class="pan-tab" id="pan-tab-drive" type="button" onclick="switchPanMode('drive')" style="display:none">我的网盘</button>
+          </div>
+          <div id="pan-share-pane">
+          <div class="reading-upload-row">
+            <input id="baidu-pan-link" type="text" placeholder="https://pan.baidu.com/s/1…"
+                   style="flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
+            <input id="baidu-pan-pwd" type="text" placeholder="提取码" maxlength="4"
+                   style="width:76px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
+            <button class="reading-upload-btn" type="button" id="baidu-pan-start-btn"
+                    onclick="startBaiduPanImport()">开始导入</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer;"
+                 title="导入的是文本文件（doc/docx/txt/pdf/md）时，生成 Reading 朗读音频">
+            <input type="checkbox" id="baidu-pan-tts" checked> 文本文件生成朗读音频（TTS）
+          </label>
+          <div id="baidu-pan-progress-text" style="font-size:12px;color:#666;margin-top:6px;"></div>
+          </div>
+          <div id="pan-drive-pane" style="display:none">
+            <div class="pan-toolbar">
+              <button type="button" class="ghost" onclick="panGoUp()">← 上一级</button>
+              <div class="pan-crumb" id="pan-crumb">我的应用数据 / bdpan</div>
+              <input id="pan-search" placeholder="搜索文件名" style="width:150px;padding:6px 8px;border:1px solid var(--line);border-radius:7px" onkeydown="if(event.key==='Enter')searchPanDrive()">
+              <button type="button" class="ghost" onclick="searchPanDrive()">搜索</button>
+            </div>
+            <div class="pan-browser"><div class="pan-files" id="pan-files"><div class="pan-empty">正在读取网盘…</div></div></div>
+            <div class="reading-upload-row" style="margin-top:9px">
+              <span class="reading-upload-note" id="pan-selected">请选择一个文件</span>
+              <button class="reading-upload-btn" id="pan-import-selected" type="button" disabled onclick="importPanSelected()">导入所选文件</button>
+            </div>
+          </div>
+          <div id="pan-unconfigured" style="display:none;margin-top:8px;padding:10px;border:1px solid #eadfbd;background:#fbf7e9;border-radius:8px;font-size:12px;line-height:1.7;color:#75673d">
+            百度网盘尚未配置。公开版本机请先运行 <code>bdpan login --accept-disclaimer --get-auth-url</code>，浏览器授权后再运行 <code>bdpan login --accept-disclaimer --set-code &lt;32位授权码&gt;</code>；云端请联系管理员。<button type="button" class="ghost" onclick="initBaiduPanCard(true)" style="margin-left:8px">重新检测</button>
+          </div>
+          <div class="pan-task" id="pan-task" style="display:none"></div>
+        </section>
+
         <!-- 默认隐藏：由 initAuthBadge 在单用户模式或登录后揭示；
              首页统一使用浏览器文件上传，不暴露服务器路径或平台链接入口。 -->
         <section class="course-source-card" id="media-source-card" style="display:none">
@@ -1663,29 +1726,6 @@
               <div id="groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
             </div>
           </div>
-        </section>
-
-        <section class="course-source-card" id="baidu-pan-source-card" style="display:none">
-          <div class="course-source-head">
-            <div>
-              <h3 class="course-source-title">百度网盘导入</h3>
-              <div class="course-source-note">粘贴百度网盘单文件分享链接，服务器下载后生成课程（≤500MB）。</div>
-            </div>
-            <span class="source-badge" id="baidu-pan-badge">未开始</span>
-          </div>
-          <div class="reading-upload-row">
-            <input id="baidu-pan-link" type="text" placeholder="https://pan.baidu.com/s/1…"
-                   style="flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
-            <input id="baidu-pan-pwd" type="text" placeholder="提取码" maxlength="4"
-                   style="width:76px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
-            <button class="reading-upload-btn" type="button" id="baidu-pan-start-btn"
-                    onclick="startBaiduPanImport()">开始导入</button>
-          </div>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer;"
-                 title="导入的是文本文件（doc/docx/txt/pdf/md）时，生成 Reading 朗读音频">
-            <input type="checkbox" id="baidu-pan-tts" checked> 文本文件生成朗读音频（TTS）
-          </label>
-          <div id="baidu-pan-progress-text" style="font-size:12px;color:#666;margin-top:6px;"></div>
         </section>
 
         <section class="course-source-card">
@@ -7373,14 +7413,96 @@ async function refreshCreditBadge(summary) {
 }
 // ── 百度网盘导入 ───────────────────────────────────────────
 let _baiduPanPoll = null;
-async function initBaiduPanCard() {
+let _panPath = '', _panSelected = null, _panCanBrowse = false;
+async function initBaiduPanCard(refresh=false) {
   try {
-    const resp = await fetch('/api/v2/lessons/baidu-pan/capability');
+    const resp = await fetch('/api/v2/lessons/baidu-pan/capability' + (refresh ? '?refresh=true' : ''));
     const data = await resp.json().catch(() => ({}));
-    if (resp.ok && data.enabled) {
-      document.getElementById('baidu-pan-source-card').style.display = '';
-    }
+    if (!resp.ok) return;
+    document.getElementById('baidu-pan-source-card').style.display = '';
+    document.getElementById('pan-unconfigured').style.display = data.enabled ? 'none' : '';
+    document.getElementById('pan-share-pane').style.opacity = data.enabled ? '1' : '.55';
+    document.getElementById('baidu-pan-start-btn').disabled = !data.enabled;
+    _panCanBrowse = Boolean(data.can_browse);
+    document.getElementById('pan-tab-drive').style.display = _panCanBrowse ? '' : 'none';
+    if (!_panCanBrowse && document.getElementById('pan-tab-drive').classList.contains('active')) switchPanMode('share');
   } catch (_) {}
+}
+function switchPanMode(mode) {
+  if (mode === 'drive' && !_panCanBrowse) return;
+  document.getElementById('pan-share-pane').style.display = mode === 'share' ? '' : 'none';
+  document.getElementById('pan-drive-pane').style.display = mode === 'drive' ? '' : 'none';
+  document.getElementById('pan-tab-share').classList.toggle('active', mode === 'share');
+  document.getElementById('pan-tab-drive').classList.toggle('active', mode === 'drive');
+  if (mode === 'drive') loadPanDrive(_panPath);
+}
+function panHumanSize(bytes) {
+  const n = Number(bytes || 0); if (!n) return '—';
+  const units = ['B','KB','MB','GB']; let v=n, i=0;
+  while (v >= 1024 && i < units.length-1) { v/=1024; i++; }
+  return `${v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}
+function renderPanFiles(items) {
+  const box = document.getElementById('pan-files');
+  if (!items.length) { box.innerHTML='<div class="pan-empty">这里还没有文件</div>'; return; }
+  box.innerHTML = items.map((item, idx) => {
+    const disabled = !item.is_dir && !item.selectable;
+    return `<div class="pan-file${disabled?' disabled':''}" data-pan-index="${idx}" title="${esc(item.disabled_reason || item.name)}">` +
+      `<div class="pan-file-name">${item.is_dir?'📁':'📄'} ${esc(item.name)}</div>` +
+      `<div>${item.is_dir?'文件夹':panHumanSize(item.size)}</div><div>${esc(String(item.mtime||'').replace('T',' ').slice(0,16))}</div></div>`;
+  }).join('');
+  [...box.querySelectorAll('.pan-file')].forEach((row) => row.addEventListener('click', () => {
+    const item = items[Number(row.dataset.panIndex)];
+    if (item.is_dir) { _panPath = item.path; _panSelected=null; loadPanDrive(_panPath); return; }
+    if (!item.selectable) return;
+    _panSelected = item;
+    [...box.children].forEach(x => x.classList.remove('selected')); row.classList.add('selected');
+    document.getElementById('pan-selected').textContent = `${item.name} · ${panHumanSize(item.size)}`;
+    document.getElementById('pan-import-selected').disabled = false;
+  }));
+}
+async function loadPanDrive(path='') {
+  const box=document.getElementById('pan-files'); box.innerHTML='<div class="pan-empty">正在读取网盘…</div>';
+  _panSelected=null; document.getElementById('pan-import-selected').disabled=true;
+  document.getElementById('pan-selected').textContent='请选择一个文件';
+  try {
+    const r=await fetch('/api/v2/lessons/baidu-pan/drive?path='+encodeURIComponent(path)+'&page_size=50');
+    const d=await r.json(); if(!r.ok) throw new Error(d.detail||'目录读取失败');
+    _panPath=d.path||''; document.getElementById('pan-crumb').textContent='我的应用数据 / bdpan' + (_panPath?' / '+_panPath:'');
+    renderPanFiles(d.items||[]);
+  } catch(e) { box.innerHTML=`<div class="pan-empty">${esc(e.message)}</div>`; }
+}
+function panGoUp() {
+  if(!_panPath){ loadPanDrive(''); return; }
+  const parts=String(_panPath).replace(/^\/apps\/bdpan\/?/,'').split('/').filter(Boolean); parts.pop(); loadPanDrive(parts.join('/'));
+}
+async function searchPanDrive() {
+  const q=document.getElementById('pan-search').value.trim(); if(!q){loadPanDrive(_panPath);return;}
+  const box=document.getElementById('pan-files'); box.innerHTML='<div class="pan-empty">正在搜索…</div>';
+  try { const r=await fetch('/api/v2/lessons/baidu-pan/drive/search?q='+encodeURIComponent(q)+'&page_size=50'); const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||'搜索失败'); document.getElementById('pan-crumb').textContent=`搜索：${q}`; renderPanFiles(d.items||[]);
+  } catch(e){box.innerHTML=`<div class="pan-empty">${esc(e.message)}</div>`;}
+}
+async function importPanSelected() {
+  if(!_panSelected)return; const btn=document.getElementById('pan-import-selected'); btn.disabled=true;
+  try { const r=await fetch('/api/v2/lessons/baidu-pan/drive/imports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(_panSelected)});
+    const d=await r.json(); if(!r.ok)throw new Error(d.detail||'入队失败'); renderPanTask(d); pollBaiduPanImport(d.job_id);
+  } catch(e){alert(e.message);btn.disabled=false;}
+}
+const PAN_STAGE = {queued:'排队中',transferring:'正在转存',downloading:'正在下载',processing:'正在校验文件',waiting_password:'等待补充提取码',waiting_auth:'等待管理员授权',waiting_quota:'等待次日额度',waiting_space:'等待磁盘空间'};
+function renderPanTask(job) {
+  const el=document.getElementById('pan-task'); el.style.display='';
+  const pct=job.progress_percent==null?'':` · 约 ${job.progress_percent}%`;
+  const pos=job.status==='queued'&&job.queue_position?` · 队列第 ${job.queue_position} 位`:'';
+  const canCancel=!['ready','failed','cancelled','processing'].includes(job.status);
+  el.innerHTML=`<b>${esc(job.filename||'百度网盘任务')}</b> · ${esc(PAN_STAGE[job.status]||job.status)}${pos}${pct}`+
+    `${canCancel?` <button class="ghost" style="float:right;padding:2px 8px" onclick="cancelPanTask('${job.job_id}')">取消</button>`:''}`+
+    `<div class="pan-progress"><i style="width:${job.progress_percent||0}%"></i></div>`;
+}
+async function cancelPanTask(jobId) {
+  if(!confirm('确认取消这个网盘任务？'))return;
+  const r=await fetch(`/api/v2/lessons/baidu-pan/imports/${jobId}/cancel`,{method:'POST'}); const d=await r.json();
+  if(!r.ok){alert(d.detail||'取消失败');return;} renderPanTask(d);
 }
 async function startBaiduPanImport() {
   const link = document.getElementById('baidu-pan-link').value.trim();
@@ -7400,6 +7522,7 @@ async function startBaiduPanImport() {
     });
     const job = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(job.detail || '导入失败');
+    renderPanTask(job);
     pollBaiduPanImport(job.job_id);
   } catch (e) {
     text.textContent = '';
@@ -7421,7 +7544,7 @@ function _waitBaiduPanImport(jobId, onProgress) {
           resolve(job);
           return;
         }
-        if (job.status === 'failed') throw new Error(job.error || '导入失败');
+        if (job.status === 'failed' || job.status === 'cancelled') throw new Error(job.error || '导入失败');
         if (onProgress) onProgress(job);
       } catch (e) {
         clearInterval(timer);
@@ -7435,13 +7558,14 @@ function pollBaiduPanImport(jobId) {
   const text = document.getElementById('baidu-pan-progress-text');
   const badge = document.getElementById('baidu-pan-badge');
   const btn = document.getElementById('baidu-pan-start-btn');
-  const stageLabel = {queued: '排队中…', transferring: '转存到服务器网盘…', downloading: '下载到服务器…'};
+  const stageLabel = PAN_STAGE;
   clearInterval(_baiduPanPoll);
   _baiduPanPoll = setInterval(async () => {
     try {
       const resp = await fetch(`/api/v2/lessons/baidu-pan/imports/${jobId}`);
       const job = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(job.detail || '状态查询失败');
+      renderPanTask(job);
       if (job.status === 'ready') {
         clearInterval(_baiduPanPoll);
         _baiduPanPoll = null;
@@ -7492,10 +7616,10 @@ function pollBaiduPanImport(jobId) {
         btn.disabled = false;
         return;
       }
-      if (job.status === 'failed') {
+      if (job.status === 'failed' || job.status === 'cancelled') {
         throw new Error(job.error || '导入失败');
       }
-      text.textContent = `${job.filename} · ${stageLabel[job.status] || '处理中…'}`;
+      text.textContent = `${job.filename || '网盘任务'} · ${stageLabel[job.status] || '处理中…'}`;
     } catch (e) {
       clearInterval(_baiduPanPoll);
       _baiduPanPoll = null;
