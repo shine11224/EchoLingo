@@ -16,7 +16,7 @@ import db
 from prompts import PATTERN_EXTRACTION_PROMPT, PATTERN_SCENARIO_PROMPT
 from webapp.runtime import ai_config
 from webapp.runtime import credit_meter
-from webapp.runtime.access import require_admin
+from webapp.runtime.access import is_admin_request, multiuser_enabled, require_admin
 
 try:  # 公开库无 webapp.auth 时静默降级（积分路径整体 no-op）
     from webapp.auth.credits import InsufficientCredits
@@ -205,12 +205,31 @@ def _sync_highlighted_words_to_lesson(lesson: dict, items: list[tuple[str, str, 
     return synced
 
 
+def _require_reading_file_path_allowed(request: Request, path: str) -> None:
+    """reading_file 路径守卫：单用户/管理员放行任意本地路径；
+    多用户普通用户仅允许读取本人 uploads 目录内文件（网盘导入产物落点），
+    防任意服务器文件读取。"""
+    if not multiuser_enabled() or is_admin_request(request):
+        return
+    try:
+        candidate = Path(path).resolve()
+        uploads_root = user_assets.current_uploads_root().resolve()
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=403, detail="仅允许导入本人 uploads 目录内的文件")
+    if candidate != uploads_root and uploads_root not in candidate.parents:
+        raise HTTPException(
+            status_code=403,
+            detail="仅允许导入本人 uploads 目录内的文件（如网盘导入产物）")
+
+
 @router.post("/start")
 def start_lesson(body: StartLessonBody, request: Request):
     source_type = (body.source_type or "").lower()
     # 平台链接与服务器本地路径建课仅管理员可用（多用户模式非管理员 404）；
-    # 普通用户走浏览器上传（uploaded_media）或文本课程
-    if source_type in {"youtube", "bilibili", "local", "local_audio", "local_video", "reading_pdf", "reading_file"}:
+    # 普通用户走浏览器上传（uploaded_media）或文本课程。
+    # reading_file 不在此列：普通用户可导入本人 uploads 目录内文件（如网盘导入
+    # 产物），由 _require_reading_file_path_allowed 做目录包含校验。
+    if source_type in {"youtube", "bilibili", "local", "local_audio", "local_video", "reading_pdf"}:
         require_admin(request)
     if source_type == "youtube":
         result = service.start_youtube_lesson(url=body.url, translate=True)
@@ -282,6 +301,7 @@ def start_lesson(body: StartLessonBody, request: Request):
         path = body.local_path or body.url
         if not path:
             raise HTTPException(status_code=400, detail="Reading file path required")
+        _require_reading_file_path_allowed(request, path)
         try:
             return service.start_reading_file_lesson(
                 path, tts=body.tts,
