@@ -1593,6 +1593,9 @@
               <div class="opt-group hidden" id="baidu-opts">
                 <span>网盘</span>
                 <input class="page-input" type="text" id="baidu-pan-pwd-inline" maxlength="4" placeholder="提取码" style="width:76px;">
+                <label class="ai-toggle" style="font-size:13px;" title="网盘导入的是文本文件（doc/docx/txt/pdf/md）时，生成 Reading 朗读音频">
+                  <input type="checkbox" id="baidu-pan-tts-inline" checked> 文本生成朗读音频
+                </label>
                 <span id="baidu-pan-inline-progress" style="font-size:12px;color:#666;"></span>
               </div>
               <div class="opt-group">
@@ -1678,6 +1681,10 @@
             <button class="reading-upload-btn" type="button" id="baidu-pan-start-btn"
                     onclick="startBaiduPanImport()">开始导入</button>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer;"
+                 title="导入的是文本文件（doc/docx/txt/pdf/md）时，生成 Reading 朗读音频">
+            <input type="checkbox" id="baidu-pan-tts" checked> 文本文件生成朗读音频（TTS）
+          </label>
           <div id="baidu-pan-progress-text" style="font-size:12px;color:#666;margin-top:6px;"></div>
         </section>
 
@@ -3065,7 +3072,7 @@ async function startGeneration() {
             body: JSON.stringify({
               source_type: 'reading_file',
               local_path: ready.local_path,
-              tts: document.getElementById('text-tts')?.checked || false,
+              tts: document.getElementById('baidu-pan-tts-inline')?.checked || false,
             }),
           });
           const data = await r.json().catch(() => ({}));
@@ -7444,7 +7451,7 @@ function pollBaiduPanImport(jobId) {
               body: JSON.stringify({
                 source_type: 'reading_file',
                 local_path: job.local_path,
-                tts: document.getElementById('text-tts')?.checked || false,
+                tts: document.getElementById('baidu-pan-tts')?.checked || false,
               }),
             });
             const data = await r.json().catch(() => ({}));
@@ -7491,6 +7498,25 @@ function pollBaiduPanImport(jobId) {
     }
   }, 2500);
 }
+// 网盘文本 TTS 开关：默认勾选，localStorage 持久化，两卡（统一卡/多用户旧卡）联动。
+(function initBaiduPanTts() {
+  const IDS = ['baidu-pan-tts', 'baidu-pan-tts-inline'];
+  const saved = localStorage.getItem('elt-baidu-pan-tts');
+  const val = saved === null ? true : saved === '1';
+  for (const id of IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.checked = val;
+    el.addEventListener('change', () => {
+      localStorage.setItem('elt-baidu-pan-tts', el.checked ? '1' : '0');
+      for (const otherId of IDS) {
+        if (otherId === id) continue;
+        const other = document.getElementById(otherId);
+        if (other) other.checked = el.checked;
+      }
+    });
+  }
+})();
 initBaiduPanCard();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}

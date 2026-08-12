@@ -372,6 +372,10 @@ def test_multiuser_baidu_pan_card_routes_text_frontend_contract():
     assert "file_kind" in fn, "多用户网盘卡未按 file_kind 路由文本导入"
     assert "reading_file" in fn, "多用户网盘卡文本导入未走 reading_file 建课"
     assert "local_path" in fn
+    # 网卡卡内须有自带 TTS 开关（默认勾选）：文本导入的 tts 不再依赖下方文本卡的勾选
+    assert 'id="baidu-pan-tts"' in html
+    assert "baidu-pan-tts')" in fn, "多用户网盘卡文本建课未读卡内 TTS 开关"
+    assert 'id="baidu-pan-tts-inline"' in html
 
 
 def test_transfer_share_error_envelope_raises_real_reason(monkeypatch):
