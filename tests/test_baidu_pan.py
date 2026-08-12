@@ -349,3 +349,18 @@ class TestRoutes:
         resp = client.post("/api/v2/lessons/baidu-pan/imports",
                            json={"share_link": "https://pan.baidu.com/s/1abcDEF-_Xy", "pwd": ""})
         assert resp.status_code == 503
+
+
+def test_multiuser_baidu_pan_card_routes_text_frontend_contract():
+    """多用户云端旧版网盘卡（pollBaiduPanImport）必须按 file_kind 路由：
+    text → reading_file 建课；media → 报价建课。
+    回归 2026-08-12：云端上传 .doc 分享链接后 job.quote 为 undefined，
+    前端 job.quote.points 抛 TypeError。"""
+    html = (Path(__file__).resolve().parents[1]
+            / "frontend" / "templates" / "index.html").read_text(encoding="utf-8")
+    fn_start = html.index("function pollBaiduPanImport(")
+    fn_end = html.index("initBaiduPanCard();", fn_start)
+    fn = html[fn_start:fn_end]
+    assert "file_kind" in fn, "多用户网盘卡未按 file_kind 路由文本导入"
+    assert "reading_file" in fn, "多用户网盘卡文本导入未走 reading_file 建课"
+    assert "local_path" in fn
