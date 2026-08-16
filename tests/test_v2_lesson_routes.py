@@ -1749,6 +1749,26 @@ def test_resume_interrupted_translations_on_startup(tmp_path, monkeypatch):
     )
     db.configure_v2_lesson_translation(other["id"], requested=True)
     db.update_v2_translation_status(other["id"], status="ready", done=10, total=10, ready=True)
+    transient = db.create_v2_lesson(
+        source_type="uploaded_media",
+        source_url="upload:transient-translation",
+        title="Retry transient translation",
+    )
+    db.configure_v2_lesson_translation(transient["id"], requested=True)
+    db.update_v2_translation_status(
+        transient["id"], status="failed", done=12, total=397, ready=False,
+        error="Hy-MT cloud translation failed after 6 attempts: 429006 model capacity busy",
+    )
+    permanent = db.create_v2_lesson(
+        source_type="uploaded_media",
+        source_url="upload:permanent-translation",
+        title="Do not retry permanent translation",
+    )
+    db.configure_v2_lesson_translation(permanent["id"], requested=True)
+    db.update_v2_translation_status(
+        permanent["id"], status="failed", done=0, total=10, ready=False,
+        error="Hy-MT cloud translation failed: 401 invalid key",
+    )
 
     resumed: list[int] = []
 
@@ -1759,10 +1779,10 @@ def test_resume_interrupted_translations_on_startup(tmp_path, monkeypatch):
     monkeypatch.setattr(v2_translation, "translate_lesson_subtitles", fake_translate)
     fastapi_server._resume_interrupted_translations()
     for _ in range(50):
-        if resumed:
+        if len(resumed) == 2:
             break
         time.sleep(0.05)
-    assert resumed == [stuck["id"]]
+    assert sorted(resumed) == sorted([stuck["id"], transient["id"]])
 
 
 def test_lesson_words_exclude_mastered_and_known(tmp_path, monkeypatch):

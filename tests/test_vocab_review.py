@@ -137,6 +137,85 @@ def test_vocab_log_exposes_legacy_youtube_original_audio_for_context(tmp_path, m
     }
 
 
+def test_vocab_log_backfills_course_sentence_when_contexts_missing(tmp_path, monkeypatch):
+    """AI 推荐采纳 / activate 端点入本不写 contexts 行：回填 v2_lesson_words 课程句。"""
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        "youtube", "https://youtu.be/abc123def45", "abc123def45", "Seminar Class", 60)
+    sentence = "A seminar and a tutorial are often quite similar."
+    db.activate_word_review(
+        "seminar", source="ai_recommendation", lesson_id=int(lesson["id"]))
+    db.save_v2_lesson_word(int(lesson["id"]), "seminar", sentence)
+
+    response = TestClient(create_app()).get("/vocab-log")
+
+    assert response.status_code == 200
+    contexts = response.json()["seminar"]["contexts"]
+    assert contexts == [{"lesson": "Seminar Class", "sentence": sentence}]
+
+
+def test_vocab_log_backfill_prefers_review_lesson_and_keeps_real_contexts(tmp_path, monkeypatch):
+    """已有 contexts 行时不回填；多课时命中时优先入本记录的 lesson_id。"""
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson_a = db.create_v2_lesson(
+        "youtube", "https://youtu.be/aaaaaaaaaa1", "aaaaaaaaaa1", "Lesson A", 60)
+    lesson_b = db.create_v2_lesson(
+        "youtube", "https://youtu.be/bbbbbbbbbb1", "bbbbbbbbbb1", "Lesson B", 60)
+    db.activate_word_review("tradeoff", source="intensive", lesson_id=int(lesson_b["id"]))
+    db.save_v2_lesson_word(int(lesson_a["id"]), "tradeoff", "Trade offs appear in lesson A.")
+    db.save_v2_lesson_word(int(lesson_b["id"]), "tradeoff", "Lesson B discusses every tradeoff.")
+    db.activate_word_review("storyword", source="manual")
+    db.add_context("storyword", "故事语境", "A storyword appeared in the tale.")
+
+    response = TestClient(create_app()).get("/vocab-log")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tradeoff"]["contexts"] == [
+        {"lesson": "Lesson B", "sentence": "Lesson B discusses every tradeoff."}
+    ]
+    assert data["storyword"]["contexts"] == [
+        {"lesson": "故事语境", "sentence": "A storyword appeared in the tale."}
+    ]
+
+
+def test_vocab_log_attaches_translation_and_lesson_link_for_v2_context(tmp_path, monkeypatch):
+    """v2 课程语境：挂载中文释义 + lesson_id/segment_index（供自评后显示与收藏句子）。"""
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        "youtube", "https://youtu.be/abc123def45", "abc123def45", "Side Hustle", 60)
+    sentence = "We need to trade off quality against speed in this project."
+    db.upsert_v2_sentence(sentence, translation="我们需要在这个项目中权衡质量与速度。")
+    db.save_v2_phase_b_sentence(
+        lesson_id=int(lesson["id"]), segment_index=3,
+        start_seconds=12.0, end_seconds=16.5, text=sentence)
+    db.activate_word_review("quality", source="manual")
+    db.add_context("quality", "Side Hustle", sentence)
+
+    response = TestClient(create_app()).get("/vocab-log")
+
+    assert response.status_code == 200
+    context = response.json()["quality"]["contexts"][0]
+    assert context["translation"] == "我们需要在这个项目中权衡质量与速度。"
+    assert context["lesson_id"] == int(lesson["id"])
+    assert context["segment_index"] == 3
+    assert context["audio"] == {
+        "kind": "youtube", "video_id": "abc123def45", "start": 12.0, "end": 16.5,
+    }
+
+
 def test_vocab_review_tags_persist_normalize_and_return_in_log(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app

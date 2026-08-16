@@ -34,6 +34,7 @@ window.eltCredits = (() => {
     if (!rate) return '';
     const points = rate.points != null ? rate.points : (rate.unit_points != null ? rate.unit_points : null);
     if (points == null) return '';
+    if (points === 0) return '免费';
     const unit = rate.unit || 'per_call';
     if (unit === 'per_minute') return `约 ${points} 积分/分钟`;
     if (unit === 'per_1000_chars') return `约 ${points} 积分/千字`;

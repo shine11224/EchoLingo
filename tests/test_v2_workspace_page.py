@@ -176,6 +176,11 @@ def test_workspace_contains_reading_mode_mount_points(tmp_path, monkeypatch):
     assert "if (lessonData.video_id)" in resp.text
     assert "if (!lessonData.media_url) return;" in resp.text
     assert "audio.src = src;" in resp.text
+    assert "await waitForReadingMediaMetadata(audio);" in resp.text
+    assert "await audio.play();" in resp.text
+    assert "audio.play().catch(() => {});" not in resp.text
+    assert "const hasPlaybackRange = Number.isFinite(blockStart)" in resp.text
+    assert "if (hasPlaybackRange)" in resp.text
     assert "startPendingYouTubeReadingRange" in resp.text
     assert "initPlayer({allowReading: true})" in resp.text
     assert "stopReadingRange" in resp.text

@@ -53,6 +53,24 @@ def _split_segment_by_words(segment: dict) -> list[Segment] | None:
     return out or None
 
 
+def _split_piece_by_capitals(piece: Segment) -> list[Segment]:
+    """ASR 丢句末点时按句中大写词补切（专名连用不切），时间轴按字符比例插值。"""
+    parts = SentenceAnalyzer._split_capital_boundaries(piece.text)
+    if len(parts) <= 1:
+        return [piece]
+    total = sum(max(1, len(part)) for part in parts)
+    start = float(piece.start or 0.0)
+    end = float(piece.end or start)
+    duration = max(0.0, end - start)
+    out: list[Segment] = []
+    cursor = start
+    for i, part in enumerate(parts):
+        piece_end = end if i == len(parts) - 1 else cursor + duration * max(1, len(part)) / total
+        out.append(Segment(index=piece.index, text=part, start=cursor, end=piece_end))
+        cursor = piece_end
+    return out
+
+
 def _split_source_segments(segments: list[dict]) -> list[dict]:
     """Split strong punctuation inside source chunks before cross-chunk merging."""
     pieces: list[dict] = []
@@ -64,7 +82,8 @@ def _split_source_segments(segments: list[dict]) -> list[dict]:
             start=float(segment.get("start", segment.get("start_seconds", 0)) or 0),
             end=float(segment.get("end", segment.get("end_seconds", 0)) or 0),
         )
-        for piece in (_split_segment_by_words(segment) or SentenceAnalyzer._split_segment_sentences(source)):
+        raw_pieces = _split_segment_by_words(segment) or SentenceAnalyzer._split_segment_sentences(source)
+        for piece in (sub for p in raw_pieces for sub in _split_piece_by_capitals(p)):
             words = {word.casefold() for word in _WORD_RE.findall(piece.text)}
             highlighted = [
                 word for word in segment.get("highlighted_words", [])
@@ -201,6 +220,48 @@ def _rebalance_punctuationless_units(units: list[dict]) -> list[dict]:
     return out
 
 
+def _split_unit_by_capitals(unit: dict) -> list[dict]:
+    """跨 cue 累积出的粘连 unit 按大写边界补切（cue 内粘连已在 _split_source_segments 切过）。
+
+    whisper 保留词首大小写：cue 首词小写=续句、大写=新句。cue A 无句末点而 cue B 大写开头时
+    累积缓冲会把两句粘进同一 unit（"…their services Companies which sell…"），
+    只能在合并后的文本上用同一把大写尺补切，时间轴按字符比例插值。
+    """
+    parts = SentenceAnalyzer._split_capital_boundaries(str(unit.get("text") or ""))
+    if len(parts) <= 1:
+        return [unit]
+    total = sum(max(1, len(part)) for part in parts)
+    start = float(unit["start"])
+    end = float(unit["end"])
+    duration = max(0.0, end - start)
+    out: list[dict] = []
+    cursor = start
+    for i, part in enumerate(parts):
+        part_end = end if i == len(parts) - 1 else cursor + duration * max(1, len(part)) / total
+        words = {word.casefold() for word in _WORD_RE.findall(part)}
+        out.append({
+            **unit,
+            "text": part,
+            "start": cursor,
+            "end": part_end,
+            "highlighted_words": [
+                word for word in unit["highlighted_words"] if str(word).casefold() in words
+            ],
+            "word_meanings": {
+                word: meaning
+                for word, meaning in unit["word_meanings"].items()
+                if str(word).casefold() in words
+            },
+            "highlighted_word_lists": {
+                word: list_key
+                for word, list_key in (unit.get("highlighted_word_lists") or {}).items()
+                if str(word).casefold() in words
+            },
+        })
+        cursor = part_end
+    return out
+
+
 def build_translation_units(segments: list[dict]) -> list[dict]:
     """Mirror the workspace sentence-unit boundaries used for playback."""
     units: list[dict] = []
@@ -271,7 +332,8 @@ def build_translation_units(segments: list[dict]) -> list[dict]:
             flush()
     out: list[dict] = []
     for unit in units:
-        out.extend(_split_oversized_unit(unit))
+        for capital_split in _split_unit_by_capitals(unit):
+            out.extend(_split_oversized_unit(capital_split))
     out = _rebalance_punctuationless_units(out)
     for index, unit in enumerate(out):
         unit["index"] = index

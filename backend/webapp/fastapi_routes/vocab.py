@@ -11,6 +11,11 @@ from typing import Any, List, Optional
 from urllib.parse import quote
 
 import db
+
+try:
+    from webapp.services import planning as planning_service
+except ImportError:  # pragma: no cover - 公开库不含规划模块
+    planning_service = None
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse, Response
 from prompts import STORY_CHAT_SYSTEM_PROMPT, STORY_PROMPT
@@ -93,17 +98,22 @@ def _context_text_key(text: str) -> str:
     return " ".join(str(text or "").lower().split()).strip(" .!?\"'“”‘’")
 
 
-def _matching_context_range(items: list[dict], sentence: str) -> tuple[float, float] | None:
+def _matching_context_item(items: list[dict], sentence: str) -> dict | None:
     target = _context_text_key(sentence)
     if not target:
         return None
     for item in items:
         if _context_text_key(item.get("text", "")) != target:
             continue
-        start = float(item.get("start_seconds", item.get("start", 0)) or 0)
-        end = float(item.get("end_seconds", item.get("end", 0)) or 0)
-        if end > start:
-            return start, end
+        return item
+    return None
+
+
+def _item_time_range(item: dict) -> tuple[float, float] | None:
+    start = float(item.get("start_seconds", item.get("start", 0)) or 0)
+    end = float(item.get("end_seconds", item.get("end", 0)) or 0)
+    if end > start:
+        return start, end
     return None
 
 
@@ -128,7 +138,8 @@ def _legacy_lesson_audio(meta: dict, sentence: str, cache: dict) -> dict | None:
         except (OSError, UnicodeError):
             cache[filename] = {}
     payload = cache[filename]
-    time_range = _matching_context_range(payload.get("segments") or [], sentence)
+    item = _matching_context_item(payload.get("segments") or [], sentence)
+    time_range = _item_time_range(item) if item else None
     if not time_range:
         return None
     start, end = time_range
@@ -139,21 +150,34 @@ def _legacy_lesson_audio(meta: dict, sentence: str, cache: dict) -> dict | None:
     return None
 
 
-def _v2_lesson_audio(lesson: dict, sentence: str, cache: dict) -> dict | None:
-    source_type = str(lesson.get("source_type") or "")
-    if source_type == "reading_text":
-        return None
+def _v2_lesson_sentence_item(lesson: dict, sentence: str, cache: dict) -> dict | None:
+    """按原文匹配课内句子行；阅读课的块内句补齐 segment_index（阅读 key 语义）。"""
     lesson_id = int(lesson["id"])
     if lesson_id not in cache:
         ranges = db.get_v2_phase_b_sentences(lesson_id)
         if not ranges:
+            from webapp.services.v2_intensive import reading_sentence_key
             ranges = [
-                sentence_item
+                {
+                    **sentence_item,
+                    "segment_index": sentence_item.get("segment_index")
+                        if sentence_item.get("segment_index") is not None
+                        else reading_sentence_key(int(block.get("index", 0)), sentence_index),
+                }
                 for block in db.get_v2_reading_blocks(lesson_id)
-                for sentence_item in (block.get("sentences") or [])
+                for sentence_index, sentence_item in enumerate(block.get("sentences") or [])
             ]
         cache[lesson_id] = ranges
-    time_range = _matching_context_range(cache[lesson_id], sentence)
+    return _matching_context_item(cache[lesson_id], sentence)
+
+
+def _v2_lesson_audio(lesson: dict, item: dict | None) -> dict | None:
+    if item is None:
+        return None
+    source_type = str(lesson.get("source_type") or "")
+    if source_type == "reading_text":
+        return None
+    time_range = _item_time_range(item)
     if not time_range:
         return None
     start, end = time_range
@@ -169,13 +193,26 @@ def _attach_vocab_context_audio(words: dict) -> dict:
     v2_by_title = {item.get("title"): item for item in db.list_v2_lessons(include_archived=True)}
     legacy_cache: dict = {}
     v2_cache: dict = {}
+    translation_cache: dict = {}
     for entry in words.values():
         for context in entry.get("contexts") or []:
             title = context.get("lesson")
             sentence = context.get("sentence") or ""
+            text_key = _context_text_key(sentence)
+            if text_key and text_key not in translation_cache:
+                row = db.get_v2_sentence(sentence)
+                translation_cache[text_key] = str((row or {}).get("translation") or "").strip()
+            if translation_cache.get(text_key):
+                context["translation"] = translation_cache[text_key]
             audio = None
             if title in v2_by_title:
-                audio = _v2_lesson_audio(v2_by_title[title], sentence, v2_cache)
+                lesson = v2_by_title[title]
+                item = _v2_lesson_sentence_item(lesson, sentence, v2_cache)
+                if item is not None:
+                    context["lesson_id"] = int(lesson["id"])
+                    if item.get("segment_index") is not None:
+                        context["segment_index"] = int(item["segment_index"])
+                audio = _v2_lesson_audio(lesson, item)
             if not audio and title in legacy_by_title:
                 audio = _legacy_lesson_audio(legacy_by_title[title], sentence, legacy_cache)
             if audio:
@@ -260,6 +297,14 @@ def set_review_familiarity(target: str, body: ReviewWordFamiliarityBody):
         return JSONResponse({"error": str(exc)}, status_code=400)
     if not item:
         return JSONResponse({"error": "review target not found"}, status_code=404)
+    if planning_service is not None:
+        try:
+            planning_service.record_verified_event(
+                "review_vocabulary", item.get("target_type") or "word", target,
+                evidence_ref=f"word-familiarity:{target}:{datetime.date.today().isoformat()}",
+            )
+        except Exception:
+            pass
     return item
 
 
@@ -295,6 +340,15 @@ def review_word(body: Optional[ReviewWordBody] = Body(default=None)):
     new_count = db.review_word(word, today)
     if new_count is None:
         return JSONResponse({"error": "word not found"}, status_code=404)
+    if planning_service is not None:
+        try:
+            review_item = db.get_review_word_item(word) or {}
+            planning_service.record_verified_event(
+                "review_vocabulary", review_item.get("target_type") or "word", word,
+                evidence_ref=f"word-review:{word}:{today}",
+            )
+        except Exception:
+            pass
     return {"word": word, "count": new_count, "last_studied": today}
 
 

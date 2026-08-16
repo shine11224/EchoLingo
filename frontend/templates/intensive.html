@@ -123,6 +123,27 @@
     .mode-filter.active { border-color: var(--brand); background: var(--surface-soft); color: var(--brand-dark); font-weight: 750; }
     .filter-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
     .filter-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .ai-rec-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .ai-rec-btn {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--brand); border-radius: 8px;
+      background: var(--brand); color: #fff; font-size: 13px; font-weight: 650; cursor: pointer;
+    }
+    .ai-rec-btn:hover { filter: brightness(1.05); }
+    .ai-rec-btn:disabled { opacity: .6; cursor: wait; }
+    .ai-rec-btn.subtle { background: transparent; color: var(--brand-dark); margin-top: 10px; }
+    .ai-rec-words { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+    .ai-rec-word {
+      padding: 3px 9px; border-radius: 999px; background: var(--surface-soft);
+      border: 1px solid var(--line); color: var(--brand-dark); font-size: 12px; font-weight: 650;
+    }
+    .ai-rec-patterns { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .ai-rec-pattern {
+      text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+      padding: 7px 10px; cursor: pointer; font-size: 12px; line-height: 1.5;
+    }
+    .ai-rec-pattern:hover { border-color: var(--brand); }
+    .ai-rec-pattern strong { color: var(--brand-dark); display: block; }
+    .ai-rec-pattern span { color: var(--muted); }
     #tag-filter-list { display: flex; flex-wrap: wrap; gap: 7px; }
     .tag-filter {
       min-height: 30px;
@@ -281,6 +302,7 @@
       font-size: 11px;
     }
     .saved-chip { background: #e4f0e8; color: var(--brand-dark); font-weight: 700; }
+    .planning-chip { border: 1px solid #b9cec0; background: #eef6f0; color: var(--brand-dark); font-weight: 750; }
     .expand-mark { padding-top: 6px; color: var(--muted); font-size: 18px; }
     .sentence-detail { display: none; padding: 0 18px 18px 70px; }
     .sentence-card.open .sentence-detail { display: block; animation: reveal .18s ease-out; }
@@ -415,6 +437,7 @@
     .focus-word-list { display: flex; flex-wrap: wrap; gap: 7px; }
     .focus-word-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 4px 9px; border-color: #d5c385; background: #fff9e8; color: #6d5215; font-family: Georgia, "Times New Roman", serif; }
     .familiarity-badge { padding: 2px 6px; border-radius: 999px; background: rgba(109, 82, 21, .1); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 750; }
+    .planning-word-badge { padding: 2px 6px; border-radius: 999px; background: #e4f0e8; color: var(--brand-dark); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 750; }
     .word-card {
       position: fixed;
       z-index: 60;
@@ -545,7 +568,12 @@
         <button class="mode-filter active" type="button" data-filter="all">全部 <span id="count-all">0</span></button>
         <button class="mode-filter" type="button" data-filter="vocabulary">重点词汇 <span id="count-vocabulary">0</span></button>
         <button class="mode-filter" type="button" data-filter="saved">已收藏 <span id="count-saved">0</span></button>
+        <button class="mode-filter" type="button" data-filter="ai-recommended">AI 推荐 <span id="count-ai-recommended">0</span></button>
         <button class="mode-filter" type="button" data-filter="untagged">未标记 <span id="count-untagged">0</span></button>
+      </div>
+      <div class="filter-section" id="ai-rec-section">
+        <span class="filter-label">本课 AI 推荐</span>
+        <div id="ai-rec-body"></div>
       </div>
       <div class="filter-section">
         <label class="filter-label" for="sentence-search">搜索句子</label>
@@ -617,6 +645,11 @@
     const knownWords = new Set();
     const savedLessonWords = new Set();
     const reviewBookWords = new Set();
+    const aiRecommendedWords = new Set();
+    const aiRecommendedSentences = new Set();
+    let lessonAiRecommendation = null;
+    const aiWordReasons = new Map();
+    const aiPatternByKey = new Map();
     const vocabLog = {};
     const wordAnalysisCache = new Map();
     let activeWordCard = null;
@@ -664,10 +697,20 @@
         .filter((word, index, words) => word && !knownWords.has(word) && words.indexOf(word) === index);
     }
 
+    function sentencePlanningState(sentence) {
+      const tokens = String(sentence.text || '').toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || [];
+      return {
+        sentenceRecommended: aiRecommendedSentences.has(Number(sentence.key)),
+        wordRecommended: tokens.some(word => aiRecommendedWords.has(word)),
+      };
+    }
+
     function visibleSentences() {
       const query = searchQuery.trim().toLowerCase();
       return intensiveDocument.sentences.filter(sentence => {
         if (activeMode === 'saved' && !sentence.saved) return false;
+        const planning = sentencePlanningState(sentence);
+        if (activeMode === 'ai-recommended' && !planning.sentenceRecommended && !planning.wordRecommended) return false;
         if (activeMode === 'untagged' && sentenceTags(sentence).length) return false;
         if (activeMode === 'vocabulary' && !sentenceFocusWords(sentence).length) return false;
         if (query && !sentence.text.toLowerCase().includes(query)) return false;
@@ -718,9 +761,10 @@
     }
 
     function renderFocusWordChips(sentence) {
-      return sentenceFocusWords(sentence).map(word => (
-        `<button class="focus-word-chip" type="button" data-word="${escapeHtml(word)}" data-key="${sentence.key}"><strong>${escapeHtml(word)}</strong><span class="familiarity-badge">${vocabLog[word]?.count ? `已学 ${vocabLog[word].count} 次` : '新词'}</span></button>`
-      )).join('') || '<span class="filter-note">这句话没有可提取的重点词。</span>';
+      return sentenceFocusWords(sentence).map(word => {
+        const recommended = aiRecommendedWords.has(word);
+        return `<button class="focus-word-chip" type="button" data-word="${escapeHtml(word)}" data-key="${sentence.key}"><strong>${escapeHtml(word)}</strong><span class="familiarity-badge">${vocabLog[word]?.count ? `已学 ${vocabLog[word].count} 次` : '新词'}</span>${recommended ? `<span class="planning-word-badge" title="${escapeHtml(aiWordReasons.get(word) || '')}">AI 推荐</span>` : ''}</button>`;
+      }).join('') || '<span class="filter-note">这句话没有可提取的重点词。</span>';
     }
 
     function tagsForCategory(category) {
@@ -757,6 +801,11 @@
     function renderSentenceCard(sentence, documentIndex) {
       const tags = sentenceTags(sentence);
       const tagHtml = tags.map(tag => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join('');
+      const planning = sentencePlanningState(sentence);
+      const aiPattern = aiPatternByKey.get(Number(sentence.key));
+      const planningHtml = [
+        planning.sentenceRecommended ? `<span class="tag-chip planning-chip" title="${escapeHtml(aiPattern ? `${aiPattern.phrase}${aiPattern.reason ? `：${aiPattern.reason}` : ''}` : '')}">AI 推荐句式</span>` : planning.wordRecommended ? '<span class="tag-chip planning-chip">含推荐词汇</span>' : '',
+      ].join('');
       const alignmentHtml = sentence.timing_source === 'mfa'
         ? `<span class="alignment-badge" title="逐词覆盖率 ${Math.round(Number(sentence.alignment_coverage || 0) * 100)}%">原声对齐</span>`
         : '';
@@ -776,7 +825,7 @@
           <button class="sentence-head" type="button" data-toggle-key="${sentence.key}">
             <span class="sentence-number">${documentIndex + 1}</span>
             <span class="sentence-copy">${renderSentenceSummary(sentence)}
-              <span class="sentence-meta">${alignmentHtml}${tagHtml}</span>
+              <span class="sentence-meta">${planningHtml}${alignmentHtml}${tagHtml}</span>
             </span>
             <span class="expand-mark">${open ? '−' : '+'}</span>
           </button>
@@ -834,7 +883,7 @@
               <div class="v1-module-head"><h3>③ 口语表达解析</h3><span class="v1-module-kicker">IELTS reuse</span></div>
               <div class="v1-module-body">
                 <div class="module-actions"><button class="primary-action" type="button" data-generate-oral="${sentence.key}" data-force="${oral ? 'true' : 'false'}">${oral ? '重新解析' : 'AI 深度解析'}</button></div>
-                <div data-oral-result="${sentence.key}">${oral ? renderOralAnalysis(oral) : '<div class="filter-note">识别句式、表达功能、雅思复用场景和迁移模板。</div>'}</div>
+                <div data-oral-result="${sentence.key}">${oral ? renderOralAnalysis(oral, sentence.key) : '<div class="filter-note">识别句式、表达功能、雅思复用场景和迁移模板。</div>'}</div>
               </div>
             </section>
 
@@ -901,6 +950,7 @@
       document.getElementById('count-all').textContent = intensiveDocument.sentences.length;
       document.getElementById('count-vocabulary').textContent = intensiveDocument.sentences.filter(item => sentenceFocusWords(item).length).length;
       document.getElementById('count-saved').textContent = intensiveDocument.sentences.filter(item => item.saved).length;
+      document.getElementById('count-ai-recommended').textContent = intensiveDocument.sentences.filter(item => { const state = sentencePlanningState(item); return state.sentenceRecommended || state.wordRecommended; }).length;
       document.getElementById('count-untagged').textContent = intensiveDocument.sentences.filter(item => !sentenceTags(item).length).length;
       document.getElementById('study-progress').textContent = intensiveViewMode === 'card' && visible.length
         ? `卡片 ${cardPosition + 1} / ${visible.length}`
@@ -940,6 +990,7 @@
     }
 
     function renderAll() {
+      renderAiRecPanel();
       renderTagFilters();
       renderSentenceList();
       document.querySelectorAll('[data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === activeMode));
@@ -1438,13 +1489,15 @@
       if (select) select.value = String(Number(speed));
     }
 
-    function renderOralAnalysis(data = {}) {
+    function renderOralAnalysis(data = {}, key = 0) {
       if (data.error) return `<div class="filter-note">${escapeHtml(data.error)}</div>`;
+      const templateText = String(data.template || '');
+      const exampleText = String(data.template_example || '');
       return `<div class="oral-modules">
         <div class="oral-module"><span class="oral-module-label">A · 句式识别</span>${escapeHtml(data.pattern_name || '基础简单句')} · ${escapeHtml(data.cefr_level || 'B1')}</div>
         <div class="oral-module"><span class="oral-module-label">B · 表达功能</span>${escapeHtml(data.function_cn || '暂无说明')}</div>
         <div class="oral-module"><span class="oral-module-label">C · 雅思复用</span>${escapeHtml(data.ielts_reuse || '暂无说明')}</div>
-        <div class="oral-module"><span class="oral-module-label">D · 迁移模板</span><code class="oral-template">${escapeHtml(data.template || '暂无模板')}</code>${data.template_example ? `<div style="margin-top:6px">${escapeHtml(data.template_example)}</div>` : ''}</div>
+        <div class="oral-module"><span class="oral-module-label">D · 迁移模板</span><code class="oral-template">${templateText ? linkifyEnglish(templateText, key) : '暂无模板'}</code>${templateText ? `<button class="practice-sentence-speak" type="button" data-speak-example="${encodeURIComponent(templateText)}" aria-label="朗读模板">🔊 朗读</button>` : ''}${exampleText ? `<div style="margin-top:6px">${linkifyEnglish(exampleText, key)} <button class="practice-sentence-speak" type="button" data-speak-example="${encodeURIComponent(exampleText)}" aria-label="朗读示例">🔊 朗读</button></div>` : ''}</div>
       </div>`;
     }
 
@@ -1468,7 +1521,7 @@
         if (data.sentence_id) sentence.sentence_id = Number(data.sentence_id);
         sentence.oral_analysis = data;
         oralAnalysisCache.set(Number(key), data);
-        result.innerHTML = renderOralAnalysis(data);
+        result.innerHTML = renderOralAnalysis(data, key);
         const button = document.querySelector(`[data-generate-oral="${key}"]`);
         if (button) {
           button.textContent = '重新解析';
@@ -2123,13 +2176,94 @@
       }
     }
 
+    function applyLessonAiRecommendation(rec) {
+      lessonAiRecommendation = rec && typeof rec === 'object' ? rec : null;
+      aiRecommendedWords.clear();
+      aiRecommendedSentences.clear();
+      aiWordReasons.clear();
+      aiPatternByKey.clear();
+      (lessonAiRecommendation?.words || []).forEach(item => {
+        const word = String(item?.word || '').trim().toLowerCase();
+        if (!word) return;
+        aiRecommendedWords.add(word);
+        aiWordReasons.set(word, String(item.reason || ''));
+      });
+      (lessonAiRecommendation?.patterns || []).forEach(item => {
+        const key = Number(item?.sentence_key);
+        if (!Number.isFinite(key)) return;
+        aiRecommendedSentences.add(key);
+        aiPatternByKey.set(key, {phrase: String(item.phrase || ''), reason: String(item.reason || '')});
+      });
+      renderAiRecPanel();
+    }
+
+    function renderAiRecPanel() {
+      const host = document.getElementById('ai-rec-body');
+      if (!host) return;
+      if (!lessonAiRecommendation) {
+        host.innerHTML = `<p class="ai-rec-note">还没有这节课的推荐，AI 会通读全文后挑出重点词汇和值得套用的句式。</p>
+          <button class="ai-rec-btn" id="ai-rec-generate-btn" type="button" onclick="generateLessonAiRecommendation(false)">✨ 生成 AI 推荐</button>`;
+        return;
+      }
+      const words = (lessonAiRecommendation.words || []).map(item =>
+        `<span class="ai-rec-word" title="${escapeHtml(item.reason || '')}">${escapeHtml(item.word)}</span>`).join('');
+      const patterns = (lessonAiRecommendation.patterns || []).map(item =>
+        `<button class="ai-rec-pattern" type="button" onclick="jumpToAiPattern(${Number(item.sentence_key)})">
+          <strong>${escapeHtml(item.phrase)}</strong>${item.reason ? `<span>${escapeHtml(item.reason)}</span>` : ''}
+        </button>`).join('');
+      host.innerHTML = `
+        ${words ? `<div class="ai-rec-words">${words}</div>` : ''}
+        ${patterns ? `<div class="ai-rec-patterns">${patterns}</div>` : ''}
+        <button class="ai-rec-btn subtle" id="ai-rec-generate-btn" type="button" onclick="generateLessonAiRecommendation(true)">↻ 重新生成</button>`;
+    }
+
+    async function generateLessonAiRecommendation(regenerate) {
+      const btn = document.getElementById('ai-rec-generate-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'AI 正在读这节课…'; }
+      try {
+        const url = `/api/v2/lessons/${LESSON_ID}/ai-recommendations/refresh`;
+        const options = {method: 'POST', body: JSON.stringify({regenerate: Boolean(regenerate)})};
+        const resp = window.eltCredits?.billableFetch
+          ? await eltCredits.billableFetch('recommendation_refresh', url, options)
+          : await fetch(url, {...options, headers: {'Content-Type': 'application/json', 'Idempotency-Key': (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())}});
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          const detail = typeof data.detail === 'string' ? data.detail : '';
+          throw new Error(data.error || detail || `生成失败（${resp.status}）`);
+        }
+        applyLessonAiRecommendation(data.recommendation || null);
+        activeMode = 'ai-recommended';
+        renderAll();
+      } catch (error) {
+        window.alert(error.message || '生成失败，请稍后重试');
+        renderAiRecPanel();
+      }
+    }
+
+    function jumpToAiPattern(key) {
+      key = Number(key);
+      if (!sentenceByKey(key)) return;
+      activeMode = 'ai-recommended';
+      searchQuery = '';
+      selectedTags.clear();
+      openSentenceKeys.add(key);
+      document.getElementById('sentence-search').value = '';
+      renderAll();
+      requestAnimationFrame(() => {
+        const card = document.querySelector(`.sentence-card[data-key="${key}"]`);
+        card?.scrollIntoView({behavior: 'smooth', block: 'center'});
+        card?.focus({preventScroll: true});
+      });
+    }
+
     async function loadIntensiveStudy() {
       await syncIntensiveHighlightedWords();
-      const [documentResponse, tagResponse, knownResponse, vocabResponse] = await Promise.all([
+      const [documentResponse, tagResponse, knownResponse, vocabResponse, recommendationResponse] = await Promise.all([
         fetch(`/api/v2/lessons/${LESSON_ID}/intensive${_wordlistsQuery()}`),
         fetch('/api/v2/lessons/sentence-tags'),
         fetch('/api/known-words'),
         fetch('/vocab-log'),
+        fetch(`/api/v2/lessons/${LESSON_ID}/ai-recommendations`, {cache: 'no-store'}),
       ]);
       if (!documentResponse.ok) throw new Error('无法加载整篇精读数据');
       intensiveDocument = await documentResponse.json();
@@ -2164,6 +2298,10 @@
       if (vocabResponse.ok) {
         Object.assign(vocabLog, await vocabResponse.json());
         for (const word of Object.keys(vocabLog)) reviewBookWords.add(String(word).toLowerCase());
+      }
+      if (recommendationResponse.ok) {
+        const recommendations = await recommendationResponse.json();
+        applyLessonAiRecommendation(recommendations.recommendation || null);
       }
       document.getElementById('lesson-title').textContent = intensiveDocument.lesson?.title || '逐句精读';
       renderAll();

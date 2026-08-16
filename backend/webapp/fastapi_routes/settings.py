@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from webapp.runtime import ai_config
+from webapp.runtime.access import multiuser_enabled
+from webapp.services import baidu_pan
 
 router = APIRouter()
 
@@ -98,3 +100,51 @@ async def delete_ai_settings(request: Request):
 
     ai_config.delete_setting(field)
     return {"ok": True, "message": f"{field} 已清空"}
+
+
+# 百度授权设置仅存在于私有库账号页：公开版没有 account.html，不会暴露网页授权 UI。
+@router.get("/api/settings/baidu-pan")
+def get_baidu_pan_settings(request: Request, refresh: bool = False):
+    if not multiuser_enabled():
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    return baidu_pan.capability(refresh=refresh)
+
+
+@router.post("/api/settings/baidu-pan/auth-url")
+def begin_baidu_pan_auth(request: Request):
+    if not multiuser_enabled():
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    try:
+        return baidu_pan.begin_web_auth()
+    except (ValueError, baidu_pan.BaiduPanError) as exc:
+        return JSONResponse({"detail": baidu_pan.friendly_message(exc)}, status_code=400)
+
+
+@router.post("/api/settings/baidu-pan/complete")
+async def complete_baidu_pan_auth(request: Request):
+    if not multiuser_enabled():
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    data = await _parse_body(request)
+    try:
+        return baidu_pan.complete_web_auth(str(data.get("code") or ""))
+    except (ValueError, baidu_pan.BaiduPanError) as exc:
+        return JSONResponse({"detail": baidu_pan.friendly_message(exc)}, status_code=400)
+
+
+@router.delete("/api/settings/baidu-pan")
+def delete_baidu_pan_auth(request: Request):
+    if not multiuser_enabled():
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    try:
+        baidu_pan.logout_web_auth()
+        return {"ok": True}
+    except (ValueError, baidu_pan.BaiduPanError) as exc:
+        return JSONResponse({"detail": baidu_pan.friendly_message(exc)}, status_code=409)

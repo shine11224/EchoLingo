@@ -1259,6 +1259,14 @@
     .synonym-word { font-weight: 700; font-size: 14px; }
     .synonym-diff { font-size: 13px; color: var(--muted); }
     .example-item { font-size: 14px; color: #333; margin-bottom: 4px; }
+    .example-speak-btn {
+      margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--surface); color: var(--brand-dark); font-size: 12px; cursor: pointer;
+      vertical-align: 1px;
+    }
+    .example-speak-btn:hover { border-color: var(--brand); background: var(--surface-soft); }
+    .example-speak-btn:disabled { opacity: .55; cursor: wait; }
+    .vocab-context-translation { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
     .context-item {
       font-size: 13px; background: var(--surface); border-left: 3px solid var(--brand);
       padding: 6px 10px; margin-bottom: 6px; border-radius: 0 6px 6px 0;
@@ -1515,6 +1523,7 @@
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-btn-lessons" onclick="switchTab('lessons')">📺 课程</button>
+    <a class="tab-btn" href="/planning" style="display:flex;align-items:center;text-decoration:none;">👤 个人档案</a>
     <button class="tab-btn" id="tab-btn-resources" onclick="switchTab('resources')">⚙️ 设置</button>
   </div>
 </div>
@@ -1869,6 +1878,8 @@
     <div class="vocab-controls">
       <div class="filter-group" id="vocab-filter-group">
         <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">全部</button>
+        <button class="filter-btn" data-filter="today-plan" onclick="setFilter('today-plan')">今日练习</button>
+        <button class="filter-btn" data-filter="ai-recommended" onclick="setFilter('ai-recommended')">AI 推荐</button>
         <button class="filter-btn" data-filter="unknown" onclick="setFilter('unknown')">不认识</button>
         <button class="filter-btn" data-filter="fuzzy" onclick="setFilter('fuzzy')">模糊</button>
         <button class="filter-btn" data-filter="known" onclick="setFilter('known')">认识</button>
@@ -2043,6 +2054,8 @@
     <div class="sentence-library-head">
       <h2 id="sentence-library-title">全部收藏句</h2>
       <span class="spacer"></span>
+      <button type="button" class="filter-btn" id="sentence-today-plan-filter" onclick="toggleSentenceTodayPlanFilter()" aria-pressed="false">今日练习</button>
+      <button type="button" class="filter-btn" id="sentence-ai-recommended-filter" onclick="toggleSentenceAIRecommendedFilter()" aria-pressed="false">AI 推荐</button>
       <button type="button" class="sort-select autoplay-btn" id="sentence-autoplay-btn" onclick="toggleSentenceAutoPlay()">▶ 自动播放</button>
       <button type="button" class="sort-select autoplay-loop" id="sentence-autoplay-loop" onclick="toggleSentenceAutoLoop()" title="播完后自动从头循环" aria-pressed="false">🔁 循环</button>
       <select class="sort-select rate-select" id="sentence-rate-select" aria-label="播放倍速" onchange="setReviewAudioRate(Number(this.value))">
@@ -2243,7 +2256,68 @@ let _sentencePage = 1;
 let _vocabPracticeFilter = 'all';
 let _vocabFrqFilter = 'all';
 let _vocabExamFilter = 'all';
+let _sentenceTodayPlanOnly = false;
+let _sentenceAIRecommendedOnly = false;
+let _todayPlanTargetPromise = null;
+const _todayPlanTargets = {words: new Set(), sentences: new Set()};
+let _planningRecommendationPromise = null;
+let _planningRecommendationPool = null;
+const _aiRecommendedTargets = {words: new Set(), sentences: new Set()};
+const _todayPlanFilterRequested = new URLSearchParams(location.search).get('plan') === 'today';
 const SENTENCE_PAGE_SIZE = 30;
+
+function normalizePlanWord(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+async function loadTodayPlanTargets(refresh=false) {
+  if (_todayPlanTargetPromise && !refresh) return _todayPlanTargetPromise;
+  _todayPlanTargetPromise = fetch('/api/planning/today', {cache:'no-store'})
+    .then(async response => {
+      if (!response.ok) return {words: _todayPlanTargets.words, sentences: _todayPlanTargets.sentences};
+      const today = await response.json();
+      _todayPlanTargets.words.clear();
+      _todayPlanTargets.sentences.clear();
+      (today.tasks || []).forEach(task => {
+        (task.targets || []).forEach(target => {
+          if (target.target_type === 'word' || target.target_type === 'phrase') {
+            _todayPlanTargets.words.add(normalizePlanWord(target.target_ref));
+          } else if (target.target_type === 'sentence') {
+            _todayPlanTargets.sentences.add(Number(target.target_ref));
+          }
+        });
+        (task.speaking_brief?.target_words || []).forEach(word => {
+          _todayPlanTargets.words.add(normalizePlanWord(word));
+        });
+        (task.speaking_brief?.target_sentence_ids || []).forEach(id => {
+          _todayPlanTargets.sentences.add(Number(id));
+        });
+      });
+      return _todayPlanTargets;
+    })
+    .catch(() => _todayPlanTargets);
+  return _todayPlanTargetPromise;
+}
+
+async function loadPlanningRecommendations(refresh=false) {
+  if (_planningRecommendationPromise && !refresh) return _planningRecommendationPromise;
+  _planningRecommendationPromise = fetch('/api/planning/recommendations/current', {cache:'no-store'})
+    .then(async response => {
+      if (!response.ok) return _planningRecommendationPool;
+      const data = await response.json();
+      _planningRecommendationPool = data.pool || null;
+      _aiRecommendedTargets.words.clear();
+      _aiRecommendedTargets.sentences.clear();
+      (_planningRecommendationPool?.candidates || []).forEach(candidate => {
+        if (!['pending','accepted'].includes(candidate.status)) return;
+        if (candidate.target_type === 'word') _aiRecommendedTargets.words.add(normalizePlanWord(candidate.target_ref));
+        if (candidate.target_type === 'sentence') _aiRecommendedTargets.sentences.add(Number(candidate.target_ref));
+      });
+      return _planningRecommendationPool;
+    })
+    .catch(() => _planningRecommendationPool);
+  return _planningRecommendationPromise;
+}
 
 function switchTab(name) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -4098,6 +4172,9 @@ function filteredSentenceReviewData() {
     return isNaN(parsed) ? String(raw).slice(0, 10) : toKey(parsed);
   };
   return _sentenceReviewData.filter(sentence => {
+    if (_sentenceAIRecommendedOnly
+        && !_aiRecommendedTargets.sentences.has(Number(sentence.id))) return false;
+    if (_sentenceTodayPlanOnly && !_todayPlanTargets.sentences.has(Number(sentence.id))) return false;
     const favorited = favoritedKey(sentence);
     const matchesTime = time === 'all'
       || (time === 'today' && favorited === today)
@@ -4132,7 +4209,17 @@ function renderSentenceReviewFilters() {
   const courseMount = document.getElementById('sentence-course-filter');
   const tagMount = document.getElementById('sentence-tag-filter');
   const clearBtn = document.getElementById('sentence-filter-clear');
+  const todayBtn = document.getElementById('sentence-today-plan-filter');
+  const aiBtn = document.getElementById('sentence-ai-recommended-filter');
   if (!bar || !courseMount || !tagMount || !clearBtn) return;
+  if (todayBtn) {
+    todayBtn.classList.toggle('active', _sentenceTodayPlanOnly);
+    todayBtn.setAttribute('aria-pressed', String(_sentenceTodayPlanOnly));
+  }
+  if (aiBtn) {
+    aiBtn.classList.toggle('active', _sentenceAIRecommendedOnly);
+    aiBtn.setAttribute('aria-pressed', String(_sentenceAIRecommendedOnly));
+  }
   const courses = new Map();
   const tags = new Map();
   _sentenceReviewData.forEach(sentence => {
@@ -4181,8 +4268,24 @@ function renderSentenceReviewFilters() {
         `<button type="button" class="filter-btn${_sentenceTagFilter.has(Number(tag.id)) ? ' active' : ''}" onclick="toggleSentenceTagFilter(${Number(tag.id)})">${esc(SENTENCE_TAG_CATEGORY_LABELS[tag.category] || tag.category)} · ${esc(tag.name)}</button>`
       ).join('')
     : '';
-  clearBtn.hidden = !(_sentenceCourseFilter.size || _sentenceTagFilter.size);
+  clearBtn.hidden = !(_sentenceCourseFilter.size || _sentenceTagFilter.size || _sentenceTodayPlanOnly || _sentenceAIRecommendedOnly);
   bar.hidden = !courseMount.innerHTML && !tagMount.innerHTML;
+}
+
+function toggleSentenceTodayPlanFilter() {
+  stopSentenceAutoPlay();
+  _sentenceTodayPlanOnly = !_sentenceTodayPlanOnly;
+  if (_sentenceTodayPlanOnly) _sentenceAIRecommendedOnly = false;
+  _sentencePage = 1;
+  renderSentenceReview();
+}
+
+function toggleSentenceAIRecommendedFilter() {
+  stopSentenceAutoPlay();
+  _sentenceAIRecommendedOnly = !_sentenceAIRecommendedOnly;
+  if (_sentenceAIRecommendedOnly) _sentenceTodayPlanOnly = false;
+  _sentencePage = 1;
+  renderSentenceReview();
 }
 
 function toggleSentenceCourseFilter(lessonId) {
@@ -4200,6 +4303,8 @@ function toggleSentenceTagFilter(tagId) {
 function clearSentenceFilters() {
   _sentenceCourseFilter.clear();
   _sentenceTagFilter.clear();
+  _sentenceTodayPlanOnly = false;
+  _sentenceAIRecommendedOnly = false;
   const timeSelect = document.getElementById('sentence-review-time-filter');
   if (timeSelect) timeSelect.value = 'all';
   const listeningSelect = document.getElementById('sentence-listening-result-filter');
@@ -4304,7 +4409,7 @@ function renderSentenceReviewList() {
   const totalPages = Math.max(1, Math.ceil(rows.length / SENTENCE_PAGE_SIZE));
   _sentencePage = Math.min(Math.max(1, _sentencePage), totalPages);
   const pageRows = rows.slice((_sentencePage - 1) * SENTENCE_PAGE_SIZE, _sentencePage * SENTENCE_PAGE_SIZE);
-  mount.innerHTML = pageRows.length ? pageRows.map(sentence => {
+  const savedRowsHtml = pageRows.length ? pageRows.map(sentence => {
     const source = (sentence.lesson_titles || []).join(' · ') || '未知课程';
     const tags = sentence.tags || [];
     const links = sentence.lesson_links || [];
@@ -4329,7 +4434,7 @@ function renderSentenceReviewList() {
             ? '<div class="sentence-library-hidden-copy">原文已隐藏，请先听声音再显示核对。</div>'
             : `<div class="sentence-library-text">${esc(sentence.text)}</div>`}
           <div class="sentence-library-meta">${esc(source)}</div>
-          <div class="sentence-library-tags">${tagChips || '<span class="sentence-library-tag-empty">未打标签</span>'}</div>
+          <div class="sentence-library-tags">${_todayPlanTargets.sentences.has(Number(sentence.id)) ? '<span class="sentence-library-tag-chip">今日练习</span>' : ''}${_aiRecommendedTargets.sentences.has(Number(sentence.id)) ? '<span class="sentence-library-tag-chip">AI 推荐</span>' : ''}${tagChips || '<span class="sentence-library-tag-empty">未打标签</span>'}</div>
         </div>
         <div class="sentence-library-actions">
           <span class="sentence-library-listen-actions">
@@ -4377,7 +4482,8 @@ function renderSentenceReviewList() {
           </div>
         </div>
       </article>`;
-  }).join('') : '<div class="empty-state"><p>没有符合条件的收藏句。</p></div>';
+  }).join('') : `<div class="empty-state"><p>${_sentenceTodayPlanOnly ? '今日练习里没有句子任务。' : '没有符合条件的收藏句。'}</p></div>`;
+  mount.innerHTML = savedRowsHtml;
   const hideAllBtn = document.getElementById('sentence-hide-all-btn');
   if (hideAllBtn) {
     const allHidden = rows.length > 0 && rows.every(s => _sentenceHiddenOriginals.has(Number(s.id)));
@@ -4416,6 +4522,8 @@ async function loadSentenceReview() {
     fetch('/api/v2/lessons/sentence-review?include_archived=1'),
     fetch('/api/v2/lessons/sentence-tags'),
     ensureAiAvailability(),
+    loadTodayPlanTargets(),
+    loadPlanningRecommendations(),
   ]);
   const data = await response.json();
   const catalog = await catalogResponse.json().catch(() => ({}));
@@ -4432,6 +4540,7 @@ async function loadSentenceReview() {
   }
   _sentenceReviewData = (data.sentences || []).map(sentence => applySentencePatternPayload(sentence, sentence));
   _sentenceReviewSummary = {total: Number(data.total || 0), due: Number(data.due_count || 0)};
+  if (_todayPlanFilterRequested) _sentenceTodayPlanOnly = true;
   renderSentenceReview();
 }
 
@@ -5204,7 +5313,9 @@ async function initVocab() {
   const [vocabRes, healthData, wordlists] = await Promise.all([
     fetch('/vocab-log?include_archived=1&include_mastered=1', {cache:'no-store'}),
     fetch('/health').then(r => r.json()).catch(() => ({})),
-    fetch('/api/wordlists/config').then(r => r.json()).catch(() => [])
+    fetch('/api/wordlists/config').then(r => r.json()).catch(() => []),
+    loadTodayPlanTargets(),
+    loadPlanningRecommendations(),
   ]);
   vocabData  = await vocabRes.json();
   _vocabWordlists = Array.isArray(wordlists) ? wordlists : [];
@@ -5213,6 +5324,11 @@ async function initVocab() {
   renderWordlistFilters(_vocabWordlists);
   populateSourceWordlists(_vocabWordlists);
   addUserTags(_vocabWordlists);
+  if (_todayPlanFilterRequested) currentFilters.add('today-plan');
+  document.querySelectorAll('#vocab-filter-group .filter-btn').forEach(button => {
+    const filter = button.dataset.filter;
+    button.classList.toggle('active', filter === 'all' ? currentFilters.size === 0 : currentFilters.has(filter));
+  });
   const entries = Object.entries(vocabData).filter(([w])=>!w.startsWith('__'));
   renderTodayPanel(entries);
   renderVocabList();
@@ -5249,13 +5365,15 @@ function getFilteredVocabEntries() {
       || (e.tags || []).some(tag => String(tag).toLowerCase().includes(q)));
   }
   if (currentFilters.size > 0) {
-    entries = entries.filter(([,e]) => {
+    entries = entries.filter(([word,e]) => {
       for (const f of currentFilters) {
+        if (f === 'today-plan' && _todayPlanTargets.words.has(normalizePlanWord(word))) return true;
+        if (f === 'ai-recommended' && _aiRecommendedTargets.words.has(normalizePlanWord(word))) return true;
         if (f === 'mastered' && e.mastered) return true;
         if (f === 'archived' && e.archived && !e.mastered) return true;
         if (['unknown','fuzzy','known'].includes(f) && e.familiarity === f && !e.archived && !e.mastered) return true;
         if (f.startsWith('tag:') && (e.tags || []).some(tag => `tag:${String(tag).toLowerCase()}` === f)) return true;
-        if (!['mastered','archived','unknown','fuzzy','known'].includes(f) && (e.level||'').toLowerCase() === f) return true;
+        if (!['today-plan','ai-recommended','mastered','archived','unknown','fuzzy','known'].includes(f) && (e.level||'').toLowerCase() === f) return true;
       }
       return false;
     });
@@ -5531,13 +5649,22 @@ function buildVocabCard(word, entry) {
   const context = contexts[contextIndex] || {};
   const contextSentence = resolveVocabContextSentence(entry, context, an);
   const contextAudio = encodeURIComponent(JSON.stringify(context.audio || {})).replace(/'/g, '%27');
+  const contextTranslation = String(context.translation || '').trim();
+  const contextSavePayload = encodeURIComponent(JSON.stringify({
+    lesson_id: context.lesson_id || null,
+    segment_index: (context.segment_index === 0 || context.segment_index) ? Number(context.segment_index) : null,
+    start: Number(context.audio?.start) || 0,
+    end: Number(context.audio?.end) || 0,
+    text: contextSentence,
+    translation: contextTranslation,
+  })).replace(/'/g, '%27');
   const targetType = entry.target_type === 'phrase' || word.includes(' ') ? '短语' : '单词';
   const userTags = (entry.tags || []).slice(0, 3);
   const hiddenTagCount = Math.max(0, (entry.tags || []).length - userTags.length);
 
   const collocations = (an.collocations||[]).map(c=>`<span class="colloc-chip">${renderVocabReadingText(c)}</span>`).join('');
   const synonyms = (an.synonyms||[]).map(s=>`<div class="synonym-row"><span class="synonym-word">${renderVocabReadingText(s.word)}</span><span class="synonym-diff">${renderVocabReadingText(s.difference||'')}</span></div>`).join('');
-  const examples = (an.examples||[]).map(e=>`<div class="example-item">· ${renderVocabReadingText(e)}</div>`).join('');
+  const examples = (an.examples||[]).map(e=>{const enc=encodeURIComponent(String(e||'')).replace(/'/g,'%27');return `<div class="example-item">· ${renderVocabReadingText(e)}<button type="button" class="example-speak-btn" aria-label="朗读例句" onclick="speakVocabExample(event,'${enc}')">🔊</button><button type="button" class="example-speak-btn" onclick="saveVocabExampleSentence(event,'${enc}')">☆ 收藏</button></div>`;}).join('');
   const hasDeepAnalysis = Boolean(
     an.en_definition || (an.collocations||[]).length || (an.synonyms||[]).length
     || (an.examples||[]).length || an.usage || an.ielts_note
@@ -5564,6 +5691,8 @@ function buildVocabCard(word, entry) {
       <span class="word-meaning meaning-hidden">${esc(an.basic_meaning||'')}</span>
       <span class="meaning-prompt" aria-live="polite">自评后显示释义</span>
       <div class="word-meta">
+        ${_todayPlanTargets.words.has(normalizePlanWord(word)) ? '<span class="tag">今日练习</span>' : ''}
+        ${_aiRecommendedTargets.words.has(normalizePlanWord(word)) ? '<span class="tag">AI 推荐</span>' : ''}
         ${level?`<span class="tag">${esc(level)}</span>`:''}
         ${examTags.map(tag => `<span class="tag exam">${esc(tag)}</span>`).join('')}
         ${frqLabel?`<span class="tag frq">${esc(frqLabel)}</span>`:''}
@@ -5581,7 +5710,8 @@ function buildVocabCard(word, entry) {
     </div>
     <div class="vocab-context-shell">
       <p class="vocab-context">${highlightVocabTarget(contextSentence,word)}</p>
-      <div class="vocab-context-meta"><span>${esc(context.lesson || context.source_title || '最近收藏语境')}</span><span>${contextIndex + 1} / ${Math.max(1, contexts.length)}</span><button type="button" class="context-audio-btn" onclick="speakVocabSentence(event,'${encodeURIComponent(contextSentence).replace(/'/g,'%27')}','${contextAudio}')">🔊 播放整句</button></div>
+      ${contextTranslation?`<div class="vocab-context-translation" data-context-translation ${assessed==='true'?'':'hidden'}>${esc(contextTranslation)}</div>`:''}
+      <div class="vocab-context-meta"><span>${esc(context.lesson || context.source_title || '最近收藏语境')}</span><span>${contextIndex + 1} / ${Math.max(1, contexts.length)}</span><button type="button" class="context-audio-btn" onclick="speakVocabSentence(event,'${encodeURIComponent(contextSentence).replace(/'/g,'%27')}','${contextAudio}')">🔊 播放整句</button><button type="button" class="context-audio-btn" onclick="saveVocabContextSentence(event,'${contextSavePayload}')">☆ 收藏句子</button></div>
       <div class="vocab-card-actions">
         <button type="button" data-toggle-vocab-card>展开词卡</button>
         <button type="button" onclick="startVocabSentenceMaking(event,decodeURIComponent('${encodedWord}'))">情景造句练习</button>
@@ -5888,6 +6018,9 @@ async function assessWord(e, word, assessment) {
         analysisButton.disabled = false;
         analysisButton.textContent = 'AI 生成词语解析';
       }
+      // 自评后揭示课程句的中文释义（无释义时无此元素）
+      const translationEl = card.querySelector('[data-context-translation]');
+      if (translationEl) translationEl.hidden = false;
     }
   } catch (error) { alert(`熟悉度记录失败：${error.message}`); }
 }
@@ -6696,6 +6829,67 @@ function injectStoryResults(usedWords) {
 
 // ── Vocab: Speech ─────────────────────────────
 function speakWord(evt, word) { evt.stopPropagation(); NaturalTTS.speak(word,{lang:'en-US',rate:0.9,neural:true}); }
+function speakVocabExample(event, encodedText) {
+  event.stopPropagation();
+  const text = decodeURIComponent(encodedText || '');
+  const button = event.currentTarget;
+  if (!text || !button || !window.NaturalTTS) return;
+  button.disabled = true;
+  const finish = () => { button.disabled = false; };
+  NaturalTTS.speak(text, {lang: 'en-US', rate: 1, onEnd: finish});
+  setTimeout(finish, 8000); // 兜底：浏览器回退路径不一定触发 onEnd
+}
+
+async function saveVocabExampleSentence(event, encodedText) {
+  event.stopPropagation();
+  const text = decodeURIComponent(encodedText || '').trim();
+  const button = event.currentTarget;
+  if (!text || !button) return;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/v2/lessons/sentence-review/manual', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, translation: ''}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+    button.textContent = '✓ 已收藏';
+  } catch (error) {
+    button.disabled = false;
+    window.alert(error.message || '收藏失败，请稍后重试');
+  }
+}
+
+async function saveVocabContextSentence(event, encodedPayload) {
+  event.stopPropagation();
+  const button = event.currentTarget;
+  let payload = {};
+  try { payload = JSON.parse(decodeURIComponent(encodedPayload || '')) || {}; } catch (_) {}
+  const text = String(payload.text || '').trim();
+  if (!text || !button) return;
+  button.disabled = true;
+  try {
+    // 课程原句且定位到课内句子 → phase-b 收藏（保留课程与时间轴）；
+    // 否则（无来源/旧版课程）走手动收藏，直接进句子库。
+    const hasLessonLink = payload.lesson_id && payload.segment_index !== null && payload.segment_index !== undefined;
+    const response = await fetch(
+      hasLessonLink ? `/api/v2/lessons/${payload.lesson_id}/phase-b` : '/api/v2/lessons/sentence-review/manual',
+      {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(hasLessonLink
+          ? {segment_index: Number(payload.segment_index), start_seconds: Number(payload.start) || 0, end_seconds: Number(payload.end) || 0, text}
+          : {text, translation: String(payload.translation || '')}),
+      });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+    button.textContent = '✓ 已收藏';
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = '☆ 收藏句子';
+    window.alert(error.message || '收藏失败，请稍后重试');
+  }
+}
+
 function speakVocabSentence(event, encodedText, encodedAudio='') {
   event.stopPropagation();
   const text = decodeURIComponent(encodedText || '');
@@ -6750,7 +6944,8 @@ function setFilter(val) {
   stopVocabAutoPlay();
   currentVocabPage = 1;
   if (val === 'all') { currentFilters.clear(); }
-  else { currentFilters.has(val) ? currentFilters.delete(val) : currentFilters.add(val); }
+  else if (val === 'ai-recommended') { const active=currentFilters.has(val); currentFilters.clear(); if(!active)currentFilters.add(val); }
+  else { currentFilters.delete('ai-recommended'); currentFilters.has(val) ? currentFilters.delete(val) : currentFilters.add(val); }
   document.querySelectorAll('#vocab-filter-group .filter-btn').forEach(b => {
     const f = b.dataset.filter;
     b.classList.toggle('active', f === 'all' ? currentFilters.size === 0 : currentFilters.has(f));

@@ -208,6 +208,30 @@ PATTERN_SCENARIO_PROMPT = """
 }}
 """
 
+LESSON_AI_RECOMMENDATION_PROMPT = """\
+你是 EchoLingo 的精学推荐助手。请通读这节课的句子，选出最值得学习者投入的内容，既要帮助理解这节课，也要帮助日常表达。
+
+课程标题：{lesson_title}
+句子列表（JSON，key 为句子编号）：
+{sentences_json}
+
+请输出两类推荐：
+1. words：这节课里的重点词汇，优先选对理解全文关键、或表达中高频实用的词。
+2. patterns：值得迁移到自己表达里的句式/短语。phrase 必须是对应句子中实际出现的连续英文片段（2~8 个词），如 "trade off A against B" 这类可套用骨架；reason 用中文一句话说明能用来表达什么。
+
+硬性规则：
+1. words 最多 12 个，word 必须是句子文本中出现的原词（小写、单词本身，不要词组）。
+2. patterns 最多 8 条，sentence_key 必须来自输入句子的 key；phrase 必须逐字出自该句（大小写不敏感）。
+3. 不编造输入之外的内容，不推荐过于简单的基础词（如 the, good, very）。
+4. reason 都要具体、简短（不超过 40 字），不说空话。
+
+只输出合法 JSON：
+{{
+  "words": [{{"word": "", "reason": ""}}],
+  "patterns": [{{"sentence_key": 0, "phrase": "", "reason": ""}}]
+}}
+"""
+
 PRACTICE_EXAMPLE_PROMPT = """
 你是英语表达教练。请生成一句自然、地道的英文示范句，不要把它描述成用户已经完成的练习。
 

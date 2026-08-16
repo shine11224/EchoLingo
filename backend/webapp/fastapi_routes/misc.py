@@ -247,6 +247,15 @@ def natural_tts_prepare(request: Request, body: dict | None = None):
         return {"audio_url": audio_url, "cached": True,
                 "credits": {"charged": 0, "cached": True}}
 
+    if len(normalized.split()) == 1:
+        # 单词发音免费：查词/精学页高频小合成，绕过计费直接合成（缓存优先）。
+        try:
+            synthesize_natural_speech(normalized, audio_path)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return {"audio_url": audio_url, "cached": False,
+                "credits": {"charged": 0, "free": "single_word"}}
+
     try:
         op, replay = credit_meter.begin_sync_operation(
             request, "sentence_tts",

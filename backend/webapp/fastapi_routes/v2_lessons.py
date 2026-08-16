@@ -13,7 +13,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import db
-from prompts import PATTERN_EXTRACTION_PROMPT, PATTERN_SCENARIO_PROMPT
+
+try:
+    from webapp.services import planning as planning_service
+except ImportError:  # pragma: no cover - 公开库不含规划模块
+    planning_service = None
+from prompts import LESSON_AI_RECOMMENDATION_PROMPT, PATTERN_EXTRACTION_PROMPT, PATTERN_SCENARIO_PROMPT
 from webapp.runtime import ai_config
 from webapp.runtime import credit_meter
 from webapp.runtime.access import is_admin_request, multiuser_enabled, require_admin
@@ -703,6 +708,14 @@ def review_sentence(sentence_id: int, body: SentenceReviewBody):
     )
     if not sentence:
         raise HTTPException(status_code=404, detail="Saved sentence not found")
+    if planning_service is not None:
+        try:
+            planning_service.record_verified_event(
+                "review_sentences", "sentence", sentence_id,
+                evidence_ref=f"sentence-review:{sentence_id}:{datetime.date.today().isoformat()}",
+            )
+        except Exception:
+            pass
     return {"ok": True, "sentence": sentence}
 
 
@@ -717,6 +730,14 @@ def save_sentence_listening_result(sentence_id: int, body: SentenceListeningResu
     )
     if not sentence:
         raise HTTPException(status_code=404, detail="Saved sentence not found")
+    if planning_service is not None:
+        try:
+            planning_service.record_verified_event(
+                "review_sentences", "sentence", sentence_id,
+                evidence_ref=f"sentence-review:{sentence_id}:{datetime.date.today().isoformat()}",
+            )
+        except Exception:
+            pass
     return {"ok": True, "sentence": sentence}
 
 
@@ -786,6 +807,138 @@ def _begin_billed(request: Request, operation_type: str, **kwargs):
             credit_meter.OperationConflictError, ValueError) as exc:
         status, detail = credit_meter.billing_error(exc)
         raise HTTPException(status_code=status, detail=detail) from exc
+
+
+# ── 课时级 AI 推荐：点击生成，持久保存，白名单校验 ──────────────────
+
+_LESSON_REC_SENTENCE_LIMIT = 150
+_LESSON_REC_CHAR_LIMIT = 12000
+_LESSON_REC_WORD_LIMIT = 12
+_LESSON_REC_PATTERN_LIMIT = 8
+_WORD_TOKEN_RE = re.compile(r"[a-z]+(?:'[a-z]+)?")
+
+
+def _lesson_rec_context(lesson_id: int) -> tuple[str, list[dict]]:
+    """取课程标题 + (key, text) 句子清单，与精学页 key 语义完全一致。"""
+    document = build_intensive_document(lesson_id)
+    title = str((document.get("lesson") or {}).get("title") or "")
+    sentences: list[dict] = []
+    total_chars = 0
+    for item in document.get("sentences") or []:
+        text = " ".join(str(item.get("text") or "").split())
+        if not text:
+            continue
+        if len(sentences) >= _LESSON_REC_SENTENCE_LIMIT or total_chars + len(text) > _LESSON_REC_CHAR_LIMIT:
+            break
+        sentences.append({"key": int(item.get("key")), "text": text})
+        total_chars += len(text)
+    if not sentences:
+        raise ValueError("这节课还没有可分析的句子")
+    return title, sentences
+
+
+def _clean_rec_text(value, maximum: int) -> str:
+    return " ".join(str(value or "").split())[:maximum]
+
+
+def _validate_lesson_recs(result: dict, sentences: list[dict]) -> dict:
+    """白名单校验：词必须出自课文、句式必须定位到存在的句子且 phrase 出自该句。"""
+    text_by_key = {int(s["key"]): s["text"] for s in sentences}
+    token_set = set()
+    for text in text_by_key.values():
+        token_set.update(_WORD_TOKEN_RE.findall(text.lower()))
+
+    words: list[dict] = []
+    seen_words: set[str] = set()
+    for item in result.get("words") or []:
+        if not isinstance(item, dict):
+            continue
+        word = _clean_rec_text(item.get("word"), 40).lower()
+        if (not re.fullmatch(r"[a-z]+(?:'[a-z]+)?", word)
+                or len(word) < 3 or word in seen_words or word not in token_set):
+            continue
+        seen_words.add(word)
+        words.append({"word": word, "reason": _clean_rec_text(item.get("reason"), 120)})
+        if len(words) >= _LESSON_REC_WORD_LIMIT:
+            break
+
+    patterns: list[dict] = []
+    seen_keys: set[int] = set()
+    for item in result.get("patterns") or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            key = int(item.get("sentence_key"))
+        except (TypeError, ValueError):
+            continue
+        text = text_by_key.get(key)
+        if not text or key in seen_keys:
+            continue
+        phrase = _clean_rec_text(item.get("phrase"), 120)
+        if not phrase or phrase.lower() not in text.lower():
+            continue
+        seen_keys.add(key)
+        patterns.append({
+            "sentence_key": key,
+            "phrase": phrase,
+            "reason": _clean_rec_text(item.get("reason"), 120),
+        })
+        if len(patterns) >= _LESSON_REC_PATTERN_LIMIT:
+            break
+
+    if not words and not patterns:
+        raise ValueError("AI 没有返回可用推荐，请重试")
+    return {"words": words, "patterns": patterns}
+
+
+@router.get("/{lesson_id}/ai-recommendations")
+def get_lesson_ai_recommendations(lesson_id: int):
+    if not db.get_v2_lesson(lesson_id):
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    record = db.get_v2_lesson_ai_recommendation(lesson_id)
+    return {"recommendation": record["payload"] if record else None,
+            "generated_at": record["updated_at"] if record else ""}
+
+
+class LessonAiRecommendationBody(BaseModel):
+    regenerate: bool = False
+
+
+@router.post("/{lesson_id}/ai-recommendations/refresh")
+def refresh_lesson_ai_recommendations(lesson_id: int, request: Request,
+                                      body: LessonAiRecommendationBody | None = None):
+    if not db.get_v2_lesson(lesson_id):
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    regenerate = bool(body and body.regenerate)
+    existing = db.get_v2_lesson_ai_recommendation(lesson_id)
+    # cache-before-reserve：已有推荐且非主动重生成 → 免费返回
+    if existing and not regenerate:
+        return {"ok": True, "cached": True, "recommendation": existing["payload"],
+                "generated_at": existing["updated_at"],
+                "credits": {"charged": 0, "cached": True}}
+    op, replay = _begin_billed(request, "recommendation_refresh",
+                               reference_type="v2_lesson",
+                               reference_id=str(lesson_id))
+    if replay is not None:
+        return replay
+    try:
+        title, sentences = _lesson_rec_context(lesson_id)
+        prompt = LESSON_AI_RECOMMENDATION_PROMPT.format(
+            lesson_title=title or f"课程 {lesson_id}",
+            sentences_json=json.dumps(sentences, ensure_ascii=False),
+        )
+        result = _request_pattern_json(prompt)
+        payload = _validate_lesson_recs(result, sentences)
+        record = db.save_v2_lesson_ai_recommendation(
+            lesson_id, payload, model=ai_config.AI_MODEL)
+    except Exception as exc:
+        credit_meter.release_sync(op, reason=f"lesson_ai_recommendation failed: {exc}"[:500])
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    response = {"ok": True, "cached": False, "recommendation": record["payload"],
+                "generated_at": record["updated_at"]}
+    credit_meter.settle_sync(op, actual_usage={
+        "model": ai_config.AI_MODEL, "lesson_id": lesson_id}, response=response)
+    return response
 
 
 @router.post("/sentence-review/{sentence_id}/pattern")
@@ -1239,6 +1392,15 @@ def get_sentence_translations(lesson_id: int):
 @router.post("/{lesson_id}/progress")
 def save_progress(lesson_id: int, body: ProgressBody):
     db.upsert_v2_lesson_progress(lesson_id, body.last_position_seconds, body.last_segment_index)
+    if planning_service is not None:
+        try:
+            planning_service.record_verified_event(
+                "continue_lesson", "lesson", lesson_id,
+                evidence_ref=f"lesson-progress:{lesson_id}:{body.last_segment_index}",
+                observed_value=body.last_segment_index,
+            )
+        except Exception:
+            pass
     return {"ok": True}
 
 

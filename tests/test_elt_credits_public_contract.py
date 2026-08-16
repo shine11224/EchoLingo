@@ -156,3 +156,4 @@ def test_elt_credits_js_present_for_public_sync():
     text = JS_PATH.read_text(encoding="utf-8")
     assert "eltCredits" in text and "billableFetch" in text
     assert "/api/auth" not in text, "共享资产不得依赖私有 auth API"
+    assert "if (points === 0) return '免费';" in text

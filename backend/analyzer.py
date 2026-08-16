@@ -136,6 +136,21 @@ class SentenceAnalyzer:
     _SENTENCE_SPAN = re.compile(r'.+?(?:[.?!;]["\')\]]*|$)(?=\s+|$)', re.S)
     _HARD_MAX_SENTENCE_WORDS = 45
     _MAX_COMMA_CONTINUATION_WORDS = 45
+    # ASR 转录丢句末点时的大写断句规则（原 v2_intensive 阅读尺，615c277 引入，
+    # dd2d5d9 统一断句后成死代码，2026-08-14 并入统一断句尺）：
+    # 句中大写词视作句界，但连续大写专名（New York / River Thames）不构成句界；
+    # They/This 等句中恒小写的功能词大写时是强句界信号，即使前词是专名
+    # （覆盖 "Oatly They attracted…" 这类专名+丢标点粘连）；
+    # 冠词后的大写词是形容词性专名（the Swedish brand / a British firm），不构成句界。
+    _CAPITAL_BOUNDARY_RE = re.compile(r"\s+(?=[A-Z](?:[a-z]+)?\b)")
+    _CAPITAL_SPLIT_EXCLUDED_TOKENS = {"I"}
+    _CAPITAL_SPLIT_FUNCTION_WORDS = {
+        "They", "He", "She", "It", "We", "You",
+        "This", "That", "These", "Those", "There",
+    }
+    _CAPITAL_SPLIT_ARTICLES = {"the", "a", "an"}
+    _CAPITAL_SPLIT_MIN_WORDS = 8
+    _SENTENCE_TERMINAL_RE = re.compile(r'[.!?]["\')\]]?$')
     _AI_WINDOW_WORDS = 120
     _AI_CONTEXT_WORDS = 25
     _FORBIDDEN_BOUNDARY_AFTER = {
@@ -194,6 +209,48 @@ class SentenceAnalyzer:
     @staticmethod
     def _word_count(text: str) -> int:
         return len(re.findall(r"[A-Za-z0-9']+", text))
+
+    @classmethod
+    def _close_sentence(cls, part: str) -> str:
+        """大写边界即句界：补回 ASR 丢掉的句末点，防止下游按标点合并时重新粘连。"""
+        return part if cls._SENTENCE_TERMINAL_RE.search(part) else part + "."
+
+    @classmethod
+    def _split_capital_boundaries(cls, text: str) -> list[str]:
+        """按句中大写词切无标点粘连句；专名连用不切，功能词大写必切。"""
+        result: list[str] = []
+        start = 0
+        for boundary in cls._CAPITAL_BOUNDARY_RE.finditer(text):
+            candidate = text[start:boundary.start()].strip()
+            if cls._word_count(candidate) < cls._CAPITAL_SPLIT_MIN_WORDS:
+                continue
+            words_before = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text[:boundary.start()])
+            words_after = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text[boundary.end():])
+            current = words_after[0] if words_after else ""
+            previous = words_before[-1] if words_before else ""
+            following = words_after[1] if len(words_after) > 1 else ""
+            # 大写词是全文最后一个词（"…brand Oatly."）时不构成句界——
+            # 句子不可能从最后一个词开始；也保证本规则幂等（二次应用不再切）。
+            if len(words_after) < 2:
+                continue
+            if current in cls._CAPITAL_SPLIT_EXCLUDED_TOKENS:
+                continue
+            if current in cls._CAPITAL_SPLIT_FUNCTION_WORDS:
+                result.append(cls._close_sentence(candidate))
+                start = boundary.end()
+                continue
+            # New York / River Thames / United Kingdom 等连续大写专名不构成句界。
+            if previous[:1].isupper() or following[:1].isupper():
+                continue
+            # the Swedish brand / a British firm：冠词后是形容词性专名，不构成句界。
+            if previous.lower() in cls._CAPITAL_SPLIT_ARTICLES:
+                continue
+            result.append(cls._close_sentence(candidate))
+            start = boundary.end()
+        tail = text[start:].strip()
+        if tail:
+            result.append(tail)
+        return result
 
     @classmethod
     def _split_text_sentences(cls, text: str) -> list[str]:

@@ -1,4 +1,4 @@
-﻿# 虚拟环境
+# 虚拟环境
 .venv/
 
 # Python 缓存
@@ -21,6 +21,7 @@ status/
 .pytest_cache/
 .pytest_tmp*/
 .tmp/
+.tmp*
 test-artifacts/
 
 # 私人资料
@@ -37,12 +38,18 @@ output/
 *.wav
 *.webm
 
-# 词汇数据库（本地学习记录，不入库）
+# 运行时数据库与用户数据（永不入公开库）
 vocab.db
 vocab.db-shm
 vocab.db-wal
 vocab_log.json
 vocab_log.json.bak
+resources/auth.db*
+resources/baidu_pan_jobs.db*
+resources/vocab.db*
+resources/users/
+resources/**/*.db-shm
+resources/**/*.db-wal
 
 # 敏感信息
 cookies.txt
@@ -62,7 +69,6 @@ server_err.log
 # 系统文件
 .DS_Store
 Thumbs.db
-
 
 .pytest-tmp/
 llama-cpp/

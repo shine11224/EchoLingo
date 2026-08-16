@@ -197,3 +197,43 @@ def test_unsupported_boundaries_rendered_as_safe_text(page):
     assert items[0].text_content() == '<img src=x onerror=alert(1)>'
     # textContent 注入：不得生成 img 元素
     assert box.query_selector("img") is None
+
+
+def test_collapsed_native_selection_does_not_close_pinned_action_popover(browser):
+    selection_script = "\n".join((
+        _extract("closeReadingSelectionPopover"),
+        _extract("captureStudySelection"),
+        "async " + _extract("runReadingSelectionAction"),
+    ))
+    pg = browser.new_page()
+    page_errors = []
+    pg.on("pageerror", lambda error: page_errors.append(str(error)))
+    pg.set_content(f"""<!doctype html><html><body>
+      <article id="reading-passage">Readable sentence.</article>
+      <div id="reading-selection-popover" class="reading-selection-popover open"></div>
+      <script>
+        var activeStudyMode = 'reading';
+        var readingSelectionText = 'Readable sentence.';
+        var readingSelectionSentenceKey = null;
+        var readingSelectionRange = null;
+        var readingSelectionTargetType = 'phrase';
+        var readingSelectionMode = 'reading';
+        var readingSelectionRequestToken = 0;
+        var readingSelectionPopoverPinned = false;
+        function matchSelectedReadingSentence() {{ return null; }}
+        async function requestReadingSelectionTranslation() {{}}
+        {selection_script}
+      </script>
+    </body></html>""")
+    try:
+        assert page_errors == []
+        assert pg.evaluate("window.getSelection().isCollapsed") is True
+        pg.evaluate("runReadingSelectionAction('translate')")
+        assert pg.evaluate("readingSelectionPopoverPinned") is True
+        pg.evaluate("captureStudySelection('reading')")
+        assert "open" in (pg.get_attribute("#reading-selection-popover", "class") or "")
+
+        pg.evaluate("closeReadingSelectionPopover(true)")
+        assert pg.evaluate("readingSelectionPopoverPinned") is False
+    finally:
+        pg.close()

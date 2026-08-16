@@ -795,7 +795,7 @@ def ensure_media_reading_blocks(lesson_id: int, lesson: dict) -> list[dict]:
             return rebuilt
         return blocks
     media_source = str(lesson.get("source_type") or "") in {
-        "youtube", "bilibili", "local_audio", "local_video",
+        "youtube", "bilibili", "local_audio", "local_video", "uploaded_media",
     }
     if not media_source:
         return blocks

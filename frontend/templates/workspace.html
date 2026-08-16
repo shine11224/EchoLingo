@@ -459,7 +459,28 @@
       font-weight: 800;
       color: var(--brand-dark);
       margin-bottom: 2px;
+      padding-right: 30px;
     }
+    .word-popover .word-speak-btn {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: .75;
+      transition: background .15s ease, opacity .15s ease;
+    }
+    .word-popover .word-speak-btn:hover { background: rgba(47,111,94,.1); opacity: 1; }
+    .word-popover .word-speak-btn.playing { opacity: 1; background: rgba(47,111,94,.14); }
     .word-popover .phonetic {
       color: #8fa88f;
       font-size: 15px;
@@ -1704,6 +1725,7 @@
 </div>
 <script src="/static/elt_credits.js?v=20260809-1"></script>
 <script>document.addEventListener("DOMContentLoaded",function(){if(window.eltCredits){eltCredits.annotate();}});</script>
+<script src="/static/natural-tts.js?v=20260814-1"></script>
 <script src="/static/voice-input.js?v=20260715-1"></script>
 <script>
 const LESSON_ID = {{ lesson_id }};
@@ -1740,6 +1762,7 @@ let readingSelectionTargetType = 'phrase';
 let readingSelectionMode = 'reading';
 let readingChatSelection = '';
 let readingSelectionRequestToken = 0;
+let readingSelectionPopoverPinned = false;
 let chatSessions = [];
 let activeChatSessionId = null;
 let chatVoiceInput = null;
@@ -1749,6 +1772,7 @@ let readingPlaybackEnd = null;
 let readingPlaybackTimeHandler = null;
 let readingPlaybackTimer = null;
 let pendingReadingPlaybackRange = null;
+let readingPlaybackRequestId = 0;
 const sentenceTranslations = {};
 let subtitleModeInitialized = false;
 const SIDEBAR_PANEL_HEIGHTS_KEY = 'english-tool:sidebar-panel-heights';
@@ -2074,7 +2098,24 @@ async function switchStudyMode(mode) {
   await loadSavedWords();
 }
 
-function playReadingRange(startSeconds, endSeconds) {
+function waitForReadingMediaMetadata(audio) {
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => finish(new Error('Audio metadata timed out')), 8000);
+    const finish = error => {
+      window.clearTimeout(timeout);
+      audio.removeEventListener('loadedmetadata', onLoaded);
+      audio.removeEventListener('error', onError);
+      if (error) reject(error); else resolve();
+    };
+    const onLoaded = () => finish();
+    const onError = () => finish(audio.error || new Error('Audio failed to load'));
+    audio.addEventListener('loadedmetadata', onLoaded, {once: true});
+    audio.addEventListener('error', onError, {once: true});
+  });
+}
+
+async function playReadingRange(startSeconds, endSeconds) {
   if (!lessonData) return;
   const start = Number(startSeconds);
   const end = Number(endSeconds);
@@ -2089,6 +2130,7 @@ function playReadingRange(startSeconds, endSeconds) {
   if (!lessonData.media_url) return;
   const audio = document.getElementById('offscreen-playback-engine');
   if (!audio) return;
+  const requestId = readingPlaybackRequestId;
   const src = `${lessonData.media_url}#t=${startSeconds},${endSeconds}`;
   readingPlaybackEnd = () => { stopReadingRange(); };
   readingPlaybackTimeHandler = function checkEnd() {
@@ -2099,8 +2141,18 @@ function playReadingRange(startSeconds, endSeconds) {
   };
   audio.addEventListener('timeupdate', readingPlaybackTimeHandler);
   audio.src = src;
-  audio.currentTime = start;
-  audio.play().catch(() => {});
+  audio.load();
+  try {
+    await waitForReadingMediaMetadata(audio);
+    if (requestId !== readingPlaybackRequestId) return;
+    audio.currentTime = start;
+    await audio.play();
+  } catch (error) {
+    if (requestId === readingPlaybackRequestId) {
+      console.warn('Unable to play this reading paragraph.', error);
+      stopReadingRange();
+    }
+  }
 }
 
 function startPendingYouTubeReadingRange() {
@@ -2125,6 +2177,7 @@ function startPendingYouTubeReadingRange() {
 }
 
 function stopReadingRange() {
+  readingPlaybackRequestId += 1;
   const audio = document.getElementById('offscreen-playback-engine');
   if (audio) audio.pause();
   if (audio && readingPlaybackTimeHandler) {
@@ -2921,7 +2974,12 @@ function renderReadingPassage() {
       paragraph.setAttribute('data-end-seconds', block.end_seconds ?? '');
       const subtitleMode = document.getElementById('subtitle-mode')?.value || 'lookup';
       let innerHtml = subtitleMode === 'chinese' ? '' : renderReadingSentences(block);
-      innerHtml += ` <button class="reading-play-button" type="button" data-start="${block.start_seconds ?? ''}" data-end="${block.end_seconds ?? ''}" onclick="event.stopPropagation();playReadingRange(${block.start_seconds ?? 0},${block.end_seconds ?? 0})" title="Play this paragraph">▶</button>`;
+      const blockStart = Number(block.start_seconds);
+      const blockEnd = Number(block.end_seconds);
+      const hasPlaybackRange = Number.isFinite(blockStart) && Number.isFinite(blockEnd) && blockEnd > blockStart;
+      if (hasPlaybackRange) {
+        innerHtml += ` <button class="reading-play-button" type="button" data-start="${blockStart}" data-end="${blockEnd}" onclick="event.stopPropagation();playReadingRange(${blockStart},${blockEnd})" title="Play this paragraph">▶</button>`;
+      }
       innerHtml += renderReadingBlockTranslation(block);
       paragraph.innerHTML = innerHtml;
       fragment.appendChild(paragraph);
@@ -3194,6 +3252,7 @@ function captureStudySelection(mode) {
   const root = document.getElementById(mode === 'reading' ? 'reading-passage' : 'current-subtitle');
   const selection = window.getSelection();
   if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    if (root && readingSelectionPopoverPinned && readingSelectionText) return;
     closeReadingSelectionPopover();
     return;
   }
@@ -3210,6 +3269,7 @@ function captureStudySelection(mode) {
     closeReadingSelectionPopover();
     return;
   }
+  readingSelectionPopoverPinned = false;
   readingSelectionRequestToken += 1;
   readingSelectionText = text;
   readingSelectionMode = mode;
@@ -3282,6 +3342,7 @@ async function saveSelectedStudyTarget() {
 
 function closeReadingSelectionPopover(clearSelection = false) {
   document.getElementById('reading-selection-popover')?.classList.remove('open');
+  readingSelectionPopoverPinned = false;
   if (clearSelection) {
     readingSelectionText = '';
     readingSelectionSentenceKey = null;
@@ -3373,6 +3434,9 @@ async function requestReadingSelectionTranslation() {
 
 async function runReadingSelectionAction(action) {
   if (!readingSelectionText) return;
+  if (['save-target', 'translate', 'analyze'].includes(action)) {
+    readingSelectionPopoverPinned = true;
+  }
   if (action === 'intensive') {
     const query = readingSelectionSentenceKey === null
       ? ''
@@ -3962,6 +4026,7 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '', dict
   // \u8bcd\u9891/\u8bcd\u5178\u6807\u6ce8\u884c\uff08COCA\u00b7\u725b\u6d25\u00b7\u67ef\u6797\u65af\uff09\u6309 may \u8981\u6c42\u4e0d\u5c55\u793a\uff1bdictMeta \u6570\u636e\u4fdd\u7559
   const sourceHtml = source === 'external' ? '<div class="lookup-source">AI \u5728\u7ebf\u8865\u5145\u91ca\u4e49</div>' : '';
   pop.innerHTML = `<div class="word">${escapeHtml(word)}</div>
+    <button class="word-speak-btn" type="button" title="播放发音" aria-label="播放发音" onclick="speakWordFromPopover(event, '${escapeJsAttr(word)}')">🔊</button>
     ${phoneticHtml}
     <div class="meaning">${escapeHtml(meaning || '\u6682\u65e0\u91ca\u4e49')}</div>
     ${sourceHtml}
@@ -3988,6 +4053,17 @@ function openWordPopover(anchor, word, meaning, phonetic = '', source = '', dict
   const left = Math.min(Math.max(viewportPadding, rect.left), Math.max(viewportPadding, maxLeft));
   pop.style.top = `${top}px`;
   pop.style.left = `${left}px`;
+}
+
+function speakWordFromPopover(event, word) {
+  event.stopPropagation();
+  const btn = event.currentTarget;
+  const text = String(word || '').trim();
+  if (!text || !window.NaturalTTS) return;
+  btn.classList.add('playing');
+  const done = () => btn.classList.remove('playing');
+  NaturalTTS.speak(text, { onEnd: done });
+  setTimeout(done, 6000); // 兜底：浏览器回退路径不一定触发 onEnd
 }
 
 async function toggleWordSave(event, word, meaning) {
@@ -4192,6 +4268,9 @@ document.addEventListener('selectionchange', () => {
 });
 window.addEventListener('scroll', closeWordPopover, true);
 window.addEventListener('resize', closeWordPopover);
+document.getElementById('reading-selection-popover')?.addEventListener('pointerdown', () => {
+  readingSelectionPopoverPinned = true;
+});
 document.getElementById('reading-selection-popover')?.addEventListener('mousedown', event => event.preventDefault());
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {

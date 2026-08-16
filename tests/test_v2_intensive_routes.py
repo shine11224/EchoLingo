@@ -8,9 +8,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from fastapi.testclient import TestClient
 
 
-def test_reading_split_recovers_missing_punctuation_at_capitals_but_not_i():
-    from webapp.services.v2_intensive import _split_reading_text
+def test_capital_split_recovers_missing_punctuation_but_keeps_proper_nouns():
+    from analyzer import SentenceAnalyzer
 
+    split = SentenceAnalyzer._split_capital_boundaries
     text = (
         "But people also used the river for fishing, as the water then was relatively clean, "
         "and they would also go on boat trips up and down the river just for pleasure, as a "
@@ -21,27 +22,101 @@ def test_reading_split_recovers_missing_punctuation_at_capitals_but_not_i():
         "so small, that wasn't such a problem."
     )
 
-    assert _split_reading_text(text) == [
+    assert split(text) == [
         "But people also used the river for fishing, as the water then was relatively clean, "
         "and they would also go on boat trips up and down the river just for pleasure, as a "
-        "relaxing escape from the noise and bustle of the city streets",
-        "But as industries developed and populations increased city rivers suffered",
+        "relaxing escape from the noise and bustle of the city streets.",
+        "But as industries developed and populations increased city rivers suffered.",
         "The rising number of people meant there was a huge increase in the amount of sewage "
-        "discharged into the rivers",
+        "discharged into the rivers.",
         "Rivers had always been used for this purpose, but when the number of inhabitants was "
         "so small, that wasn't such a problem.",
     ]
-    assert _split_reading_text(
+    # "I" 句中恒大写，不构成句界
+    assert split(
         "People often say that learning takes time and I agree with them Today we practise."
     ) == [
-        "People often say that learning takes time and I agree with them",
+        "People often say that learning takes time and I agree with them.",
         "Today we practise.",
     ]
-    assert _split_reading_text(
+    # New York 连续大写专名不切
+    assert split(
         "The long journey continued for many hours before New York finally appeared."
     ) == [
         "The long journey continued for many hours before New York finally appeared."
     ]
+    # the Swedish brand：冠词后形容词性专名不切
+    assert split(
+        "One firm changed the market and the Swedish brand grew faster than the rest today."
+    ) == [
+        "One firm changed the market and the Swedish brand grew faster than the rest today."
+    ]
+
+
+def test_capital_split_covers_proper_noun_followed_by_function_word():
+    """ASR 丢标点 + 前词是专名：They/This 等句中恒小写功能词大写仍判句界。
+
+    2026-08-14 云端 lesson 55（20T2S4）实测粘句："Oatly They" / "services Companies"。
+    """
+    from analyzer import SentenceAnalyzer
+
+    split = SentenceAnalyzer._split_capital_boundaries
+    glued = (
+        "Now there are many brands available but one company which had early success "
+        "was the Swedish brand Oatly They attracted a lot of attention with a media campaign "
+        "which used provocation as a way of getting their message across effectively"
+    )
+    assert split(glued) == [
+        "Now there are many brands available but one company which had early success "
+        "was the Swedish brand Oatly.",
+        "They attracted a lot of attention with a media campaign which used provocation "
+        "as a way of getting their message across effectively",
+    ]
+
+    glued2 = (
+        "In return for free samples many influencers will post content about a product "
+        "although there are influencers with hundreds of thousands of followers who can "
+        "command large fees for their services Companies which sell vegan produce were pioneers"
+    )
+    assert split(glued2) == [
+        "In return for free samples many influencers will post content about a product "
+        "although there are influencers with hundreds of thousands of followers who can "
+        "command large fees for their services.",
+        "Companies which sell vegan produce were pioneers",
+    ]
+    # 专名连用 + 功能词：United Kingdom 不切，They 处切
+    assert split(
+        "The delegation from the trade council visited the United Kingdom They returned home satisfied."
+    ) == [
+        "The delegation from the trade council visited the United Kingdom.",
+        "They returned home satisfied.",
+    ]
+    # 幂等：已切过的文本（句末专名）二次应用不再切出 "Oatly." 碎片
+    once = split(glued)
+    assert SentenceAnalyzer._split_capital_boundaries(once[0]) == [once[0]]
+    assert SentenceAnalyzer._split_capital_boundaries(once[1]) == [once[1]]
+
+
+def test_translation_unit_split_applies_capital_rule_with_interpolated_timing():
+    from webapp.services.v2_translation import _split_source_segments
+
+    glued = (
+        "Now there are many brands available but one company which had early success "
+        "was the Swedish brand Oatly They attracted a lot of attention with a media campaign"
+    )
+    pieces = _split_source_segments([
+        {"index": 30, "start": 276.8, "end": 296.5, "text": glued},
+    ])
+
+    assert [p["text"] for p in pieces] == [
+        "Now there are many brands available but one company which had early success "
+        "was the Swedish brand Oatly.",
+        "They attracted a lot of attention with a media campaign",
+    ]
+    # 时间轴插值：边界连续、整体不超界
+    assert pieces[0]["start"] == 276.8
+    assert pieces[0]["end"] == pieces[1]["start"]
+    assert pieces[1]["end"] == 296.5
 
 
 def test_oral_analysis_is_persisted_and_reused_by_intensive_and_sentence_library(tmp_path, monkeypatch):

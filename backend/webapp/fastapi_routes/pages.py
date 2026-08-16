@@ -51,3 +51,14 @@ if (ai_config.BASE_DIR / "frontend" / "templates" / "login.html").exists():
     @router.get("/account")
     def account_page(request: Request):
         return templates.TemplateResponse(request, "account.html")
+
+
+if (ai_config.BASE_DIR / "frontend" / "templates" / "planning.html").exists():
+
+    @router.get("/planning")
+    def planning_page(request: Request):
+        return templates.TemplateResponse(
+            request,
+            "planning.html",
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )

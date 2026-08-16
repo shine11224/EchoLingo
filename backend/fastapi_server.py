@@ -42,6 +42,12 @@ try:
 except ImportError:  # pragma: no cover - 公开库路径
     credits_router = None
 
+# 学习规划仅存在于私有库/云端；公开库缺少模块时继续保持单用户能力
+try:
+    from webapp.fastapi_routes.planning import router as planning_router
+except ImportError:  # pragma: no cover - 公开库路径
+    planning_router = None
+
 from webapp.fastapi_routes.jobs import router as jobs_router
 from webapp.fastapi_routes.lessons import router as lessons_router
 from webapp.fastapi_routes.misc import router as misc_router
@@ -192,6 +198,8 @@ def create_app() -> FastAPI:
         app.include_router(admin_private_router)
     if credits_router is not None:
         app.include_router(credits_router)
+    if planning_router is not None:
+        app.include_router(planning_router)
 
     return app
 

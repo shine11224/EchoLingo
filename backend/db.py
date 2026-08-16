@@ -16,6 +16,7 @@ _current_db_path: contextvars.ContextVar[Optional[Path]] = contextvars.ContextVa
     "elt_db_path", default=None
 )
 _initialized_paths: set = set()
+_init_db_lock = threading.RLock()
 
 
 def current_db_path() -> Path:
@@ -58,9 +59,16 @@ def spawn_with_db_context(target, *args, name: str | None = None, **kwargs) -> t
 def _db():
     path = current_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path not in _initialized_paths:
-        init_db(path)
-        _initialized_paths.add(path)
+    # A newly registered user's first page load issues several API requests in
+    # parallel.  Keep every connection behind the same short gate until the
+    # first request has finished creating the complete schema.
+    with _init_db_lock:
+        if path not in _initialized_paths:
+            try:
+                init_db(path)
+            except Exception:
+                _initialized_paths.discard(path)
+                raise
     conn = sqlite3.connect(path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
@@ -385,6 +393,247 @@ def init_db(path: Path | None = None):
                     outline_json TEXT NOT NULL DEFAULT '{}',
                     updated_at   TEXT NOT NULL DEFAULT ''
                 );
+
+                CREATE TABLE IF NOT EXISTS v2_lesson_ai_recommendations (
+                    lesson_id    INTEGER PRIMARY KEY REFERENCES v2_lessons(id) ON DELETE CASCADE,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    model        TEXT NOT NULL DEFAULT '',
+                    created_at   TEXT NOT NULL DEFAULT '',
+                    updated_at   TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_learner_profile (
+                    id              INTEGER PRIMARY KEY CHECK(id = 1),
+                    weekly_minutes  INTEGER NOT NULL DEFAULT 0,
+                    available_days  TEXT NOT NULL DEFAULT '[]',
+                    available_time_slots TEXT NOT NULL DEFAULT '[]',
+                    priority_skills TEXT NOT NULL DEFAULT '[]',
+                    interests       TEXT NOT NULL DEFAULT '[]',
+                    dislikes        TEXT NOT NULL DEFAULT '[]',
+                    reported_level  TEXT NOT NULL DEFAULT '',
+                    created_at      TEXT NOT NULL DEFAULT '',
+                    updated_at      TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_planning_preferences (
+                    id                        INTEGER PRIMARY KEY CHECK(id = 1),
+                    timezone                  TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+                    day_cutoff_minutes        INTEGER NOT NULL DEFAULT 240,
+                    daily_reminder            INTEGER NOT NULL DEFAULT 0,
+                    recommendation_word_limit INTEGER NOT NULL DEFAULT 30,
+                    recommendation_sentence_limit INTEGER NOT NULL DEFAULT 15,
+                    admission_word_limit      INTEGER NOT NULL DEFAULT 15,
+                    admission_sentence_limit  INTEGER NOT NULL DEFAULT 8,
+                    conversation_retention_days INTEGER NOT NULL DEFAULT 90,
+                    created_at                TEXT NOT NULL DEFAULT '',
+                    updated_at                TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_learning_goals (
+                    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                    description        TEXT NOT NULL,
+                    goal_type          TEXT NOT NULL,
+                    priority_skills    TEXT NOT NULL DEFAULT '[]',
+                    target_date        TEXT NOT NULL DEFAULT '',
+                    weekly_minutes     INTEGER NOT NULL DEFAULT 0,
+                    success_criterion  TEXT NOT NULL DEFAULT '',
+                    status             TEXT NOT NULL DEFAULT 'candidate'
+                                       CHECK(status IN ('candidate', 'active', 'completed', 'abandoned')),
+                    created_at         TEXT NOT NULL DEFAULT '',
+                    updated_at         TEXT NOT NULL DEFAULT '',
+                    activated_at       TEXT NOT NULL DEFAULT '',
+                    ended_at           TEXT NOT NULL DEFAULT ''
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_learning_goals_one_active
+                    ON v2_learning_goals(status) WHERE status = 'active';
+
+                CREATE TABLE IF NOT EXISTS v2_learning_plans (
+                    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id            INTEGER NOT NULL REFERENCES v2_learning_goals(id) ON DELETE RESTRICT,
+                    status             TEXT NOT NULL DEFAULT 'draft'
+                                       CHECK(status IN ('draft', 'active', 'archived')),
+                    focus              TEXT NOT NULL DEFAULT '',
+                    source             TEXT NOT NULL DEFAULT 'manual',
+                    version            INTEGER NOT NULL DEFAULT 1,
+                    start_plan_date    TEXT NOT NULL DEFAULT '',
+                    starts_at          TEXT NOT NULL DEFAULT '',
+                    ends_at            TEXT NOT NULL DEFAULT '',
+                    timezone           TEXT NOT NULL DEFAULT '',
+                    day_cutoff_minutes INTEGER NOT NULL DEFAULT 240,
+                    archived_reason    TEXT NOT NULL DEFAULT '',
+                    created_at         TEXT NOT NULL DEFAULT '',
+                    updated_at         TEXT NOT NULL DEFAULT '',
+                    activated_at       TEXT NOT NULL DEFAULT '',
+                    archived_at        TEXT NOT NULL DEFAULT ''
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_learning_plans_one_active
+                    ON v2_learning_plans(status) WHERE status = 'active';
+                CREATE INDEX IF NOT EXISTS idx_v2_learning_plans_goal
+                    ON v2_learning_plans(goal_id, id DESC);
+
+                CREATE TABLE IF NOT EXISTS v2_plan_tasks (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_id           INTEGER NOT NULL REFERENCES v2_learning_plans(id) ON DELETE CASCADE,
+                    plan_day          INTEGER NOT NULL CHECK(plan_day BETWEEN 1 AND 7),
+                    task_type         TEXT NOT NULL CHECK(task_type IN (
+                                          'continue_lesson', 'review_vocabulary', 'review_sentences',
+                                          'practice_output', 'external_speaking'
+                                      )),
+                    title             TEXT NOT NULL,
+                    target_quantity   REAL NOT NULL DEFAULT 1,
+                    target_unit       TEXT NOT NULL DEFAULT 'items',
+                    estimated_minutes INTEGER NOT NULL DEFAULT 0,
+                    scheduled_start   TEXT NOT NULL DEFAULT '',
+                    scheduled_end     TEXT NOT NULL DEFAULT '',
+                    origin            TEXT NOT NULL DEFAULT 'manual',
+                    sort_order        INTEGER NOT NULL DEFAULT 0,
+                    created_at        TEXT NOT NULL DEFAULT '',
+                    updated_at        TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_v2_plan_tasks_day
+                    ON v2_plan_tasks(plan_id, plan_day, sort_order, id);
+
+                CREATE TABLE IF NOT EXISTS v2_plan_task_targets (
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id          INTEGER NOT NULL REFERENCES v2_plan_tasks(id) ON DELETE CASCADE,
+                    target_type      TEXT NOT NULL,
+                    target_ref       TEXT NOT NULL,
+                    label            TEXT NOT NULL DEFAULT '',
+                    source_lesson_id INTEGER REFERENCES v2_lessons(id) ON DELETE SET NULL,
+                    metadata_json    TEXT NOT NULL DEFAULT '{}',
+                    sort_order       INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(task_id, target_type, target_ref)
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_plan_task_progress (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id         INTEGER NOT NULL REFERENCES v2_plan_tasks(id) ON DELETE CASCADE,
+                    completion_type TEXT NOT NULL CHECK(completion_type IN ('verified', 'self_reported')),
+                    amount          REAL NOT NULL DEFAULT 0,
+                    evidence_type   TEXT NOT NULL DEFAULT '',
+                    evidence_ref    TEXT NOT NULL DEFAULT '',
+                    note            TEXT NOT NULL DEFAULT '',
+                    idempotency_key TEXT NOT NULL,
+                    occurred_at     TEXT NOT NULL DEFAULT '',
+                    created_at      TEXT NOT NULL DEFAULT '',
+                    updated_at      TEXT NOT NULL DEFAULT '',
+                    UNIQUE(task_id, idempotency_key)
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_plan_task_feedback (
+                    task_id      INTEGER PRIMARY KEY REFERENCES v2_plan_tasks(id) ON DELETE CASCADE,
+                    difficulty   TEXT NOT NULL CHECK(difficulty IN ('easy', 'right', 'hard')),
+                    note         TEXT NOT NULL DEFAULT '',
+                    created_at   TEXT NOT NULL DEFAULT '',
+                    updated_at   TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_plan_days (
+                    plan_id     INTEGER NOT NULL REFERENCES v2_learning_plans(id) ON DELETE CASCADE,
+                    plan_day    INTEGER NOT NULL CHECK(plan_day BETWEEN 1 AND 7),
+                    is_rest     INTEGER NOT NULL DEFAULT 0,
+                    note        TEXT NOT NULL DEFAULT '',
+                    updated_at  TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY(plan_id, plan_day)
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_speaking_briefs (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id             INTEGER NOT NULL UNIQUE REFERENCES v2_plan_tasks(id) ON DELETE CASCADE,
+                    scenario            TEXT NOT NULL DEFAULT '',
+                    instructions        TEXT NOT NULL DEFAULT '',
+                    target_words_json   TEXT NOT NULL DEFAULT '[]',
+                    target_sentence_ids TEXT NOT NULL DEFAULT '[]',
+                    created_at          TEXT NOT NULL DEFAULT '',
+                    updated_at          TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_sentence_review_items (
+                    sentence_id INTEGER PRIMARY KEY REFERENCES v2_sentences(id) ON DELETE CASCADE,
+                    source TEXT NOT NULL DEFAULT 'ai_recommendation',
+                    candidate_id INTEGER,
+                    added_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_recommendation_pools (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id INTEGER NOT NULL REFERENCES v2_learning_goals(id) ON DELETE CASCADE,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'current'
+                           CHECK(status IN ('current', 'archived')),
+                    context_hash TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'ai',
+                    expires_at TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_recommendation_one_current
+                    ON v2_recommendation_pools(goal_id) WHERE status='current';
+
+                CREATE TABLE IF NOT EXISTS v2_recommendation_candidates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pool_id INTEGER NOT NULL REFERENCES v2_recommendation_pools(id) ON DELETE CASCADE,
+                    target_type TEXT NOT NULL CHECK(target_type IN ('word', 'sentence')),
+                    target_ref TEXT NOT NULL,
+                    label TEXT NOT NULL DEFAULT '',
+                    source_lesson_id INTEGER REFERENCES v2_lessons(id) ON DELETE SET NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    goal_connection TEXT NOT NULL DEFAULT '',
+                    priority_group TEXT NOT NULL DEFAULT 'later'
+                                   CHECK(priority_group IN ('this_week', 'later', 'explore')),
+                    status TEXT NOT NULL DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'accepted', 'mastered', 'rejected', 'invalid')),
+                    rank INTEGER NOT NULL DEFAULT 0,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    decided_at TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    UNIQUE(pool_id, target_type, target_ref)
+                );
+                CREATE INDEX IF NOT EXISTS idx_v2_recommendation_candidates_status
+                    ON v2_recommendation_candidates(pool_id, status, rank, id);
+
+                CREATE TABLE IF NOT EXISTS v2_plan_conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id INTEGER NOT NULL REFERENCES v2_learning_goals(id) ON DELETE CASCADE,
+                    plan_id INTEGER REFERENCES v2_learning_plans(id) ON DELETE SET NULL,
+                    status TEXT NOT NULL DEFAULT 'active'
+                           CHECK(status IN ('active', 'archived')),
+                    retention_days INTEGER NOT NULL DEFAULT 90,
+                    created_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    archived_at TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_plan_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id INTEGER NOT NULL REFERENCES v2_plan_conversations(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                    content TEXT NOT NULL DEFAULT '',
+                    structured_type TEXT NOT NULL DEFAULT '',
+                    structured_ref TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS v2_plan_revisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id INTEGER REFERENCES v2_plan_conversations(id) ON DELETE SET NULL,
+                    plan_id INTEGER REFERENCES v2_learning_plans(id) ON DELETE SET NULL,
+                    base_plan_version INTEGER NOT NULL DEFAULT 1,
+                    summary TEXT NOT NULL DEFAULT '',
+                    reason TEXT NOT NULL DEFAULT '',
+                    risk_level TEXT NOT NULL DEFAULT 'directional'
+                               CHECK(risk_level IN ('light', 'directional')),
+                    proposal_json TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'proposed'
+                           CHECK(status IN ('proposed', 'applied', 'rejected', 'reverted')),
+                    applied_plan_id INTEGER REFERENCES v2_learning_plans(id) ON DELETE SET NULL,
+                    created_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    applied_at TEXT NOT NULL DEFAULT '',
+                    reverted_at TEXT NOT NULL DEFAULT ''
+                );
             """)
             conn.execute(
                 """
@@ -447,6 +696,9 @@ def init_db(path: Path | None = None):
                 "ALTER TABLE v2_sentences ADD COLUMN listening_result TEXT NOT NULL DEFAULT 'untested'",
                 "ALTER TABLE v2_sentences ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE v2_sentences ADD COLUMN saved_manually INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE v2_learner_profile ADD COLUMN available_time_slots TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE v2_plan_tasks ADD COLUMN scheduled_start TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE v2_plan_tasks ADD COLUMN scheduled_end TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE word_review_items ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
                 "ALTER TABLE word_review_items ADD COLUMN lemma TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE word_review_items ADD COLUMN display_text TEXT NOT NULL DEFAULT ''",
@@ -666,6 +918,7 @@ def get_review_words(
             """
             SELECT w.*, review.source AS review_source,
                    review.added_at AS review_added_at,
+                   review.lesson_id AS review_lesson_id,
                    review.target_type, review.lemma, review.display_text,
                    review.familiarity, review.archived, review.mastered, review.tags
             FROM word_review_items review
@@ -697,6 +950,35 @@ def get_review_words(
         ctx_map.setdefault(row["word"], []).append(
             {"lesson": row["lesson"], "sentence": row["sentence"]}
         )
+    # 无 contexts 行的复习词（如 AI 推荐采纳、activate 端点入本不写语境），
+    # 回填 v2_lesson_words 里的真实课程句，优先匹配入本时记录的 lesson_id。
+    missing = [row["word"] for row in words if not ctx_map.get(row["word"])]
+    if missing:
+        review_lesson_ids = {row["word"]: row["review_lesson_id"] for row in words}
+        placeholders = ",".join("?" for _ in missing)
+        with _db() as conn:
+            fallback_rows = conn.execute(
+                f"""
+                SELECT lw.word, lw.lesson_id, lw.sentence, lessons.title AS lesson_title
+                FROM v2_lesson_words lw
+                JOIN v2_lessons lessons ON lessons.id = lw.lesson_id
+                WHERE lw.word IN ({placeholders}) AND lw.sentence != ''
+                ORDER BY lw.id DESC
+                """,
+                tuple(missing),
+            ).fetchall()
+        by_word: dict[str, list] = {}
+        for row in fallback_rows:
+            by_word.setdefault(row["word"], []).append(row)
+        for word, rows in by_word.items():
+            preferred = review_lesson_ids.get(word)
+            chosen = next(
+                (r for r in rows if preferred and r["lesson_id"] == preferred),
+                rows[0],
+            )
+            ctx_map[word] = [
+                {"lesson": chosen["lesson_title"] or "课程语境", "sentence": chosen["sentence"]}
+            ]
     ordered = {
         row["word"]: {
             "count": row["count"],
@@ -1366,7 +1648,7 @@ def save_v2_practice_attempt(
     if clean_type not in {"word", "phrase", "pattern"}:
         raise ValueError("Invalid practice type")
     clean_target_type = str(target_type or clean_type).strip().lower()
-    if clean_target_type not in {"word", "phrase", "pattern"}:
+    if clean_target_type not in {"word", "phrase", "sentence", "pattern"}:
         raise ValueError("Invalid target type")
     clean_verdict = str(verdict or "").strip().lower()
     if clean_verdict not in {"accepted", "needs_revision"}:
@@ -1713,12 +1995,18 @@ def list_v2_saved_sentences(today: str = "", *, include_archived: bool = False) 
     with _db() as conn:
         rows = conn.execute(
             """
-            SELECT sentence.*
+            SELECT sentence.*,
+                   (SELECT review.source FROM v2_sentence_review_items AS review
+                    WHERE review.sentence_id=sentence.id) AS review_source
             FROM v2_sentences AS sentence
             WHERE (
                 EXISTS (
                     SELECT 1 FROM v2_phase_b_sentences AS saved
                     WHERE saved.sentence_id=sentence.id
+                )
+                OR EXISTS (
+                    SELECT 1 FROM v2_sentence_review_items AS review
+                    WHERE review.sentence_id=sentence.id
                 )
                 OR sentence.saved_manually=1
             )
@@ -1835,12 +2123,21 @@ def review_v2_sentence(sentence_id: int, rating: str, today: str = "") -> dict |
     with _db() as conn:
         row = conn.execute(
             """
-            SELECT sentence.*
+            SELECT sentence.*,
+                   (SELECT review.source FROM v2_sentence_review_items AS review
+                    WHERE review.sentence_id=sentence.id) AS review_source
             FROM v2_sentences AS sentence
             WHERE sentence.id=?
-              AND EXISTS (
-                  SELECT 1 FROM v2_phase_b_sentences AS saved
-                  WHERE saved.sentence_id=sentence.id
+              AND (
+                  sentence.saved_manually=1
+                  OR EXISTS (
+                      SELECT 1 FROM v2_phase_b_sentences AS saved
+                      WHERE saved.sentence_id=sentence.id
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM v2_sentence_review_items AS review
+                      WHERE review.sentence_id=sentence.id
+                  )
               )
             """,
             (sentence_id,),
@@ -1887,9 +2184,16 @@ def set_v2_sentence_archived(sentence_id: int, archived: bool) -> dict | None:
             SELECT sentence.id
             FROM v2_sentences AS sentence
             WHERE sentence.id=?
-              AND EXISTS (
-                  SELECT 1 FROM v2_phase_b_sentences AS saved
-                  WHERE saved.sentence_id=sentence.id
+              AND (
+                  sentence.saved_manually=1
+                  OR EXISTS (
+                      SELECT 1 FROM v2_phase_b_sentences AS saved
+                      WHERE saved.sentence_id=sentence.id
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM v2_sentence_review_items AS review
+                      WHERE review.sentence_id=sentence.id
+                  )
               )
             """,
             (sentence_id,),
@@ -1907,6 +2211,55 @@ def set_v2_sentence_archived(sentence_id: int, archived: bool) -> dict | None:
     item = dict(updated)
     item["archived"] = bool(item.get("archived"))
     return item
+
+
+def activate_sentence_review(
+    sentence_id: int, *, source: str = "ai_recommendation", candidate_id: int | None = None
+) -> dict | None:
+    """Admit an existing sentence into the review library without changing ownership flags."""
+    now = _now_iso()
+    with _db() as conn:
+        sentence = conn.execute(
+            "SELECT * FROM v2_sentences WHERE id=?", (int(sentence_id),)
+        ).fetchone()
+        if not sentence:
+            return None
+        conn.execute(
+            """
+            INSERT INTO v2_sentence_review_items
+                (sentence_id, source, candidate_id, added_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(sentence_id) DO UPDATE SET
+                source=excluded.source,
+                candidate_id=COALESCE(excluded.candidate_id, v2_sentence_review_items.candidate_id),
+                updated_at=excluded.updated_at
+            """,
+            (int(sentence_id), source, candidate_id, now, now),
+        )
+        conn.execute("UPDATE v2_sentences SET archived=0 WHERE id=?", (int(sentence_id),))
+        row = conn.execute(
+            "SELECT * FROM v2_sentences WHERE id=?", (int(sentence_id),)
+        ).fetchone()
+    item = dict(row)
+    item["archived"] = bool(item.get("archived"))
+    return item
+
+
+def is_sentence_in_review(sentence_id: int) -> bool:
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM v2_sentences AS sentence
+            WHERE sentence.id=? AND (
+                sentence.saved_manually=1
+                OR EXISTS (SELECT 1 FROM v2_phase_b_sentences saved WHERE saved.sentence_id=sentence.id)
+                OR EXISTS (SELECT 1 FROM v2_sentence_review_items review WHERE review.sentence_id=sentence.id)
+            )
+            """,
+            (int(sentence_id),),
+        ).fetchone()
+    return row is not None
 
 
 def get_v2_sentence_pattern(sentence_id: int) -> dict | None:
@@ -1965,6 +2318,53 @@ def save_v2_sentence_pattern_scenario(sentence_id: int, scenario_cn: str) -> dic
             (clean_scenario, _now_iso(), sentence_id),
         )
     return get_v2_sentence_pattern(sentence_id)
+
+
+def get_v2_lesson_ai_recommendation(lesson_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_lesson_ai_recommendations WHERE lesson_id=?",
+            (lesson_id,),
+        ).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    try:
+        payload = json.loads(item.pop("payload_json") or "{}")
+    except (TypeError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload.setdefault("words", [])
+    payload.setdefault("patterns", [])
+    item["payload"] = payload
+    return item
+
+
+def save_v2_lesson_ai_recommendation(lesson_id: int, payload: dict, model: str = "") -> dict:
+    if not get_v2_lesson(lesson_id):
+        raise ValueError("Lesson not found")
+    if not isinstance(payload, dict):
+        raise ValueError("payload required")
+    clean = {
+        "words": list(payload.get("words") or [])[:12],
+        "patterns": list(payload.get("patterns") or [])[:8],
+    }
+    now = _now_iso()
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO v2_lesson_ai_recommendations
+                (lesson_id, payload_json, model, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(lesson_id) DO UPDATE SET
+                payload_json=excluded.payload_json,
+                model=excluded.model,
+                updated_at=excluded.updated_at
+            """,
+            (lesson_id, json.dumps(clean, ensure_ascii=False), str(model or ""), now, now),
+        )
+    return get_v2_lesson_ai_recommendation(lesson_id)
 
 
 def save_v2_sentence_analysis(sentence_id: int, analysis: dict) -> dict:
@@ -2683,3 +3083,986 @@ def delete_v2_phase_b_sentence(lesson_id: int, segment_index: int) -> bool:
             (lesson_id, segment_index),
         )
     return result.rowcount > 0
+
+
+# ── V1A Planning Hub ──────────────────────────────────────────
+
+_PLANNING_PROFILE_DEFAULTS = {
+    "weekly_minutes": 0,
+    "available_days": [],
+    "available_time_slots": [],
+    "priority_skills": [],
+    "interests": [],
+    "dislikes": [],
+    "reported_level": "",
+}
+_PLANNING_PREFERENCE_DEFAULTS = {
+    "timezone": "Asia/Shanghai",
+    "day_cutoff_minutes": 240,
+    "daily_reminder": False,
+    "recommendation_word_limit": 30,
+    "recommendation_sentence_limit": 15,
+    "admission_word_limit": 15,
+    "admission_sentence_limit": 8,
+    "conversation_retention_days": 90,
+}
+
+
+def _planning_json(value, fallback):
+    try:
+        parsed = json.loads(value or "")
+    except (TypeError, json.JSONDecodeError):
+        return fallback
+    return parsed if isinstance(parsed, type(fallback)) else fallback
+
+
+def _serialize_planning_profile(row) -> dict:
+    if not row:
+        return dict(_PLANNING_PROFILE_DEFAULTS)
+    item = dict(row)
+    for key in ("available_days", "available_time_slots", "priority_skills", "interests", "dislikes"):
+        item[key] = _planning_json(item.get(key), [])
+    return item
+
+
+def get_learner_profile() -> dict:
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_learner_profile WHERE id=1").fetchone()
+    return _serialize_planning_profile(row)
+
+
+def update_learner_profile(profile: dict) -> dict:
+    current = get_learner_profile()
+    current.update(profile)
+    now = _now_iso()
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO v2_learner_profile
+                (id, weekly_minutes, available_days, available_time_slots,
+                 priority_skills, interests, dislikes, reported_level, created_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                weekly_minutes=excluded.weekly_minutes,
+                available_days=excluded.available_days,
+                available_time_slots=excluded.available_time_slots,
+                priority_skills=excluded.priority_skills,
+                interests=excluded.interests,
+                dislikes=excluded.dislikes,
+                reported_level=excluded.reported_level,
+                updated_at=excluded.updated_at
+            """,
+            (
+                int(current["weekly_minutes"]),
+                json.dumps(current["available_days"], ensure_ascii=False),
+                json.dumps(current["available_time_slots"], ensure_ascii=False),
+                json.dumps(current["priority_skills"], ensure_ascii=False),
+                json.dumps(current["interests"], ensure_ascii=False),
+                json.dumps(current["dislikes"], ensure_ascii=False),
+                str(current["reported_level"]),
+                now,
+                now,
+            ),
+        )
+    return get_learner_profile()
+
+
+def _serialize_planning_preferences(row) -> dict:
+    if not row:
+        return dict(_PLANNING_PREFERENCE_DEFAULTS)
+    item = dict(row)
+    item["daily_reminder"] = bool(item.get("daily_reminder"))
+    return item
+
+
+def get_planning_preferences() -> dict:
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_planning_preferences WHERE id=1").fetchone()
+    return _serialize_planning_preferences(row)
+
+
+def update_planning_preferences(preferences: dict) -> dict:
+    current = get_planning_preferences()
+    current.update(preferences)
+    now = _now_iso()
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO v2_planning_preferences
+                (id, timezone, day_cutoff_minutes, daily_reminder,
+                 recommendation_word_limit, recommendation_sentence_limit,
+                 admission_word_limit, admission_sentence_limit,
+                 conversation_retention_days, created_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                timezone=excluded.timezone,
+                day_cutoff_minutes=excluded.day_cutoff_minutes,
+                daily_reminder=excluded.daily_reminder,
+                recommendation_word_limit=excluded.recommendation_word_limit,
+                recommendation_sentence_limit=excluded.recommendation_sentence_limit,
+                admission_word_limit=excluded.admission_word_limit,
+                admission_sentence_limit=excluded.admission_sentence_limit,
+                conversation_retention_days=excluded.conversation_retention_days,
+                updated_at=excluded.updated_at
+            """,
+            (
+                current["timezone"], current["day_cutoff_minutes"],
+                int(bool(current["daily_reminder"])), current["recommendation_word_limit"],
+                current["recommendation_sentence_limit"], current["admission_word_limit"],
+                current["admission_sentence_limit"], current["conversation_retention_days"],
+                now, now,
+            ),
+        )
+    return get_planning_preferences()
+
+
+def _serialize_learning_goal(row) -> dict | None:
+    if not row:
+        return None
+    item = dict(row)
+    item["priority_skills"] = _planning_json(item.get("priority_skills"), [])
+    return item
+
+
+def create_learning_goal(goal: dict) -> dict:
+    now = _now_iso()
+    with _db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO v2_learning_goals
+                (description, goal_type, priority_skills, target_date, weekly_minutes,
+                 success_criterion, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'candidate', ?, ?)
+            """,
+            (
+                goal["description"], goal["goal_type"],
+                json.dumps(goal.get("priority_skills") or [], ensure_ascii=False),
+                goal.get("target_date") or "", int(goal.get("weekly_minutes") or 0),
+                goal.get("success_criterion") or "", now, now,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM v2_learning_goals WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+    return _serialize_learning_goal(row)
+
+
+def get_learning_goal(goal_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_learning_goals WHERE id=?", (goal_id,)).fetchone()
+    return _serialize_learning_goal(row)
+
+
+def get_active_learning_goal() -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_learning_goals WHERE status='active' LIMIT 1"
+        ).fetchone()
+    return _serialize_learning_goal(row)
+
+
+def list_learning_goals() -> list[dict]:
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM v2_learning_goals ORDER BY"
+            " CASE status WHEN 'active' THEN 0 WHEN 'candidate' THEN 1 ELSE 2 END, id DESC"
+        ).fetchall()
+    return [_serialize_learning_goal(row) for row in rows]
+
+
+def activate_learning_goal(goal_id: int, *, confirm_switch: bool = False) -> dict | None:
+    now = _now_iso()
+    with _db() as conn:
+        target = conn.execute(
+            "SELECT * FROM v2_learning_goals WHERE id=?", (goal_id,)
+        ).fetchone()
+        if not target or target["status"] in {"completed", "abandoned"}:
+            return None
+        current = conn.execute(
+            "SELECT * FROM v2_learning_goals WHERE status='active' LIMIT 1"
+        ).fetchone()
+        if current and current["id"] != goal_id and not confirm_switch:
+            raise RuntimeError("goal_switch_confirmation_required")
+        if current and current["id"] != goal_id:
+            conn.execute(
+                "UPDATE v2_learning_goals SET status='candidate', updated_at=? WHERE id=?",
+                (now, current["id"]),
+            )
+            conn.execute(
+                """
+                UPDATE v2_learning_plans
+                SET status='archived', archived_reason='goal_switched',
+                    archived_at=?, updated_at=?
+                WHERE status='active'
+                """,
+                (now, now),
+            )
+        conn.execute(
+            """
+            UPDATE v2_learning_goals
+            SET status='active', activated_at=CASE WHEN activated_at='' THEN ? ELSE activated_at END,
+                ended_at='', updated_at=?
+            WHERE id=?
+            """,
+            (now, now, goal_id),
+        )
+        row = conn.execute("SELECT * FROM v2_learning_goals WHERE id=?", (goal_id,)).fetchone()
+    return _serialize_learning_goal(row)
+
+
+def end_learning_goal(goal_id: int, status: str) -> dict | None:
+    if status not in {"completed", "abandoned"}:
+        raise ValueError("Invalid goal end status")
+    now = _now_iso()
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_learning_goals WHERE id=?", (goal_id,)).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE v2_learning_goals SET status=?, ended_at=?, updated_at=? WHERE id=?",
+            (status, now, now, goal_id),
+        )
+        conn.execute(
+            """
+            UPDATE v2_learning_plans
+            SET status='archived', archived_reason=?, archived_at=?, updated_at=?
+            WHERE goal_id=? AND status='active'
+            """,
+            (f"goal_{status}", now, now, goal_id),
+        )
+        row = conn.execute("SELECT * FROM v2_learning_goals WHERE id=?", (goal_id,)).fetchone()
+    return _serialize_learning_goal(row)
+
+
+def _serialize_plan_task(conn, row) -> dict:
+    task = dict(row)
+    target_rows = conn.execute(
+        "SELECT * FROM v2_plan_task_targets WHERE task_id=? ORDER BY sort_order, id",
+        (task["id"],),
+    ).fetchall()
+    task["targets"] = []
+    for target_row in target_rows:
+        target = dict(target_row)
+        target["metadata"] = _planning_json(target.pop("metadata_json", "{}"), {})
+        task["targets"].append(target)
+    progress = conn.execute(
+        "SELECT completion_type, amount FROM v2_plan_task_progress WHERE task_id=?",
+        (task["id"],),
+    ).fetchall()
+    task["verified_amount"] = sum(
+        float(item["amount"] or 0)
+        for item in progress if item["completion_type"] == "verified"
+    )
+    task["self_reported_amount"] = max(
+        [float(item["amount"] or 0) for item in progress
+         if item["completion_type"] == "self_reported"] or [0]
+    )
+    feedback = conn.execute(
+        "SELECT * FROM v2_plan_task_feedback WHERE task_id=?", (task["id"],)
+    ).fetchone()
+    task["feedback"] = dict(feedback) if feedback else None
+    brief = conn.execute(
+        "SELECT * FROM v2_speaking_briefs WHERE task_id=?", (task["id"],)
+    ).fetchone()
+    if brief:
+        task["speaking_brief"] = dict(brief)
+        task["speaking_brief"]["target_words"] = _planning_json(
+            task["speaking_brief"].pop("target_words_json", "[]"), []
+        )
+        task["speaking_brief"]["target_sentence_ids"] = _planning_json(
+            task["speaking_brief"].pop("target_sentence_ids", "[]"), []
+        )
+    else:
+        task["speaking_brief"] = None
+    return task
+
+
+def _serialize_learning_plan(conn, row, *, include_tasks: bool = True) -> dict:
+    plan = dict(row)
+    if include_tasks:
+        tasks = conn.execute(
+            "SELECT * FROM v2_plan_tasks WHERE plan_id=? ORDER BY plan_day, sort_order, id",
+            (plan["id"],),
+        ).fetchall()
+        plan["tasks"] = [_serialize_plan_task(conn, task) for task in tasks]
+    return plan
+
+
+def create_learning_plan(goal_id: int, focus: str, tasks: list[dict], source: str = "manual") -> dict:
+    now = _now_iso()
+    with _db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO v2_learning_plans
+                (goal_id, status, focus, source, created_at, updated_at)
+            VALUES (?, 'draft', ?, ?, ?, ?)
+            """,
+            (goal_id, focus, source, now, now),
+        )
+        plan_id = cursor.lastrowid
+        for task_order, task in enumerate(tasks):
+            task_cursor = conn.execute(
+                """
+                INSERT INTO v2_plan_tasks
+                    (plan_id, plan_day, task_type, title, target_quantity, target_unit,
+                     estimated_minutes, scheduled_start, scheduled_end, origin,
+                     sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan_id, task["plan_day"], task["task_type"], task["title"],
+                    task.get("target_quantity", 1), task.get("target_unit", "items"),
+                    task.get("estimated_minutes", 0), task.get("scheduled_start", ""),
+                    task.get("scheduled_end", ""), task.get("origin", "manual"),
+                    task_order, now, now,
+                ),
+            )
+            task_id = task_cursor.lastrowid
+            for target_order, target in enumerate(task.get("targets") or []):
+                conn.execute(
+                    """
+                    INSERT INTO v2_plan_task_targets
+                        (task_id, target_type, target_ref, label, source_lesson_id,
+                         metadata_json, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id, target["target_type"], str(target["target_ref"]),
+                        target.get("label", ""), target.get("source_lesson_id"),
+                        json.dumps(target.get("metadata") or {}, ensure_ascii=False),
+                        target_order,
+                    ),
+                )
+            brief = task.get("speaking_brief")
+            if brief:
+                conn.execute(
+                    """
+                    INSERT INTO v2_speaking_briefs
+                        (task_id, scenario, instructions, target_words_json,
+                         target_sentence_ids, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id, brief.get("scenario", ""), brief.get("instructions", ""),
+                        json.dumps(brief.get("target_words") or [], ensure_ascii=False),
+                        json.dumps(brief.get("target_sentence_ids") or [], ensure_ascii=False),
+                        now, now,
+                    ),
+                )
+        row = conn.execute("SELECT * FROM v2_learning_plans WHERE id=?", (plan_id,)).fetchone()
+        return _serialize_learning_plan(conn, row)
+
+
+def get_learning_plan(plan_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_learning_plans WHERE id=?", (plan_id,)).fetchone()
+        return _serialize_learning_plan(conn, row) if row else None
+
+
+def get_active_learning_plan() -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_learning_plans WHERE status='active' LIMIT 1"
+        ).fetchone()
+        return _serialize_learning_plan(conn, row) if row else None
+
+
+def list_learning_plans() -> list[dict]:
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM v2_learning_plans ORDER BY id DESC"
+        ).fetchall()
+        return [_serialize_learning_plan(conn, row, include_tasks=False) for row in rows]
+
+
+def _serialize_recommendation_candidate(row) -> dict:
+    item = dict(row)
+    item["metadata"] = _planning_json(item.pop("metadata_json", "{}"), {})
+    return item
+
+
+def _serialize_recommendation_pool(conn, row, *, include_candidates: bool = True) -> dict:
+    item = dict(row)
+    if include_candidates:
+        candidates = conn.execute(
+            "SELECT * FROM v2_recommendation_candidates"
+            " WHERE pool_id=? ORDER BY rank, id",
+            (item["id"],),
+        ).fetchall()
+        item["candidates"] = [_serialize_recommendation_candidate(candidate) for candidate in candidates]
+    return item
+
+
+def create_recommendation_pool(
+    goal_id: int, candidates: list[dict], *, context_hash: str = "", source: str = "ai"
+) -> dict:
+    now = _now_iso()
+    with _db() as conn:
+        latest = conn.execute(
+            "SELECT COALESCE(MAX(version), 0) AS version FROM v2_recommendation_pools WHERE goal_id=?",
+            (int(goal_id),),
+        ).fetchone()
+        version = int(latest["version"] or 0) + 1
+        conn.execute(
+            "UPDATE v2_recommendation_pools SET status='archived', updated_at=?"
+            " WHERE goal_id=? AND status='current'",
+            (now, int(goal_id)),
+        )
+        cursor = conn.execute(
+            """
+            INSERT INTO v2_recommendation_pools
+                (goal_id, version, status, context_hash, source, created_at, updated_at)
+            VALUES (?, ?, 'current', ?, ?, ?, ?)
+            """,
+            (int(goal_id), version, context_hash, source, now, now),
+        )
+        pool_id = int(cursor.lastrowid)
+        for rank, candidate in enumerate(candidates):
+            conn.execute(
+                """
+                INSERT INTO v2_recommendation_candidates
+                    (pool_id, target_type, target_ref, label, source_lesson_id,
+                     reason, goal_connection, priority_group, status, rank,
+                     metadata_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                """,
+                (
+                    pool_id, candidate["target_type"], str(candidate["target_ref"]),
+                    candidate.get("label", ""), candidate.get("source_lesson_id"),
+                    candidate.get("reason", ""), candidate.get("goal_connection", ""),
+                    candidate.get("priority_group", "later"), rank,
+                    json.dumps(candidate.get("metadata") or {}, ensure_ascii=False), now, now,
+                ),
+            )
+        row = conn.execute(
+            "SELECT * FROM v2_recommendation_pools WHERE id=?", (pool_id,)
+        ).fetchone()
+        return _serialize_recommendation_pool(conn, row)
+
+
+def get_current_recommendation_pool(goal_id: int | None = None) -> dict | None:
+    with _db() as conn:
+        if goal_id is None:
+            goal = conn.execute(
+                "SELECT id FROM v2_learning_goals WHERE status='active' LIMIT 1"
+            ).fetchone()
+            if not goal:
+                return None
+            goal_id = int(goal["id"])
+        row = conn.execute(
+            "SELECT * FROM v2_recommendation_pools"
+            " WHERE goal_id=? AND status='current' LIMIT 1",
+            (int(goal_id),),
+        ).fetchone()
+        return _serialize_recommendation_pool(conn, row) if row else None
+
+
+def get_recommendation_candidate(candidate_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT candidate.*, pool.goal_id, pool.status AS pool_status
+            FROM v2_recommendation_candidates AS candidate
+            JOIN v2_recommendation_pools AS pool ON pool.id=candidate.pool_id
+            WHERE candidate.id=?
+            """,
+            (int(candidate_id),),
+        ).fetchone()
+    return _serialize_recommendation_candidate(row) if row else None
+
+
+def decide_recommendation_candidate(candidate_id: int, decision: str) -> dict | None:
+    if decision not in {"accepted", "rejected", "mastered"}:
+        raise ValueError("Invalid recommendation decision")
+    now = _now_iso()
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT candidate.*, pool.goal_id, pool.status AS pool_status
+            FROM v2_recommendation_candidates AS candidate
+            JOIN v2_recommendation_pools AS pool ON pool.id=candidate.pool_id
+            WHERE candidate.id=?
+            """,
+            (int(candidate_id),),
+        ).fetchone()
+        if not row:
+            return None
+        if row["pool_status"] != "current":
+            raise RuntimeError("recommendation_pool_archived")
+        if decision == "accepted":
+            _admit_recommendation_candidate(conn, row, source="ai_recommendation")
+        conn.execute(
+            "UPDATE v2_recommendation_candidates"
+            " SET status=?, decided_at=?, updated_at=? WHERE id=?",
+            (decision, now, now, int(candidate_id)),
+        )
+        updated = conn.execute(
+            """
+            SELECT candidate.*, pool.goal_id, pool.status AS pool_status
+            FROM v2_recommendation_candidates AS candidate
+            JOIN v2_recommendation_pools AS pool ON pool.id=candidate.pool_id
+            WHERE candidate.id=?
+            """,
+            (int(candidate_id),),
+        ).fetchone()
+    return _serialize_recommendation_candidate(updated)
+
+
+def _admit_recommendation_candidate(conn, candidate, *, source: str) -> None:
+    now = _now_iso()
+    candidate_id = int(candidate["id"])
+    if candidate["target_type"] == "word":
+        word = str(candidate["target_ref"])
+        existing = conn.execute("SELECT 1 FROM words WHERE word=?", (word,)).fetchone()
+        if not existing:
+            raise RuntimeError("recommendation_target_missing")
+        conn.execute(
+            """
+            INSERT INTO word_review_items
+                (word, source, lesson_id, target_type, lemma, display_text,
+                 familiarity, archived, mastered, added_at, updated_at)
+            VALUES (?, ?, ?, 'word', ?, ?, 'unrated', 0, 0, ?, ?)
+            ON CONFLICT(word) DO UPDATE SET
+                source=excluded.source,
+                lesson_id=COALESCE(excluded.lesson_id, word_review_items.lesson_id),
+                display_text=excluded.display_text,
+                archived=0, mastered=0, updated_at=excluded.updated_at
+            """,
+            (
+                word, source, candidate["source_lesson_id"], word,
+                candidate["label"] or word, now, now,
+            ),
+        )
+        conn.execute("DELETE FROM known_words WHERE word=?", (word,))
+    else:
+        try:
+            sentence_id = int(candidate["target_ref"])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("recommendation_target_missing") from exc
+        existing = conn.execute(
+            "SELECT 1 FROM v2_sentences WHERE id=?", (sentence_id,)
+        ).fetchone()
+        if not existing:
+            raise RuntimeError("recommendation_target_missing")
+        conn.execute(
+            """
+            INSERT INTO v2_sentence_review_items
+                (sentence_id, source, candidate_id, added_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(sentence_id) DO UPDATE SET
+                source=excluded.source, candidate_id=excluded.candidate_id,
+                updated_at=excluded.updated_at
+            """,
+            (sentence_id, source, candidate_id, now, now),
+        )
+        conn.execute("UPDATE v2_sentences SET archived=0 WHERE id=?", (sentence_id,))
+
+
+def get_or_create_plan_conversation(goal_id: int, plan_id: int | None = None) -> dict:
+    now = _now_iso()
+    preferences = get_planning_preferences()
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_plan_conversations"
+            " WHERE goal_id=? AND status='active' ORDER BY id DESC LIMIT 1",
+            (int(goal_id),),
+        ).fetchone()
+        if row:
+            if plan_id is not None and row["plan_id"] != int(plan_id):
+                conn.execute(
+                    "UPDATE v2_plan_conversations SET plan_id=?, updated_at=? WHERE id=?",
+                    (int(plan_id), now, int(row["id"])),
+                )
+                row = conn.execute(
+                    "SELECT * FROM v2_plan_conversations WHERE id=?", (int(row["id"]),)
+                ).fetchone()
+            return dict(row)
+        cursor = conn.execute(
+            """
+            INSERT INTO v2_plan_conversations
+                (goal_id, plan_id, status, retention_days, created_at, updated_at)
+            VALUES (?, ?, 'active', ?, ?, ?)
+            """,
+            (int(goal_id), plan_id, int(preferences["conversation_retention_days"]), now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM v2_plan_conversations WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+    return dict(row)
+
+
+def get_plan_conversation(conversation_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_plan_conversations WHERE id=?", (int(conversation_id),)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_plan_messages(conversation_id: int, limit: int = 50) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 100))
+    with _db() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM (
+                SELECT * FROM v2_plan_messages WHERE conversation_id=?
+                ORDER BY id DESC LIMIT ?
+            ) ORDER BY id ASC
+            """,
+            (int(conversation_id), safe_limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def add_plan_message(
+    conversation_id: int, role: str, content: str, *, structured_type: str = "",
+    structured_ref: str = "",
+) -> dict:
+    if role not in {"user", "assistant"}:
+        raise ValueError("Invalid plan message role")
+    now = _now_iso()
+    with _db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO v2_plan_messages
+                (conversation_id, role, content, structured_type, structured_ref, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (int(conversation_id), role, content, structured_type, structured_ref, now),
+        )
+        conn.execute(
+            "UPDATE v2_plan_conversations SET updated_at=? WHERE id=?",
+            (now, int(conversation_id)),
+        )
+        row = conn.execute(
+            "SELECT * FROM v2_plan_messages WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+    return dict(row)
+
+
+def create_plan_revision(
+    conversation_id: int, plan_id: int | None, proposal: dict, *, summary: str,
+    reason: str = "", risk_level: str = "directional",
+) -> dict:
+    if risk_level not in {"light", "directional"}:
+        raise ValueError("Invalid revision risk")
+    now = _now_iso()
+    with _db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO v2_plan_revisions
+                (conversation_id, plan_id, base_plan_version, summary, reason,
+                 risk_level, proposal_json, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?)
+            """,
+            (
+                int(conversation_id), plan_id, int(plan_id or 1), summary, reason,
+                risk_level, json.dumps(proposal, ensure_ascii=False), now, now,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM v2_plan_revisions WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+    return _serialize_plan_revision(row)
+
+
+def _serialize_plan_revision(row) -> dict:
+    item = dict(row)
+    item["proposal"] = _planning_json(item.pop("proposal_json", "{}"), {})
+    return item
+
+
+def get_plan_revision(revision_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_plan_revisions WHERE id=?", (int(revision_id),)
+        ).fetchone()
+    return _serialize_plan_revision(row) if row else None
+
+
+def list_plan_revisions(conversation_id: int, limit: int = 20) -> list[dict]:
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM v2_plan_revisions WHERE conversation_id=?"
+            " ORDER BY id DESC LIMIT ?",
+            (int(conversation_id), max(1, min(int(limit), 50))),
+        ).fetchall()
+    return [_serialize_plan_revision(row) for row in rows]
+
+
+def mark_plan_revision_applied(revision_id: int, applied_plan_id: int) -> dict | None:
+    now = _now_iso()
+    with _db() as conn:
+        result = conn.execute(
+            """
+            UPDATE v2_plan_revisions
+            SET status='applied', applied_plan_id=?, applied_at=?, updated_at=?
+            WHERE id=? AND status='proposed'
+            """,
+            (int(applied_plan_id), now, now, int(revision_id)),
+        )
+        if not result.rowcount:
+            return None
+        row = conn.execute(
+            "SELECT * FROM v2_plan_revisions WHERE id=?", (int(revision_id),)
+        ).fetchone()
+    return _serialize_plan_revision(row)
+
+
+def activate_learning_plan(
+    plan_id: int, *, start_plan_date: str, starts_at: str, ends_at: str,
+    timezone_name: str, day_cutoff_minutes: int,
+) -> dict | None:
+    now = _now_iso()
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_learning_plans WHERE id=?", (plan_id,)).fetchone()
+        if not row or row["status"] != "draft":
+            return None
+        goal = conn.execute(
+            "SELECT status FROM v2_learning_goals WHERE id=?", (row["goal_id"],)
+        ).fetchone()
+        if not goal or goal["status"] != "active":
+            raise RuntimeError("plan_goal_not_active")
+        target_rows = conn.execute(
+            """
+            SELECT target.target_type, target.target_ref, target.metadata_json
+            FROM v2_plan_task_targets AS target
+            JOIN v2_plan_tasks AS task ON task.id=target.task_id
+            WHERE task.plan_id=?
+            """,
+            (int(plan_id),),
+        ).fetchall()
+        admissions: list[tuple[dict, object]] = []
+        admission_counts = {"word": 0, "sentence": 0}
+        seen_candidate_ids: set[int] = set()
+        for target in target_rows:
+            metadata = _planning_json(target["metadata_json"], {})
+            candidate_id = metadata.get("recommendation_candidate_id")
+            if candidate_id in (None, ""):
+                continue
+            candidate_id = int(candidate_id)
+            if candidate_id in seen_candidate_ids:
+                continue
+            candidate = conn.execute(
+                """
+                SELECT candidate.*, pool.goal_id, pool.status AS pool_status
+                FROM v2_recommendation_candidates AS candidate
+                JOIN v2_recommendation_pools AS pool ON pool.id=candidate.pool_id
+                WHERE candidate.id=?
+                """,
+                (candidate_id,),
+            ).fetchone()
+            if (
+                not candidate
+                or int(candidate["goal_id"]) != int(row["goal_id"])
+                or candidate["pool_status"] != "current"
+                or candidate["status"] not in {"pending", "accepted"}
+                or candidate["target_type"] != target["target_type"]
+                or str(candidate["target_ref"]) != str(target["target_ref"])
+            ):
+                raise RuntimeError("recommendation_candidate_invalid")
+            seen_candidate_ids.add(candidate_id)
+            admissions.append((metadata, candidate))
+            admission_counts[candidate["target_type"]] += 1
+        preferences = conn.execute(
+            "SELECT admission_word_limit, admission_sentence_limit"
+            " FROM v2_planning_preferences WHERE id=1"
+        ).fetchone()
+        word_limit = int(preferences["admission_word_limit"] if preferences else 15)
+        sentence_limit = int(preferences["admission_sentence_limit"] if preferences else 8)
+        if admission_counts["word"] > word_limit or admission_counts["sentence"] > sentence_limit:
+            raise RuntimeError("recommendation_admission_limit")
+        for _, candidate in admissions:
+            _admit_recommendation_candidate(conn, candidate, source="plan_confirmation")
+            conn.execute(
+                "UPDATE v2_recommendation_candidates"
+                " SET status='accepted', decided_at=?, updated_at=? WHERE id=?",
+                (now, now, int(candidate["id"])),
+            )
+        conn.execute(
+            """
+            UPDATE v2_learning_plans
+            SET status='archived', archived_reason='replaced', archived_at=?, updated_at=?
+            WHERE status='active' AND id != ?
+            """,
+            (now, now, plan_id),
+        )
+        conn.execute(
+            """
+            UPDATE v2_learning_plans
+            SET status='active', start_plan_date=?, starts_at=?, ends_at=?, timezone=?,
+                day_cutoff_minutes=?, activated_at=?, updated_at=?
+            WHERE id=?
+            """,
+            (
+                start_plan_date, starts_at, ends_at, timezone_name,
+                day_cutoff_minutes, now, now, plan_id,
+            ),
+        )
+        row = conn.execute("SELECT * FROM v2_learning_plans WHERE id=?", (plan_id,)).fetchone()
+        return _serialize_learning_plan(conn, row)
+
+
+def archive_learning_plan(plan_id: int, reason: str) -> dict | None:
+    now = _now_iso()
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM v2_learning_plans WHERE id=?", (plan_id,)).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            """
+            UPDATE v2_learning_plans
+            SET status='archived', archived_reason=?, archived_at=?, updated_at=?
+            WHERE id=?
+            """,
+            (reason, now, now, plan_id),
+        )
+        row = conn.execute("SELECT * FROM v2_learning_plans WHERE id=?", (plan_id,)).fetchone()
+        return _serialize_learning_plan(conn, row)
+
+
+def get_plan_task(task_id: int) -> dict | None:
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT task.*, plan.status AS plan_status
+            FROM v2_plan_tasks AS task
+            JOIN v2_learning_plans AS plan ON plan.id=task.plan_id
+            WHERE task.id=?
+            """,
+            (task_id,),
+        ).fetchone()
+        return _serialize_plan_task(conn, row) if row else None
+
+
+def upsert_plan_task_feedback(task_id: int, difficulty: str, note: str = "") -> dict:
+    now = _now_iso()
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO v2_plan_task_feedback
+                (task_id, difficulty, note, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(task_id) DO UPDATE SET
+                difficulty=excluded.difficulty,
+                note=excluded.note,
+                updated_at=excluded.updated_at
+            """,
+            (int(task_id), difficulty, note, now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM v2_plan_task_feedback WHERE task_id=?", (int(task_id),)
+        ).fetchone()
+        return dict(row)
+
+
+def list_recent_plan_task_feedback(limit: int = 20) -> list[dict]:
+    bounded = max(1, min(int(limit), 50))
+    with _db() as conn:
+        rows = conn.execute(
+            """
+            SELECT feedback.task_id, feedback.difficulty, feedback.note,
+                   feedback.updated_at, task.title, task.task_type,
+                   task.estimated_minutes, task.plan_day, plan.status AS plan_status
+            FROM v2_plan_task_feedback AS feedback
+            JOIN v2_plan_tasks AS task ON task.id=feedback.task_id
+            JOIN v2_learning_plans AS plan ON plan.id=task.plan_id
+            ORDER BY feedback.updated_at DESC, feedback.task_id DESC
+            LIMIT ?
+            """,
+            (bounded,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def set_plan_task_progress(
+    task_id: int, *, completion_type: str, amount: float, note: str = "",
+    evidence_type: str = "", evidence_ref: str = "", idempotency_key: str,
+) -> dict | None:
+    now = _now_iso()
+    with _db() as conn:
+        task = conn.execute(
+            """
+            SELECT task.*, plan.status AS plan_status
+            FROM v2_plan_tasks AS task
+            JOIN v2_learning_plans AS plan ON plan.id=task.plan_id
+            WHERE task.id=?
+            """,
+            (task_id,),
+        ).fetchone()
+        if not task:
+            return None
+        if task["plan_status"] != "active":
+            raise RuntimeError("task_plan_not_active")
+        conn.execute(
+            """
+            INSERT INTO v2_plan_task_progress
+                (task_id, completion_type, amount, evidence_type, evidence_ref, note,
+                 idempotency_key, occurred_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(task_id, idempotency_key) DO UPDATE SET
+                completion_type=excluded.completion_type,
+                amount=excluded.amount,
+                evidence_type=excluded.evidence_type,
+                evidence_ref=excluded.evidence_ref,
+                note=excluded.note,
+                occurred_at=excluded.occurred_at,
+                updated_at=excluded.updated_at
+            """,
+            (
+                task_id, completion_type, amount, evidence_type, evidence_ref, note,
+                idempotency_key, now, now, now,
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT task.*, plan.status AS plan_status
+            FROM v2_plan_tasks AS task
+            JOIN v2_learning_plans AS plan ON plan.id=task.plan_id
+            WHERE task.id=?
+            """,
+            (task_id,),
+        ).fetchone()
+        return _serialize_plan_task(conn, row)
+
+
+def set_plan_day_rest(plan_id: int, plan_day: int, is_rest: bool, note: str = "") -> None:
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO v2_plan_days (plan_id, plan_day, is_rest, note, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(plan_id, plan_day) DO UPDATE SET
+                is_rest=excluded.is_rest, note=excluded.note, updated_at=excluded.updated_at
+            """,
+            (plan_id, plan_day, int(bool(is_rest)), note, _now_iso()),
+        )
+
+
+def get_plan_day(plan_id: int, plan_day: int) -> dict:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM v2_plan_days WHERE plan_id=? AND plan_day=?",
+            (plan_id, plan_day),
+        ).fetchone()
+    if not row:
+        return {"plan_id": plan_id, "plan_day": plan_day, "is_rest": False, "note": ""}
+    item = dict(row)
+    item["is_rest"] = bool(item["is_rest"])
+    return item
+
+
+def count_practice_attempts(target: str, target_type: str = "") -> int:
+    with _db() as conn:
+        if target_type:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM v2_practice_attempts"
+                " WHERE target=? AND target_type=?",
+                (target, target_type),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM v2_practice_attempts WHERE target=?",
+                (target,),
+            ).fetchone()
+    return int(row["count"] or 0)

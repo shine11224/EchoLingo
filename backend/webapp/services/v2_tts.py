@@ -174,12 +174,15 @@ _GARBAGE_CHARS = re.compile("�+")
 
 def _synthesizable_sentences(text: str) -> list[str]:
     """断句并清理 PDF 提取残留：先剥掉  类替换字符（混合句不丢内容），
-    再剔除清理后无词字符的纯乱码句（edge_tts 会确定性拒收）。"""
+    再剔除清理后无词字符的纯乱码句（edge_tts 会确定性拒收）。
+
+    ASR 丢句末标点的粘连句在标点断句后按大写边界补切（与翻译单元同规则）。"""
     sentences = []
     for sentence in SentenceAnalyzer._split_text_sentences(text):
-        cleaned = " ".join(_GARBAGE_CHARS.sub("", sentence).split())
-        if cleaned and _WORD_TOKEN.search(cleaned):
-            sentences.append(cleaned)
+        for part in SentenceAnalyzer._split_capital_boundaries(sentence):
+            cleaned = " ".join(_GARBAGE_CHARS.sub("", part).split())
+            if cleaned and _WORD_TOKEN.search(cleaned):
+                sentences.append(cleaned)
     return sentences
 
 

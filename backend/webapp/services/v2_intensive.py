@@ -11,9 +11,6 @@ from webapp.services.v2_vocab import highlight_reading_blocks, highlight_segment
 
 READING_KEY_STRIDE = 10_000
 _WORD_RE = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
-_READING_CAPITAL_BOUNDARY_RE = re.compile(r"\s+(?=[A-Z](?:[a-z]+)?\b)")
-_READING_CAPITAL_SPLIT_EXCLUDED_TOKENS = {"I"}
-_READING_CAPITAL_SPLIT_MIN_WORDS = 8
 
 
 def reading_sentence_key(block_index: int, sentence_index: int) -> int:
@@ -44,40 +41,6 @@ def _enrich_aligned_words(words: list[dict]) -> list[dict]:
             )
         enriched.append(item)
     return enriched
-
-
-def _split_reading_text(text: str) -> list[str]:
-    normalized = " ".join((text or "").split())
-    if not normalized:
-        return []
-    punctuated_parts = [
-        part.strip()
-        for part in re.split(r"(?<=[.!?])\s+", normalized)
-        if part.strip()
-    ]
-    result: list[str] = []
-    for part in punctuated_parts:
-        start = 0
-        for boundary in _READING_CAPITAL_BOUNDARY_RE.finditer(part):
-            candidate = part[start:boundary.start()].strip()
-            if len(_WORD_RE.findall(candidate)) < _READING_CAPITAL_SPLIT_MIN_WORDS:
-                continue
-            words_before = _WORD_RE.findall(part[:boundary.start()])
-            words_after = _WORD_RE.findall(part[boundary.end():])
-            current = words_after[0] if words_after else ""
-            previous = words_before[-1] if words_before else ""
-            following = words_after[1] if len(words_after) > 1 else ""
-            if current in _READING_CAPITAL_SPLIT_EXCLUDED_TOKENS:
-                continue
-            # New York / River Thames / United Kingdom 等连续大写专名不构成句界。
-            if (previous[:1].isupper() or following[:1].isupper()):
-                continue
-            result.append(candidate)
-            start = boundary.end()
-        tail = part[start:].strip()
-        if tail:
-            result.append(tail)
-    return result
 
 
 def _saved_lookup(lesson_id: int) -> tuple[dict[int, dict], dict[str, dict]]:
