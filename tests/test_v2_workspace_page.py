@@ -122,6 +122,27 @@ def test_workspace_reading_batch_renderer_is_not_duplicated(tmp_path, monkeypatc
     assert render_reading_blocks.count("requestAnimationFrame(renderBatch);") == 2
 
 
+def test_workspace_sentence_navigation_tolerates_media_time_rounding(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="local_video",
+        source_url="manual:time-rounding",
+        title="Rounded media timestamp",
+    )
+
+    resp = client.get(f"/workspace/{lesson['id']}")
+
+    assert resp.status_code == 200
+    assert "const SENTENCE_TIME_EPSILON_SECONDS = 0.02;" in resp.text
+    assert "const targetTime = Number(time || 0) + SENTENCE_TIME_EPSILON_SECONDS;" in resp.text
+    assert "Number(items[i].start || 0) <= targetTime" in resp.text
+    assert resp.text.count("if (Date.now() < suppressTimeSyncUntil) return;") >= 2
+
+
 def test_workspace_contains_reading_mode_mount_points(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app

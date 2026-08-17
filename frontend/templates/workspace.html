@@ -1750,6 +1750,10 @@ let localMedia = null;
 let ytApiLoaded = false;
 let ytApiReady = false;
 let suppressTimeSyncUntil = 0;
+// Media elements round currentTime differently across codecs/containers. Without a small
+// tolerance, seeking to a sentence boundary can land a few microseconds before it and
+// immediately snap the UI back to the previous sentence.
+const SENTENCE_TIME_EPSILON_SECONDS = 0.02;
 let readingBlocks = [];
 let readingLoadPromise = null;
 let highlightedWordsSyncStarted = false;
@@ -2526,7 +2530,10 @@ function initLocalMedia() {
     ? `<audio id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls preload="metadata"></audio>`
     : `<video id="local-media-player" src="${escapeHtml(lessonData.media_url)}" controls playsinline preload="metadata"></video>`;
   localMedia = document.getElementById('local-media-player');
-  localMedia.addEventListener('timeupdate', () => updateActiveByTime(localMedia.currentTime || 0));
+  localMedia.addEventListener('timeupdate', () => {
+    if (Date.now() < suppressTimeSyncUntil) return;
+    updateActiveByTime(localMedia.currentTime || 0);
+  });
   localMedia.addEventListener('loadedmetadata', () => {
     if (Number.isFinite(localMedia.duration) && localMedia.duration > 0) {
       currentTime = localMedia.currentTime || 0;
@@ -3728,8 +3735,9 @@ function updateActiveByTime(time) {
 
 function findUnitByTime(items, time) {
   if (!items.length) return -1;
+  const targetTime = Number(time || 0) + SENTENCE_TIME_EPSILON_SECONDS;
   for (let i = items.length - 1; i >= 0; i--) {
-    if (Number(items[i].start || 0) <= time) return i;
+    if (Number(items[i].start || 0) <= targetTime) return i;
   }
   return -1;
 }
