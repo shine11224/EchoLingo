@@ -153,7 +153,78 @@
       overflow-y: auto;
       overscroll-behavior: contain;
     }
-    .side-column { gap: 0; }
+    .side-column {
+      gap: 8px;
+      overflow: hidden;
+    }
+    .sidebar-workspace-tabs {
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(244, 247, 242, .94);
+      box-shadow: 0 8px 28px rgba(37, 53, 43, .07);
+    }
+    .sidebar-workspace-tab {
+      position: relative;
+      min-height: 34px;
+      padding: 6px 10px;
+      border-color: transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .01em;
+    }
+    .sidebar-workspace-tab:hover { background: rgba(255, 255, 255, .72); }
+    .sidebar-workspace-tab[aria-selected="true"] {
+      border-color: #c8d4c9;
+      background: var(--surface);
+      color: var(--brand-dark);
+      box-shadow: 0 3px 12px rgba(37, 53, 43, .08);
+    }
+    .sidebar-tab-status {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      opacity: 0;
+      transform: scale(.5);
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .sidebar-workspace-tab[data-status="working"] .sidebar-tab-status {
+      opacity: 1;
+      transform: scale(1);
+      background: var(--gold);
+      animation: sidebar-status-pulse 1.15s ease-in-out infinite;
+    }
+    .sidebar-workspace-tab[data-status="ready"] .sidebar-tab-status {
+      opacity: 1;
+      transform: scale(1);
+      background: var(--brand);
+    }
+    .sidebar-workspace-tab[data-status="error"] .sidebar-tab-status {
+      opacity: 1;
+      transform: scale(1);
+      background: var(--danger);
+    }
+    @keyframes sidebar-status-pulse {
+      50% { box-shadow: 0 0 0 4px rgba(189, 137, 0, .14); }
+    }
+    .side-column > .sidebar-panel-inactive { display: none; }
+    .side-column > .timeline-card:not(.sidebar-panel-inactive),
+    .side-column > .review-card:not(.sidebar-panel-inactive),
+    .side-column > .chat-card:not(.sidebar-panel-inactive) {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 0;
+      max-height: none;
+    }
     .video-card,
     .subtitle-card,
     .timeline-card,
@@ -745,6 +816,26 @@
       text-transform: uppercase;
     }
     .document-summary-copy { margin: 5px 0 9px; color: #3f4d44; font-size: 12px; line-height: 1.55; }
+    .document-summary-progress {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 38px;
+      color: #536259;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .document-summary-progress::before {
+      content: "";
+      flex: 0 0 16px;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #d5ded4;
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: outline-spin .8s linear infinite;
+    }
+    @keyframes outline-spin { to { transform: rotate(360deg); } }
     .document-summary-sections { display: grid; gap: 5px; }
     .document-summary-link {
       display: grid;
@@ -1460,22 +1551,25 @@
         overflow: visible;
       }
       #youtube-player { max-height: none; }
-      .side-column { min-height: 0; }
+      .side-column {
+        height: min(76vh, 720px);
+        min-height: 480px;
+      }
       .side-column > .timeline-card {
-        flex: 0 0 var(--content-outline-height, 300px);
-        height: var(--content-outline-height, 300px);
+        flex: 1 1 auto;
+        height: auto;
         max-height: none;
       }
       .side-column > .review-card {
-        flex: 0 0 var(--study-collection-height, 260px);
-        height: var(--study-collection-height, 260px);
+        flex: 1 1 auto;
+        height: auto;
         max-height: none;
       }
       .panel-resize-handle {
         display: none; /* 移动端堆叠布局不需要拖拽分栏；touch-action:none 的全宽横条会阻断触屏滑动 */
       }
       .panel-resize-handle::before { top: 7px; }
-     .side-column.ai-focus-mode { min-height: auto; }
+     .side-column.ai-focus-mode { min-height: 480px; }
    }
     @media (max-width: 520px) {
       .workspace { grid-template-rows: 54px minmax(0, 1fr); }
@@ -1602,8 +1696,23 @@
       </section>
     </section>
 
-    <aside class="side-column" aria-label="timeline and chat">
-      <section id="content-outline-panel" class="timeline-card" data-resize-panel="content-outline">
+    <aside class="side-column" aria-label="learning workspace">
+      <div class="sidebar-workspace-tabs" role="tablist" aria-label="学习工具">
+        <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="outline"
+                aria-controls="content-outline-panel" aria-selected="true" tabindex="0">
+          导航<span class="sidebar-tab-status" aria-hidden="true"></span>
+        </button>
+        <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="collection"
+                aria-controls="reading-phase-b" aria-selected="false" tabindex="-1">
+          收藏<span class="sidebar-tab-status" aria-hidden="true"></span>
+        </button>
+        <button class="sidebar-workspace-tab" type="button" role="tab" data-sidebar-target="ai"
+                aria-controls="ai-companion-panel" aria-selected="false" tabindex="-1">
+          AI 伴读<span class="sidebar-tab-status" aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <section id="content-outline-panel" class="timeline-card" data-sidebar-panel="outline">
         <div class="panel-head">
           <h2>Content outline</h2>
           <span class="panel-note">Jump by topic. Use A/B to select a discussion range.</span>
@@ -1615,13 +1724,8 @@
         </div>
       </section>
 
-      <div id="outline-resize-handle" class="panel-resize-handle" role="separator"
-           aria-orientation="horizontal" aria-label="Resize Content outline and Study collection"
-           aria-controls="content-outline-panel reading-phase-b" aria-valuemin="140"
-           aria-valuemax="720" aria-valuenow="320" tabindex="0"
-           data-resize-before="content-outline-panel" data-resize-after="reading-phase-b"></div>
-
-      <section id="reading-phase-b" class="review-card study-collection-card" data-resize-panel="study-collection-panel">
+      <section id="reading-phase-b" class="review-card study-collection-card sidebar-panel-inactive"
+               data-sidebar-panel="collection" aria-hidden="true">
         <div class="panel-head">
           <h2>Study collection</h2>
           <span class="panel-note">Phase B · words, sentences and tags.</span>
@@ -1646,13 +1750,8 @@
         </div>
       </section>
 
-      <div id="collection-resize-handle" class="panel-resize-handle" role="separator"
-           aria-orientation="horizontal" aria-label="Resize Study collection and AI companion"
-           aria-controls="reading-phase-b ai-companion-panel" aria-valuemin="168"
-           aria-valuemax="720" aria-valuenow="240" tabindex="0"
-           data-resize-before="reading-phase-b" data-resize-after="ai-companion-panel"></div>
-
-      <section id="ai-companion-panel" class="chat-card chat-panel">
+      <section id="ai-companion-panel" class="chat-card chat-panel sidebar-panel-inactive"
+               data-sidebar-panel="ai" aria-hidden="true">
         <div class="panel-head">
           <div class="ai-panel-heading">
             <h2>AI companion</h2>
@@ -1665,8 +1764,6 @@
                     onclick="newChatSession()" title="Start a new conversation">New</button>
             <button id="chat-export-session" class="chat-session-action" type="button"
                     onclick="exportChatSession()" title="Export current conversation as Markdown">Export</button>
-            <button id="ai-focus-toggle" class="ai-focus-toggle" type="button"
-                    aria-controls="ai-companion-panel" aria-pressed="false">Focus AI</button>
           </div>
         </div>
         <div id="chat-messages"></div>
@@ -1781,6 +1878,12 @@ let pendingReadingPlaybackRange = null;
 let readingPlaybackRequestId = 0;
 const sentenceTranslations = {};
 let subtitleModeInitialized = false;
+const SIDEBAR_ACTIVE_PANEL_KEY = 'english-tool:sidebar-active-panel';
+const SIDEBAR_PANEL_KEYS = ['outline', 'collection', 'ai'];
+let activeSidebarPanel = 'outline';
+const sidebarPanelStatuses = {};
+const OUTLINE_POLL_INTERVAL_MS = 700;
+let outlinePollStartedAt = null;
 const SIDEBAR_PANEL_HEIGHTS_KEY = 'english-tool:sidebar-panel-heights';
 const SIDEBAR_PANEL_CONFIG = [
   {id: 'content-outline-panel', key: 'outline', css: '--content-outline-height', min: 140, weight: .34},
@@ -1809,6 +1912,57 @@ let sentenceTagCatalog = {
   tags: []
 };
 const CUSTOM_SENTENCE_TAG_VALUE = '__custom__';
+
+function setSidebarPanelStatus(panelKey, status = '') {
+  sidebarPanelStatuses[panelKey] = status;
+  const tab = document.querySelector(`.sidebar-workspace-tab[data-sidebar-target="${panelKey}"]`);
+  if (!tab) return;
+  const visibleStatus = status === 'ready' && activeSidebarPanel === panelKey ? '' : status;
+  tab.dataset.status = visibleStatus;
+  const labels = {working: '生成中', ready: '已有新内容', error: '生成失败'};
+  tab.setAttribute('aria-label', `${tab.textContent.trim()}${labels[visibleStatus] ? `，${labels[visibleStatus]}` : ''}`);
+}
+
+function setActiveSidebarPanel(panelKey, {persist = true, focus = false} = {}) {
+  if (!SIDEBAR_PANEL_KEYS.includes(panelKey)) panelKey = 'outline';
+  activeSidebarPanel = panelKey;
+  document.querySelectorAll('[data-sidebar-panel]').forEach(panel => {
+    const active = panel.dataset.sidebarPanel === panelKey;
+    panel.classList.toggle('sidebar-panel-inactive', !active);
+    panel.setAttribute('aria-hidden', String(!active));
+  });
+  document.querySelectorAll('.sidebar-workspace-tab[data-sidebar-target]').forEach(tab => {
+    const active = tab.dataset.sidebarTarget === panelKey;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    if (active && focus) tab.focus();
+  });
+  SIDEBAR_PANEL_KEYS.forEach(key => setSidebarPanelStatus(key, sidebarPanelStatuses[key] || ''));
+  if (persist) {
+    try { localStorage.setItem(SIDEBAR_ACTIVE_PANEL_KEY, panelKey); } catch (_) {}
+  }
+}
+
+function initSidebarWorkspaceTabs() {
+  const tabs = [...document.querySelectorAll('.sidebar-workspace-tab[data-sidebar-target]')];
+  if (!tabs.length) return;
+  let initialPanel = 'outline';
+  try { initialPanel = localStorage.getItem(SIDEBAR_ACTIVE_PANEL_KEY) || 'outline'; } catch (_) {}
+  setActiveSidebarPanel(initialPanel, {persist: false});
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => setActiveSidebarPanel(tab.dataset.sidebarTarget));
+    tab.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft' && event.key !== 'Home' && event.key !== 'End') return;
+      event.preventDefault();
+      let nextIndex = index;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      setActiveSidebarPanel(tabs[nextIndex].dataset.sidebarTarget, {focus: true});
+    });
+  });
+}
 
 function sidebarResizeHandles() {
   return [...document.querySelectorAll('.panel-resize-handle[data-resize-before][data-resize-after]')];
@@ -2034,7 +2188,7 @@ function toggleChatVoice() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-  initSidebarPanelResizers();
+  initSidebarWorkspaceTabs();
   initChatVoiceInput();
   initCitationDelegation();
   loadCachedDocumentOutline();
@@ -2783,6 +2937,15 @@ function renderDocumentOutline(outline, cached = false) {
         <strong>${escapeHtml(section.title || '')}</strong><span>${escapeHtml(section.description || '')}</span>
       </button>`
     )).join('')}</div>`;
+  setSidebarPanelStatus('outline', 'ready');
+}
+
+function formatOutlineProgress() {
+  const elapsedSeconds = outlinePollStartedAt
+    ? Math.max(0, Math.floor((Date.now() - outlinePollStartedAt) / 1000))
+    : 0;
+  const elapsedLabel = elapsedSeconds > 0 ? ` · ${elapsedSeconds} 秒` : '';
+  return `<div class="document-summary-progress">AI 正在生成章节导航${elapsedLabel}，可切换到收藏或 AI 伴读继续学习。</div>`;
 }
 
 async function loadCachedDocumentOutline() {
@@ -2797,13 +2960,15 @@ async function loadCachedDocumentOutline() {
       return;
     }
     if (data.status !== 'pending') return;
+    outlinePollStartedAt = Date.parse(data.started_at || '') || Date.now();
+    setSidebarPanelStatus('outline', 'working');
     if (button) {
       button.disabled = true;
       button.textContent = '总结中…';
     }
     if (root) {
       root.hidden = false;
-      root.innerHTML = '<div class="document-summary-copy">AI 正在后台生成章节导航，可继续观看视频…</div>';
+      root.innerHTML = formatOutlineProgress();
     }
     await pollDocumentOutline();
   } catch (_) {
@@ -2823,9 +2988,11 @@ async function requestDocumentOutline(force = false) {
     button.disabled = true;
     button.textContent = '总结中…';
   }
+  outlinePollStartedAt = Date.now();
+  setSidebarPanelStatus('outline', 'working');
   if (root) {
     root.hidden = false;
-    root.innerHTML = '<div class="document-summary-copy">AI 正在梳理文档信息和结构…</div>';
+    root.innerHTML = formatOutlineProgress();
   }
   try {
     const response = await fetch(`/api/v2/lessons/${LESSON_ID}/outline-summary`, {
@@ -2841,6 +3008,7 @@ async function requestDocumentOutline(force = false) {
       renderDocumentOutline(data.outline, data.cached);
     }
   } catch (error) {
+    setSidebarPanelStatus('outline', 'error');
     if (root) root.innerHTML = `<div class="document-summary-copy" style="color:var(--danger)">${escapeHtml(error.message)}</div>`;
   } finally {
     if (button) {
@@ -2852,11 +3020,11 @@ async function requestDocumentOutline(force = false) {
 
 async function pollDocumentOutline() {
   const root = document.getElementById('document-summary');
-  for (let attempt = 0; attempt < 160; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     if (root) {
-      root.innerHTML = '<div class="document-summary-copy">AI 正在后台生成章节导航，可继续观看视频…</div>';
+      root.innerHTML = formatOutlineProgress();
     }
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, OUTLINE_POLL_INTERVAL_MS));
     const response = await fetch(`/api/v2/lessons/${LESSON_ID}/outline-summary`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || '文档总结状态查询失败');
@@ -2865,6 +3033,7 @@ async function pollDocumentOutline() {
       return;
     }
     if (data.status === 'error') {
+      setSidebarPanelStatus('outline', 'error');
       throw new Error(data.error || 'AI 大纲生成失败');
     }
   }

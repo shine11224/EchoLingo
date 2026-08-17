@@ -92,3 +92,37 @@ def test_my_mastered_wordlist_includes_known_words(tmp_path, monkeypatch):
     mastered = client.get("/wordlists/my_mastered").json()["words"]
     assert "apple" in mastered
     assert "study" not in mastered  # 未掌握的生词不在已掌握列表
+
+
+def test_wordlist_membership_intersects_only_requested_vocab_words(tmp_path, monkeypatch):
+    import json
+    import db
+    from fastapi_server import create_app
+    from fastapi.testclient import TestClient
+    from webapp.storage import wordlists as wl_storage
+
+    compiled = tmp_path / "compiled"
+    compiled.mkdir()
+    (compiled / "builtin_gre.json").write_text(json.dumps({
+        "metadata": {"name": "GRE", "type": "domain", "key": "builtin_gre", "tag": "GRE", "builtin": True},
+        "words": ["salary", "study"],
+    }), encoding="utf-8")
+    (compiled / "builtin_ielts.json").write_text(json.dumps({
+        "metadata": {"name": "雅思", "type": "domain", "key": "builtin_ielts", "tag": "雅思", "builtin": True},
+        "words": ["study"],
+    }), encoding="utf-8")
+    monkeypatch.setattr(wl_storage, "COMPILED_DIR", compiled)
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    db.activate_word_review("study", source="manual")
+
+    response = TestClient(create_app()).post(
+        "/api/wordlists/membership",
+        json={"words": ["Study", "salary", "ordinary", "study"]},
+    )
+
+    assert response.status_code == 200
+    memberships = response.json()["memberships"]
+    assert set(memberships["study"]) == {"builtin_gre", "builtin_ielts", "my_vocab"}
+    assert memberships["salary"] == ["builtin_gre"]
+    assert memberships["ordinary"] == []

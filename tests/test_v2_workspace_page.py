@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 
 def test_workspace_page_renders(tmp_path, monkeypatch):
+    # The workspace uses one tabbed sidebar surface instead of three stacked panes.
     import db
     from fastapi_server import create_app
 
@@ -232,26 +233,22 @@ def test_workspace_contains_reading_mode_mount_points(tmp_path, monkeypatch):
     assert "/api/v2/chat/history/${LESSON_ID}" in resp.text
     assert "AI 正在思考" in resp.text
     assert "AbortController" in resp.text
-    assert 'id="content-outline-panel"' in resp.text
-    assert 'id="outline-resize-handle"' in resp.text
-    assert 'data-resize-panel="study-collection-panel"' in resp.text
-    assert 'id="collection-resize-handle"' in resp.text
-    assert "initSidebarPanelResizers" in resp.text
-    assert "english-tool:sidebar-panel-heights" in resp.text
-    assert 'role="separator"' in resp.text
-    assert 'aria-orientation="horizontal"' in resp.text
-    assert 'id="ai-focus-toggle"' in resp.text
-    assert "toggleAiFocusMode" in resp.text
-    assert "SIDEBAR_PANEL_HEIGHTS_KEY" in resp.text
-    assert "SIDEBAR_PANEL_CONFIG" in resp.text
-    assert "sidebarPreferredPanelHeights" in resp.text
-    assert "applySidebarPanelHeights" in resp.text
-    assert "setPointerCapture" in resp.text
-    assert "window.addEventListener('pointermove'" in resp.text
-    assert "lostpointercapture" in resp.text
-    assert "event.key === 'End'" in resp.text
-    assert "localStorage.setItem" in resp.text
-    assert "ai-focus-mode" in resp.text
+    assert 'class="sidebar-workspace-tabs" role="tablist"' in resp.text
+    assert 'data-sidebar-panel="outline"' in resp.text
+    assert 'data-sidebar-panel="collection"' in resp.text
+    assert 'data-sidebar-panel="ai"' in resp.text
+    assert 'aria-controls="content-outline-panel"' in resp.text
+    assert 'aria-controls="reading-phase-b"' in resp.text
+    assert 'aria-controls="ai-companion-panel"' in resp.text
+    assert "initSidebarWorkspaceTabs" in resp.text
+    assert "setActiveSidebarPanel" in resp.text
+    assert "english-tool:sidebar-active-panel" in resp.text
+    assert "event.key === 'ArrowRight'" in resp.text
+    assert "event.key === 'ArrowLeft'" in resp.text
+    assert "sidebar-panel-inactive" in resp.text
+    assert "sidebar-tab-status" in resp.text
+    assert 'id="outline-resize-handle"' not in resp.text
+    assert 'id="collection-resize-handle"' not in resp.text
     assert ".reading-saved-list {\n      flex: 1;\n      min-height: 0;\n      overflow-y: auto;" in resp.text
     assert "READING_RENDER_BATCH_SIZE" in resp.text
     assert "let readingLoadPromise = null;" in resp.text
@@ -287,6 +284,9 @@ def test_workspace_contains_reading_mode_mount_points(tmp_path, monkeypatch):
     assert "loadCachedDocumentOutline" in resp.text
     assert "loadCachedDocumentOutline();" in resp.text
     assert "renderDocumentOutline(data.outline, true)" in resp.text
+    assert "OUTLINE_POLL_INTERVAL_MS = 700" in resp.text
+    assert "formatOutlineProgress" in resp.text
+    assert "setSidebarPanelStatus('outline', 'working')" in resp.text
     assert "jumpToDocumentAnchor" in resp.text
     assert 'id="study-collection"' in resp.text
     assert 'class="review-action review-action--intensive"' in resp.text

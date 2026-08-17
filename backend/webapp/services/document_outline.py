@@ -36,7 +36,7 @@ def _reading_candidates(lesson_id: int) -> list[dict]:
             {
                 "anchor_id": int(group[0]["index"]),
                 "anchor_type": "block",
-                "text": _clip(" ".join(str(block.get("text", "")) for block in group)),
+                "text": _clip(" ".join(str(block.get("text", "")) for block in group), 420),
             }
         )
     return candidates
@@ -53,7 +53,7 @@ def _media_candidates(lesson_id: int) -> list[dict]:
         start = float(group[0].get("start_seconds", group[0].get("start", 0)) or 0)
         text = " ".join(str(item.get("text", "")) for item in group)
         candidates.append(
-            {"anchor_id": round(start, 3), "anchor_type": "time", "text": _clip(text)}
+            {"anchor_id": round(start, 3), "anchor_type": "time", "text": _clip(text, 420)}
         )
     return candidates
 
@@ -122,6 +122,7 @@ def _outline_context(lesson_id: int) -> tuple[dict, list[dict], str, str]:
         },
         ensure_ascii=False,
         sort_keys=True,
+        separators=(",", ":"),
     )
     content_hash = hashlib.sha1(
         f"{DOCUMENT_OUTLINE_PROMPT}\n{source_json}".encode("utf-8")
@@ -144,6 +145,7 @@ def generate_document_outline(lesson_id: int, *, force: bool = False) -> dict:
     ).chat.completions.create(
         model=ai_config.AI_MODEL,
         temperature=0.2,
+        max_tokens=2400,
         response_format={"type": "json_object"},
         messages=[
             {

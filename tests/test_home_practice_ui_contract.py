@@ -15,6 +15,26 @@ def test_sentence_library_is_browse_first_and_has_inline_listening_controls():
     assert "今日复习" not in INDEX_HTML
 
 
+def test_planning_filters_are_not_exposed_in_vocab_or_sentence_libraries():
+    assert 'data-filter="today-plan"' not in INDEX_HTML
+    assert 'data-filter="ai-recommended"' not in INDEX_HTML
+    assert 'id="sentence-today-plan-filter"' not in INDEX_HTML
+    assert 'id="sentence-ai-recommended-filter"' not in INDEX_HTML
+    assert "currentFilters.add('today-plan')" not in INDEX_HTML
+
+
+def test_sentence_library_toolbar_has_separate_playback_and_filter_groups():
+    assert 'class="sentence-library-heading"' in INDEX_HTML
+    assert 'class="sentence-library-tools sentence-playback-tools"' in INDEX_HTML
+    assert 'class="sentence-library-tools sentence-filter-tools"' in INDEX_HTML
+
+
+def test_vocab_wordlist_filters_use_compiled_membership_instead_of_level_labels():
+    assert "/api/wordlists/membership" in INDEX_HTML
+    assert "_vocabWordlistMembership" in INDEX_HTML
+    assert "vocabMatchesWordlist" in INDEX_HTML
+
+
 def test_resources_tab_has_wordlist_selection_and_priority_ui():
     assert 'id="wordlist-config-list"' in INDEX_HTML
     assert 'id="wordlist-priority-row"' in INDEX_HTML

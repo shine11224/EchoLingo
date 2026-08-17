@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import db
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 from webapp.constants import ERROR_CATALOG, PIPELINE_SCHEMA
 from webapp.services.today import get_today_tasks
 from webapp.storage.lessons import scan_lessons
@@ -71,6 +73,56 @@ def _virtual_wordlist_configs() -> list[dict]:
 @router.get("/api/wordlists/config")
 def api_wordlists_config():
     return wl_storage.scan_wordlists() + _virtual_wordlist_configs()
+
+
+class WordlistMembershipRequest(BaseModel):
+    words: list[str] = Field(default_factory=list, max_length=1000)
+
+
+@router.post("/api/wordlists/membership")
+def api_wordlists_membership(payload: WordlistMembershipRequest):
+    """Return list membership for the small set of words visible in the vocab book."""
+    requested = list(dict.fromkeys(
+        word.strip().lower()
+        for word in payload.words
+        if isinstance(word, str) and word.strip()
+    ))
+    memberships: dict[str, list[str]] = {word: [] for word in requested}
+    requested_set = set(requested)
+
+    for config in wl_storage.scan_wordlists():
+        stem = str(config.get("id") or config.get("key") or "")
+        key = str(config.get("key") or stem)
+        if not stem or not key:
+            continue
+        path = wl_storage.resolve_compiled_path(stem)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        member_words = {
+            str(word).strip().lower()
+            for word in data.get("words", [])
+            if str(word).strip()
+        }
+        for word in requested_set & member_words:
+            memberships[word].append(key)
+
+    try:
+        active = {str(word).strip().lower() for word in db.get_review_word_set()}
+        mastered = {
+            str(word).strip().lower()
+            for word in (db.get_mastered_review_targets() | db.get_known_words())
+        }
+    except Exception:
+        active, mastered = set(), set()
+    for word in requested:
+        if word in active:
+            memberships[word].append("my_vocab")
+        if word in mastered:
+            memberships[word].append("my_mastered")
+
+    return {"memberships": memberships}
 
 
 @router.get("/api/resources")

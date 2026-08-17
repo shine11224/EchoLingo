@@ -128,7 +128,7 @@ def test_document_outline_is_generated_once_then_served_from_cache(tmp_path, mon
     assert second.json()["cached"] is True
     assert second.json()["outline"] == first.json()["outline"]
     assert len(calls) == 1
-    assert '"duration_seconds": 0.0' in calls[0]["messages"][0]["content"]
+    assert '"duration_seconds":0.0' in calls[0]["messages"][0]["content"]
 
     with document_outline._OUTLINE_JOBS_LOCK:
         document_outline._OUTLINE_JOBS.pop(lesson["id"], None)
@@ -270,7 +270,7 @@ def test_document_outline_prompt_includes_one_hour_media_duration(tmp_path, monk
     response = _wait_for_outline(client, lesson["id"])
 
     assert response.status_code == 200
-    assert '"duration_seconds": 3600.0' in calls[0]["messages"][0]["content"]
+    assert '"duration_seconds":3600.0' in calls[0]["messages"][0]["content"]
     assert all(
         item["anchor_type"] == "time"
         for item in response.json()["outline"]["sections"]

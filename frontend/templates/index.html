@@ -798,14 +798,31 @@
     .sentence-review-metric strong { color: var(--brand-dark); font-size: 26px; }
     .sentence-library-shell { overflow: hidden; }
     .sentence-library-head {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(150px, 0.7fr) minmax(0, 2fr);
+      grid-template-areas:
+        "heading playback"
+        "heading filters";
       align-items: center;
-      gap: 10px;
-      padding: 16px 18px;
+      gap: 10px 18px;
+      padding: 18px;
       border-bottom: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(247, 249, 244, 0.95), rgba(255, 253, 247, 0.92));
     }
-    .sentence-library-head h2 { margin: 0; font-size: 17px; }
-    .sentence-library-head .spacer { flex: 1; }
+    .sentence-library-heading { grid-area: heading; min-width: 0; }
+    .sentence-library-heading h2 { margin: 0 0 5px; font-size: 18px; }
+    .sentence-library-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .sentence-library-tools {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .sentence-playback-tools { grid-area: playback; }
+    .sentence-filter-tools { grid-area: filters; }
+    .sentence-library-tools button,
+    .sentence-library-tools select { white-space: nowrap; }
     .sentence-library-head input,
     .sentence-library-head select {
       min-height: 36px;
@@ -816,7 +833,8 @@
       font-family: inherit;
       font-size: 13px;
     }
-    .sentence-library-head input { width: min(280px, 36vw); }
+    .sentence-library-head input { flex: 1 1 190px; min-width: 160px; width: auto; }
+    .sentence-filter-tools select { flex: 1 1 126px; min-width: 116px; max-width: 180px; }
     .sentence-filter-bar {
       display: flex;
       flex-wrap: wrap;
@@ -934,9 +952,14 @@
       .course-mode-actions { grid-column: 1 / -1; justify-content: flex-start; padding-left: 46px; }
       .course-menu { grid-column: 2; grid-row: 1; }
       .sentence-review-deck { grid-template-columns: 1fr; }
-      .sentence-library-head { align-items: stretch; flex-wrap: wrap; }
-      .sentence-library-head .spacer { display: none; }
+      .sentence-library-head {
+        grid-template-columns: 1fr;
+        grid-template-areas: "heading" "playback" "filters";
+        align-items: stretch;
+      }
+      .sentence-library-heading { padding-bottom: 2px; }
       .sentence-library-head input { width: 100%; flex: 1 0 100%; }
+      .sentence-filter-tools select { max-width: none; }
       .sentence-library-row { grid-template-columns: 1fr; }
       .sentence-library-tag-form { grid-template-columns: 1fr; }
     }
@@ -1882,8 +1905,6 @@
     <div class="vocab-controls">
       <div class="filter-group" id="vocab-filter-group">
         <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">全部</button>
-        <button class="filter-btn" data-filter="today-plan" onclick="setFilter('today-plan')">今日练习</button>
-        <button class="filter-btn" data-filter="ai-recommended" onclick="setFilter('ai-recommended')">AI 推荐</button>
         <button class="filter-btn" data-filter="unknown" onclick="setFilter('unknown')">不认识</button>
         <button class="filter-btn" data-filter="fuzzy" onclick="setFilter('fuzzy')">模糊</button>
         <button class="filter-btn" data-filter="known" onclick="setFilter('known')">认识</button>
@@ -2056,43 +2077,47 @@
 
   <section class="sentence-library-shell" id="sentence-library-shell" aria-labelledby="sentence-library-title">
     <div class="sentence-library-head">
-      <h2 id="sentence-library-title">全部收藏句</h2>
-      <span class="spacer"></span>
-      <button type="button" class="filter-btn" id="sentence-today-plan-filter" onclick="toggleSentenceTodayPlanFilter()" aria-pressed="false">今日练习</button>
-      <button type="button" class="filter-btn" id="sentence-ai-recommended-filter" onclick="toggleSentenceAIRecommendedFilter()" aria-pressed="false">AI 推荐</button>
-      <button type="button" class="sort-select autoplay-btn" id="sentence-autoplay-btn" onclick="toggleSentenceAutoPlay()">▶ 自动播放</button>
-      <button type="button" class="sort-select autoplay-loop" id="sentence-autoplay-loop" onclick="toggleSentenceAutoLoop()" title="播完后自动从头循环" aria-pressed="false">🔁 循环</button>
-      <select class="sort-select rate-select" id="sentence-rate-select" aria-label="播放倍速" onchange="setReviewAudioRate(Number(this.value))">
-        <option value="0.6">0.6×</option>
-        <option value="0.8">0.8×</option>
-        <option value="1" selected>1×</option>
-        <option value="1.25">1.25×</option>
-        <option value="1.5">1.5×</option>
-      </select>
-      <button type="button" class="sort-select" id="sentence-hide-all-btn" onclick="toggleAllSentenceOriginals()">🙈 隐藏原文</button>
-      <input id="sentence-review-search" type="search" placeholder="搜索句子…" aria-label="搜索收藏句">
-      <select id="sentence-review-time-filter" aria-label="按收藏时间筛选">
-        <option value="all">全部收藏</option>
-        <option value="today">今日收藏</option>
-        <option value="yesterday">昨日收藏</option>
-        <option value="week">本周内收藏</option>
-        <option value="earlier">更早收藏</option>
-      </select>
-      <select id="sentence-listening-result-filter" aria-label="按听力结果筛选">
-        <option value="all">全部听力结果</option>
-        <option value="unpracticed">从未练过</option>
-        <option value="understood">上次听懂</option>
-        <option value="not_understood">上次听不懂</option>
-      </select>
-      <select id="sentence-pattern-filter" aria-label="按句式练习筛选">
-        <option value="all">全部句式状态</option>
-        <option value="has_pattern">已有句式练习</option>
-      </select>
-      <select id="sentence-archive-filter" aria-label="按归档状态筛选">
-        <option value="active">未归档</option>
-        <option value="archived">已归档</option>
-        <option value="all">全部状态</option>
-      </select>
+      <div class="sentence-library-heading">
+        <h2 id="sentence-library-title">全部收藏句</h2>
+        <p>先设置播放方式，再按需要缩小句子范围。</p>
+      </div>
+      <div class="sentence-library-tools sentence-playback-tools" aria-label="播放设置">
+        <button type="button" class="sort-select autoplay-btn" id="sentence-autoplay-btn" onclick="toggleSentenceAutoPlay()">▶ 自动播放</button>
+        <button type="button" class="sort-select autoplay-loop" id="sentence-autoplay-loop" onclick="toggleSentenceAutoLoop()" title="播完后自动从头循环" aria-pressed="false">🔁 循环</button>
+        <select class="sort-select rate-select" id="sentence-rate-select" aria-label="播放倍速" onchange="setReviewAudioRate(Number(this.value))">
+          <option value="0.6">0.6×</option>
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+        <button type="button" class="sort-select" id="sentence-hide-all-btn" onclick="toggleAllSentenceOriginals()">🙈 隐藏原文</button>
+      </div>
+      <div class="sentence-library-tools sentence-filter-tools" aria-label="句子筛选">
+        <input id="sentence-review-search" type="search" placeholder="搜索句子…" aria-label="搜索收藏句">
+        <select id="sentence-review-time-filter" aria-label="按收藏时间筛选">
+          <option value="all">全部收藏</option>
+          <option value="today">今日收藏</option>
+          <option value="yesterday">昨日收藏</option>
+          <option value="week">本周内收藏</option>
+          <option value="earlier">更早收藏</option>
+        </select>
+        <select id="sentence-listening-result-filter" aria-label="按听力结果筛选">
+          <option value="all">全部听力结果</option>
+          <option value="unpracticed">从未练过</option>
+          <option value="understood">上次听懂</option>
+          <option value="not_understood">上次听不懂</option>
+        </select>
+        <select id="sentence-pattern-filter" aria-label="按句式练习筛选">
+          <option value="all">全部句式状态</option>
+          <option value="has_pattern">已有句式练习</option>
+        </select>
+        <select id="sentence-archive-filter" aria-label="按归档状态筛选">
+          <option value="active">未归档</option>
+          <option value="archived">已归档</option>
+          <option value="all">全部状态</option>
+        </select>
+      </div>
     </div>
     <div class="sentence-filter-bar" id="sentence-filter-bar" hidden>
       <div class="sentence-filter-group" id="sentence-course-filter" role="group" aria-label="按课程筛选"></div>
@@ -2343,7 +2368,6 @@ const _todayPlanTargets = {words: new Set(), sentences: new Set()};
 let _planningRecommendationPromise = null;
 let _planningRecommendationPool = null;
 const _aiRecommendedTargets = {words: new Set(), sentences: new Set()};
-const _todayPlanFilterRequested = new URLSearchParams(location.search).get('plan') === 'today';
 const SENTENCE_PAGE_SIZE = 30;
 
 function normalizePlanWord(value) {
@@ -4567,7 +4591,6 @@ async function loadSentenceReview() {
   }
   _sentenceReviewData = (data.sentences || []).map(sentence => applySentencePatternPayload(sentence, sentence));
   _sentenceReviewSummary = {total: Number(data.total || 0), due: Number(data.due_count || 0)};
-  if (_todayPlanFilterRequested) _sentenceTodayPlanOnly = true;
   renderSentenceReview();
 }
 
@@ -5218,6 +5241,7 @@ function updateHomeLessonAction(lesson) {
 let vocabData = {};
 let currentFilters = new Set(), currentSort = 'mastery', currentSearch = '';
 let _vocabWordlists = [];
+let _vocabWordlistMembership = {};
 let currentVocabPage = 1;
 const VOCAB_PAGE_SIZE = 30;
 const INTERVALS = [1,3,7,14,30,60];
@@ -5228,6 +5252,31 @@ function todayKey() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function vocabMatchesWordlist(word, key) {
+  return (_vocabWordlistMembership[normalizePlanWord(word)] || []).includes(key);
+}
+
+function isVocabWordlistFilter(key) {
+  return _vocabWordlists.some(wordlist => wordlist.type !== 'exclude' && wordlist.key === key);
+}
+
+async function loadVocabWordlistMembership(words) {
+  try {
+    const response = await fetch('/api/wordlists/membership', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({words}),
+    });
+    if (!response.ok) throw new Error('membership request failed');
+    const data = await response.json();
+    _vocabWordlistMembership = data.memberships && typeof data.memberships === 'object'
+      ? data.memberships
+      : {};
+  } catch (_) {
+    _vocabWordlistMembership = {};
+  }
 }
 
 function isTodayLearned(entry) {
@@ -5346,12 +5395,12 @@ async function initVocab() {
   ]);
   vocabData  = await vocabRes.json();
   _vocabWordlists = Array.isArray(wordlists) ? wordlists : [];
+  await loadVocabWordlistMembership(Object.keys(vocabData).filter(word => !word.startsWith('__')));
   window._hasAI = healthData?.environment?.keys?.AI_API_KEY === 'configured'
                || healthData?.api_keys?.AI_API_KEY === 'configured';
   renderWordlistFilters(_vocabWordlists);
   populateSourceWordlists(_vocabWordlists);
   addUserTags(_vocabWordlists);
-  if (_todayPlanFilterRequested) currentFilters.add('today-plan');
   document.querySelectorAll('#vocab-filter-group .filter-btn').forEach(button => {
     const filter = button.dataset.filter;
     button.classList.toggle('active', filter === 'all' ? currentFilters.size === 0 : currentFilters.has(filter));
@@ -5400,7 +5449,8 @@ function getFilteredVocabEntries() {
         if (f === 'archived' && e.archived && !e.mastered) return true;
         if (['unknown','fuzzy','known'].includes(f) && e.familiarity === f && !e.archived && !e.mastered) return true;
         if (f.startsWith('tag:') && (e.tags || []).some(tag => `tag:${String(tag).toLowerCase()}` === f)) return true;
-        if (!['today-plan','ai-recommended','mastered','archived','unknown','fuzzy','known'].includes(f) && (e.level||'').toLowerCase() === f) return true;
+        if (isVocabWordlistFilter(f) && vocabMatchesWordlist(word, f)) return true;
+        if (!isVocabWordlistFilter(f) && !['today-plan','ai-recommended','mastered','archived','unknown','fuzzy','known'].includes(f) && (e.level||'').toLowerCase() === f) return true;
       }
       return false;
     });
@@ -6371,7 +6421,10 @@ function applyStorySource(entriesOverride) {
     else if (source.startsWith('tag:')) entries
       .filter(([,e]) => (e.tags || []).some(tag => `tag:${String(tag).toLowerCase()}` === source))
       .forEach(([w]) => words.add(w));
-    else                         entries.filter(([,e]) => (e.level||'').toLowerCase() === source).forEach(([w]) => words.add(w));
+    else if (isVocabWordlistFilter(source)) entries
+      .filter(([word]) => vocabMatchesWordlist(word, source))
+      .forEach(([word]) => words.add(word));
+    else entries.filter(([,e]) => (e.level||'').toLowerCase() === source).forEach(([w]) => words.add(w));
   }
   _storyWordSet = new Set([...words].slice(0, STORY_WORD_LIMIT));
   renderStoryWordChips();
