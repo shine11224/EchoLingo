@@ -1477,6 +1477,16 @@ def test_homepage_removes_pattern_upload_and_keeps_wordlist_expansion_optional()
     assert "uploadWordlistResource()" in page.text
 
 
+def test_public_homepage_has_no_broken_planning_entry():
+    from fastapi_server import create_app
+
+    page = TestClient(create_app()).get("/")
+
+    assert page.status_code == 200
+    assert "个人档案" not in page.text
+    assert 'href="/planning"' not in page.text
+
+
 def test_phase_b_sentence_can_be_deleted(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
