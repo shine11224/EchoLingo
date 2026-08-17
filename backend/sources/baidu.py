@@ -307,13 +307,15 @@ def _transcribe_with_optional_whisper(
         save_transcript_cache(audio_path, whisper_model, segments)
         return segments
 
-    # 云端部署无本地模型且已配 OpenAI key 时，自动走 OpenAI Whisper API，
-    # 避免在受限服务器上下载/运行大模型。
-    if os.environ.get("ELT_DEPLOYMENT") == "cloud" and os.environ.get("OPENAI_API_KEY"):
-        print("  云端环境：改用 OpenAI Whisper API 转录…", flush=True)
-        segments = _transcribe_with_openai(audio_path)
-        save_transcript_cache(audio_path, whisper_model, segments)
-        return segments
+    # 云端部署不暴露、下载或运行本地模型。旧请求若仍携带本地模型名，
+    # 有 OpenAI key 时兼容转到云 API，否则明确拒绝。
+    if os.environ.get("ELT_DEPLOYMENT", "").strip().casefold() == "cloud":
+        if os.environ.get("OPENAI_API_KEY"):
+            print("  云端环境：改用 OpenAI Whisper API 转录…", flush=True)
+            segments = _transcribe_with_openai(audio_path)
+            save_transcript_cache(audio_path, whisper_model, segments)
+            return segments
+        raise RuntimeError("云端部署不支持 base、medium 或 large-v3 本地 Whisper 模型，请使用 Groq 转录。")
 
     try:
         faster_whisper = importlib.import_module("faster_whisper")
@@ -324,12 +326,15 @@ def _transcribe_with_optional_whisper(
         ) from exc
     info = _MODEL_INFO.get(whisper_model, {})
     print(f"  加载 Whisper {whisper_model} 模型（{info.get('size','')}，{info.get('speed','')}）…")
+    from webapp.services.whisper_setup import resolve_download_root
+
     model = faster_whisper.WhisperModel(
         whisper_model,
         device="cpu",
         compute_type="int8_float32",  # AVX-512 optimized for Intel Core Ultra
         cpu_threads=12,
         num_workers=1,
+        download_root=str(resolve_download_root(whisper_model)),
     )
     print("[STEP:whisper_transcribe]")
     segments_gen, info = model.transcribe(str(audio_path), language="en", vad_filter=True)

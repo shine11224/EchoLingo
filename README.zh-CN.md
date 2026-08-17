@@ -76,7 +76,7 @@ python backend/fastapi_server.py
 
 **词汇**（首页标签页）：复习卡先给语境、自评后才显示释义，避免"看着眼熟"的假熟练。想要叙事强化时，用当天的词生成 AI 记忆故事；随时导出（Markdown / HTML / Anki）。
 
-**设置**（应用内）：Windows x64 用户可点击“同意许可并一键安装”，自动从腾讯和 llama.cpp 官方来源下载、校验并安装约 1.08 GB 的 HY-MT1.5 本地翻译组件；完成后不填混元 Key 也能生成中文字幕。AI key、Whisper 模型大小、词典目录、词表启停也都可以在页面上改，不用手动编辑文件。
+**设置**（应用内）：Windows x64 用户可点击“同意许可并一键安装”，自动从腾讯和 llama.cpp 官方来源下载、校验并安装约 1.08 GB 的 HY-MT1.5 本地翻译组件；完成后不填混元 Key 也能生成中文字幕。设置页也会自动检测 base / medium / large-v3，可按需一键下载；这些本地 Whisper 选项只在公开单机版显示，云端部署不显示也不下载。AI key、词典目录、词表启停也都可以在页面上改，不用手动编辑文件。
 
 ## 配置要求
 
@@ -93,6 +93,7 @@ python backend/fastapi_server.py
 
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：任意 OpenAI 兼容聊天接口（默认 DeepSeek）
 - `GROQ_API_KEY`：可选，云端快速转写，**每天有免费额度**；到 [console.groq.com/keys](https://console.groq.com/keys) 申请 key（没有它本地 Whisper 照常工作）
+- 本地转录：公开单机版可在设置页检测并下载 base（约 150 MB）、medium（约 1.5 GB）或 large-v3（约 3 GB）；未配置 Groq Key 时界面默认选择 base。模型固定到 Systran 官方 Hugging Face revision，下载到项目 `.cache/huggingface/hub`
 - 本地翻译：Windows x64 在设置页一键安装腾讯 HY-MT1.5 Q4_K_M 与 llama.cpp b10068，安装器从官方固定版本下载并校验 SHA-256；不配置 `HY_TRANSLATE_API_KEY` 时自动使用本地模型。模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束（欧盟/英国/韩国不可用），详见 `THIRD_PARTY_LICENSES.md`。macOS / Linux 可按官方 llama.cpp 文档安装 `llama-server` 并把同一 GGUF 放进 `models/`
 - 内置词典：随仓库提供可直接使用的 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）SQLite 数据库；只有主动更新词典时才需要运行 `python backend/build_ecdict.py`，详见 `docs/DICTIONARIES.md`
 - 第三方词表（BNC/COCA、BSL、NAWL…）不随仓库分发，下载与编译方法见 `docs/WORDLISTS.md`

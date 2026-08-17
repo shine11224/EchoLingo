@@ -1,6 +1,8 @@
 """Phase 7B native FastAPI page routes migrated from Flask templates."""
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -12,7 +14,14 @@ templates = Jinja2Templates(directory=str(ai_config.BASE_DIR / "frontend" / "tem
 
 @router.get("/")
 def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "local_runtime_enabled":
+                os.environ.get("ELT_DEPLOYMENT", "").strip().casefold() != "cloud"
+        },
+    )
 
 
 @router.get("/vocab")

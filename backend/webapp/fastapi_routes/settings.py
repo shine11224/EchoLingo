@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from webapp.runtime import ai_config
 from webapp.runtime.access import multiuser_enabled
-from webapp.services import baidu_pan, local_translation_setup
+from webapp.services import baidu_pan, local_translation_setup, whisper_setup
 
 router = APIRouter()
 
@@ -153,6 +153,29 @@ async def install_local_translation(request: Request):
     except local_translation_setup.LocalTranslationSetupBusyError as exc:
         return JSONResponse({"detail": str(exc)}, status_code=409)
     except (ValueError, local_translation_setup.LocalTranslationSetupError) as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+@router.get("/api/settings/whisper-models")
+def get_whisper_model_settings(request: Request):
+    if (deny := _loopback_check(request)) is not None:
+        return deny
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    return whisper_setup.status()
+
+
+@router.post("/api/settings/whisper-models/{model_name}/download")
+async def download_whisper_model(request: Request, model_name: str):
+    if (deny := _loopback_check(request)) is not None:
+        return deny
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    try:
+        return await asyncio.to_thread(whisper_setup.download_model, model_name)
+    except whisper_setup.WhisperSetupBusyError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+    except (ValueError, whisper_setup.WhisperSetupError) as exc:
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
 

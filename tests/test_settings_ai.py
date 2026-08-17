@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
@@ -111,6 +112,8 @@ def test_public_settings_ui_has_provider_and_baidu_presets_without_paraformer():
     assert 'id="local-translation-install-btn"' in html
     assert "同意许可并一键安装" in html
     assert "无需混元 API Key" in html
+    assert 'id="whisper-model-settings-guide"' in html
+    assert "downloadWhisperModel" in html
 
 
 def test_public_baidu_settings_exposes_installer_and_install_endpoint(tmp_path, monkeypatch):
@@ -169,6 +172,46 @@ def test_public_local_translation_settings_exposes_one_click_install(tmp_path, m
     assert captured == {"version": "test-pack", "accepted": True}
 
 
+def test_public_whisper_settings_detects_and_downloads_models(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    from webapp.services import whisper_setup
+
+    monkeypatch.setattr(whisper_setup, "status", lambda: {
+        "enabled": True,
+        "models": [{"name": "base", "installed": False}],
+    })
+    data = client.get("/api/settings/whisper-models").json()
+    assert data["enabled"] is True
+    assert data["models"][0]["name"] == "base"
+
+    monkeypatch.setattr(whisper_setup, "download_model", lambda name: {
+        "ok": True, "model": {"name": name, "installed": True},
+    })
+    response = client.post("/api/settings/whisper-models/base/download")
+    assert response.status_code == 200
+    assert response.json()["model"] == {"name": "base", "installed": True}
+
+
+def test_cloud_page_hides_local_whisper_models(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    monkeypatch.setenv("ELT_DEPLOYMENT", "cloud")
+    html = client.get("/").text
+    assert 'id="whisper-model-settings-guide"' not in html
+    assert "base（本地，最快）" not in html
+    assert "medium（本地，均衡）" not in html
+    assert "large-v3（本地，最准）" not in html
+
+
+def test_public_page_shows_local_whisper_models(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    monkeypatch.delenv("ELT_DEPLOYMENT", raising=False)
+    html = client.get("/").text
+    assert 'id="whisper-model-settings-guide"' in html
+    assert "base（本地，最快）" in html
+    assert "medium（本地，均衡）" in html
+    assert "large-v3（本地，最准）" in html
+
+
 def test_paraformer_is_rejected_before_transcription(tmp_path):
     from sources.baidu import _transcribe_with_optional_whisper
 
@@ -178,3 +221,14 @@ def test_paraformer_is_rejected_before_transcription(tmp_path):
         assert "不支持的转录模型" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("removed Paraformer model was accepted")
+
+
+def test_cloud_rejects_local_whisper_without_cloud_key(tmp_path, monkeypatch):
+    from sources import baidu
+
+    monkeypatch.setenv("ELT_DEPLOYMENT", "cloud")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(baidu, "_extract_audio_for_whisper", lambda path: path)
+    monkeypatch.setattr(baidu, "load_transcript_cache", lambda *args: None)
+    with pytest.raises(RuntimeError, match="云端部署不支持"):
+        baidu._transcribe_with_optional_whisper(tmp_path / "audio.mp3", "base")

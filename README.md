@@ -35,7 +35,7 @@
 - **AI viewing companion** — AI-generated content outline for one-click topic jumps; ask the AI questions mid-video with the current sentence as context
 - **Sentence library** — collect sentences from lessons or AI output, listening practice with hidden original, spoken retelling with AI comparison, and pattern drills graded by AI with revision + idiomatic suggestions
 - **Vocabulary system** — built-in frequency & exam wordlists (Oxford 3000, COCA top 2K/5K, CET-4/6, 考研, IELTS, TOEFL, GRE) generated locally from ECDICT, word highlighting, personal vocab book with frequency-prioritized review lifecycle, AI memory stories with chat, and exports (Markdown / HTML / Anki)
-- **Local-first** — lessons, vocab DB, and caches stay on your machine; AI features work with any OpenAI-compatible API (DeepSeek, OpenAI, Groq, Ollama, …)
+- **Local-first** — lessons, vocab DB, and caches stay on your machine; AI features work with any OpenAI-compatible API (DeepSeek, OpenAI, Groq, Ollama, …). The public single-user build detects and downloads pinned faster-whisper base/medium/large-v3 models from Settings; cloud deployments hide and reject local-model downloads
 
 ## Quick Start
 

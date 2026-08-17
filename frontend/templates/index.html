@@ -1627,9 +1627,11 @@
                 <span>Whisper</span>
                 <select id="link-whisper-model" onchange="onLinkWhisperModelChange(this.value)">
                   <option value="groq">large-v3（Groq，最快）</option>
+                  {% if local_runtime_enabled %}
                   <option value="large-v3">large-v3（本地，最准）</option>
                   <option value="medium">medium（本地，均衡）</option>
                   <option value="base">base（本地，最快）</option>
+                  {% endif %}
                 </select>
                 <span class="groq-net-hint" id="link-groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
                   <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
@@ -1724,6 +1726,11 @@
                 <span>Whisper</span>
                 <select id="user-media-whisper-model" onchange="onWhisperModelChange(this.value)">
                   <option value="groq">large-v3（Groq）</option>
+                  {% if local_runtime_enabled %}
+                  <option value="large-v3">large-v3（本地，最准）</option>
+                  <option value="medium">medium（本地，均衡）</option>
+                  <option value="base">base（本地，最快）</option>
+                  {% endif %}
                 </select>
                 <span class="groq-net-hint" id="groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
                   <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
@@ -2183,6 +2190,26 @@
           </div>
         </div>
       </div>
+
+      {% if local_runtime_enabled %}
+      <div class="resource-section" id="whisper-model-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
+        <h4>🎙️ 本地 Whisper 模型</h4>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:12px;line-height:1.7;">
+          自动检测当前电脑和 EchoLingo 目录中的 faster-whisper 模型。未安装时可按需一键下载；公开单机版支持 base、medium、large-v3，云端部署不显示也不下载这些模型。
+        </p>
+        <div style="padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.7;">
+          <div><strong>模型来源：</strong><a href="https://huggingface.co/Systran" target="_blank" rel="noopener">Systran 官方 Hugging Face</a></div>
+          <div><strong>新模型保存位置：</strong><code id="whisper-download-root">正在检测…</code></div>
+          <div id="whisper-model-list" style="display:grid;gap:8px;margin-top:12px;">
+            <div style="color:var(--muted);">正在检测 base / medium / large-v3…</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button type="button" class="btn btn-sm" onclick="refreshWhisperModelSettings()">重新检测</button>
+            <span id="whisper-model-settings-status" style="font-size:13px;color:var(--muted);"></span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="resource-section" id="local-translation-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🌐 本地中文字幕翻译</h4>
@@ -7382,6 +7409,75 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
   setInterval(() => { if (!_closing) ping(document.hidden); }, 5000);
 })();
 
+// ── Local Whisper model detection/download ────
+let _whisperModelSettings = null;
+
+function renderWhisperModelSettings(data) {
+  _whisperModelSettings = data;
+  const list = document.getElementById('whisper-model-list');
+  const status = document.getElementById('whisper-model-settings-status');
+  const root = document.getElementById('whisper-download-root');
+  if (!list || !status || !root) return;
+  root.textContent = data.download_root || '—';
+  const models = Array.isArray(data.models) ? data.models : [];
+  list.innerHTML = models.map(model => {
+    const state = model.installed
+      ? `<span style="color:#15803d;">✓ 已安装</span>`
+      : `<span style="color:#a16207;">未安装</span>`;
+    const location = model.installed && model.cache_root
+      ? `<div style="font-size:12px;color:var(--muted);word-break:break-all;">缓存：${esc(model.cache_root)}</div>`
+      : '';
+    const action = model.installed
+      ? ''
+      : `<button type="button" class="btn btn-primary btn-sm" data-whisper-download="${esc(model.name)}" onclick="downloadWhisperModel('${esc(model.name)}')">下载 ${esc(model.name)}</button>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--line);border-radius:8px;">
+      <div><strong>${esc(model.label)}</strong> <span style="color:var(--muted);">${esc(model.size_label)}</span> ${state}${location}</div>
+      ${action}
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);">当前运行模式不提供本地 Whisper 模型。</div>';
+  const installedCount = models.filter(model => model.installed).length;
+  status.style.color = installedCount ? '#15803d' : '#a16207';
+  status.textContent = `已检测：${installedCount}/${models.length} 个模型可用`;
+}
+
+async function refreshWhisperModelSettings() {
+  const list = document.getElementById('whisper-model-list');
+  const status = document.getElementById('whisper-model-settings-status');
+  if (!list || !status) return;
+  status.style.color = 'var(--muted)';
+  status.textContent = '正在检测…';
+  try {
+    const response = await fetch('/api/settings/whisper-models', {cache:'no-store'});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || '检测失败');
+    renderWhisperModelSettings(data);
+  } catch (error) {
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '检测失败';
+  }
+}
+
+async function downloadWhisperModel(modelName) {
+  const status = document.getElementById('whisper-model-settings-status');
+  const button = document.querySelector(`[data-whisper-download="${CSS.escape(modelName)}"]`);
+  if (!status || !button) return;
+  button.disabled = true;
+  button.textContent = `正在下载 ${modelName}…`;
+  status.style.color = 'var(--muted)';
+  status.textContent = '首次下载耗时取决于网络，请勿关闭页面…';
+  try {
+    const response = await fetch(`/api/settings/whisper-models/${encodeURIComponent(modelName)}/download`, {method:'POST'});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || '下载失败');
+    await refreshWhisperModelSettings();
+  } catch (error) {
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '下载失败';
+    button.disabled = false;
+    button.textContent = `重新下载 ${modelName}`;
+  }
+}
+
 // ── Local translation installer ───────────────
 let _localTranslationSettings = null;
 
@@ -7544,6 +7640,7 @@ async function loadAiSettings() {
     }
 
     _groqKeyConfigured = !!d.groq_api_key;
+    preferLocalWhisperWithoutGroq();
     syncAiProviderPreset(d.base_url || '', d.model || '');
 
     // 更新各字段的"已配置"标记
@@ -7622,6 +7719,7 @@ async function saveAiSettings() {
     }
     if (d.ok) {
       _groqKeyConfigured = !!body.groq_api_key;
+      preferLocalWhisperWithoutGroq();
       onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
       // 刷新"已配置"标记
       for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -7642,6 +7740,16 @@ function onWhisperModelChange(val) {
   if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
   const hint = document.getElementById('groq-net-hint');
   if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
+}
+
+function preferLocalWhisperWithoutGroq() {
+  if (_groqKeyConfigured) return;
+  for (const id of ['link-whisper-model', 'user-media-whisper-model']) {
+    const select = document.getElementById(id);
+    if (select?.value === 'groq' && [...select.options].some(option => option.value === 'base')) {
+      select.value = 'base';
+    }
+  }
 }
 
 // ── Init ──────────────────────────────────────
@@ -7719,6 +7827,8 @@ async function initAuthBadge() {
       if (panGuide) panGuide.style.display = 'none';
       const localTranslationGuide = document.getElementById('local-translation-settings-guide');
       if (localTranslationGuide) localTranslationGuide.style.display = 'none';
+      const whisperGuide = document.getElementById('whisper-model-settings-guide');
+      if (whisperGuide) whisperGuide.style.display = 'none';
     } else {
       const adminLink = document.getElementById('admin-import-link');
       if (adminLink) adminLink.style.display = 'block';
@@ -8149,6 +8259,7 @@ function pollBaiduPanImport(jobId) {
 initBaiduPanCard();
 refreshBaiduPanSettingsGuide();
 refreshLocalTranslationSettings();
+refreshWhisperModelSettings();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}
 function onUserMediaSelected() {
