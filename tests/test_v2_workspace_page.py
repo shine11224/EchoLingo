@@ -60,7 +60,7 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "const popRect = pop.getBoundingClientRect();" in resp.text
     assert "rect.top - gap - popRect.height" in resp.text
     assert "function closeWordPopover()" in resp.text
-    assert "if (!target.isConnected) return;" in resp.text
+    assert "if (lookupToken !== wordLookupRequestToken || !target.isConnected) return;" in resp.text
     assert "window.addEventListener('scroll', closeWordPopover, true);" in resp.text
     assert "window.addEventListener('resize', closeWordPopover);" in resp.text
     update_current_subtitle = resp.text.split("function updateCurrentSubtitle()", 1)[1].split(
@@ -71,6 +71,15 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "addSavedWordToReview" in resp.text
     assert "/api/vocab-review/activate" in resp.text
     assert "加入复习本" in resp.text
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in resp.text
+    assert 'class="word-review-btn"' in resp.text
+    assert "`/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}/master`" in resp.text
+    assert "reviewBookWordSet.delete(item);" in resp.text
+    assert "if (!resp.ok || !data.ok) throw new Error" in resp.text
+    assert "const WORD_LOOKUP_LOADING_DELAY_MS = 180;" in resp.text
+    assert "const lookupToken = ++wordLookupRequestToken;" in resp.text
+    assert "const loadingTimer = setTimeout(() =>" in resp.text
+    assert "clearTimeout(loadingTimer);" in resp.text
     assert "local-media-player" in resp.text
     assert "initLocalMedia" in resp.text
     assert "media_url" in resp.text

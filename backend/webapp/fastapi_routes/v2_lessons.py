@@ -1801,3 +1801,32 @@ def delete_saved_word(lesson_id: int, word: str):
         db.hide_v2_lesson_word(lesson_id, normalized)
     forget_word_meaning_cache(normalized)
     return {"ok": True, "word": normalized, "saved": False, "deleted": deleted}
+
+
+@router.post("/{lesson_id}/word/{word}/master")
+def master_lesson_word(lesson_id: int, word: str):
+    """Apply the complete mastered lifecycle through one authoritative request."""
+    lesson = db.get_v2_lesson(lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    normalized = (
+        db.normalize_vocab_target(word, target_type="phrase")
+        if " " in word.strip()
+        else lookup_word_meaning(word)["word"]
+    )
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid word")
+
+    lifecycle = db.set_review_word_lifecycle(normalized, mastered=True)
+    if not lifecycle or not lifecycle.get("mastered"):
+        raise HTTPException(status_code=500, detail="Failed to mark word as mastered")
+    deleted = db.delete_v2_lesson_word(lesson_id, normalized)
+    db.hide_v2_lesson_word(lesson_id, normalized)
+    forget_word_meaning_cache(normalized)
+    return {
+        "ok": True,
+        "word": normalized,
+        "saved": False,
+        "mastered": True,
+        "deleted": deleted,
+    }

@@ -1821,6 +1821,38 @@ def test_lesson_words_exclude_mastered_and_known(tmp_path, monkeypatch):
     assert resp.json()["words"] == ["excel"]
 
 
+def test_master_lesson_word_atomically_removes_saved_review_and_highlight_state(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+    lesson = db.create_v2_lesson(
+        source_type="local_video",
+        source_url="manual:master-word",
+        title="Master word lifecycle",
+    )
+    db.upsert_word("salary", "2026-08-18", level="v2")
+    db.save_v2_lesson_word(lesson["id"], "salary", "a better salary")
+    db.activate_word_review("salary", source="listening", lesson_id=lesson["id"])
+
+    resp = client.post(f"/api/v2/lessons/{lesson['id']}/word/salary/master")
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "word": "salary",
+        "saved": False,
+        "mastered": True,
+        "deleted": True,
+    }
+    assert db.get_v2_lesson_word(lesson["id"], "salary") is None
+    assert "salary" not in db.get_review_word_set()
+    assert "salary" in db.get_mastered_review_targets()
+    assert "salary" in db.get_known_words()
+    assert "salary" in db.get_v2_lesson_hidden_words(lesson["id"])
+
+
 def test_active_words_returns_saved_meanings(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app

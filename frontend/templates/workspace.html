@@ -505,8 +505,8 @@
       margin-top: 4px;
     }
     .word-popover .word-actions {
-      display: flex;
-      justify-content: flex-end;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       position: sticky;
       bottom: 0;
@@ -514,6 +514,7 @@
       margin-top: 8px;
       background: var(--surface);
     }
+    .word-popover .word-actions button { width: 100%; }
     .word-save-btn {
       min-height: 28px;
       border-color: #ead48e;
@@ -527,6 +528,7 @@
       border-color: var(--gold);
     }
     .word-master-btn {
+      grid-column: 1 / -1;
       min-height: 28px;
       border-color: #bbf7d0;
       background: #f0fdf4;
@@ -1789,6 +1791,8 @@ let sidebarPanelHeights = {};
 let sidebarPreferredPanelHeights = {};
 let activeSidebarResize = null;
 const wordMeaningCache = {};
+const WORD_LOOKUP_LOADING_DELAY_MS = 180;
+let wordLookupRequestToken = 0;
 const savedSentenceKeys = new Set();
 const savedWordSet = new Set();
 const reviewBookWordSet = new Set();
@@ -3981,6 +3985,8 @@ async function showWordMeaning(event) {
   const target = event.currentTarget;
   const query = String(target.dataset.query || target.dataset.word || target.textContent || '').trim();
   const word = normalizeWord(target.dataset.word || query);
+  const lookupToken = ++wordLookupRequestToken;
+  document.getElementById('word-popover')?.classList.remove('open');
   const cached = wordMeaningCache[word];
   if (cached) {
     const cachedMeaning = typeof cached === 'string' ? cached : (cached.meaning || '');
@@ -3989,7 +3995,12 @@ async function showWordMeaning(event) {
     openWordPopover(target, query || word, cachedMeaning, cachedPhonetic, cachedSource);
     return;
   }
-  openWordPopover(target, query || word, '\u67e5\u8be2\u4e2d...');
+  // ECDICT usually returns in tens of milliseconds. Delay the loading copy so a fast
+  // local hit opens directly with the meaning instead of flashing “查询中…”.
+  const loadingTimer = setTimeout(() => {
+    if (lookupToken !== wordLookupRequestToken || !target.isConnected) return;
+    openWordPopover(target, query || word, '\u67e5\u8be2\u4e2d...');
+  }, WORD_LOOKUP_LOADING_DELAY_MS);
   try {
     const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/word-meaning/${encodeURIComponent(query || word)}`);
     const data = await resp.json().catch(() => ({}));
@@ -4004,15 +4015,18 @@ async function showWordMeaning(event) {
     }
     target.dataset.meaning = data.meaning || '';
     target.dataset.phonetic = phonetic;
-    if (!target.isConnected) return;
+    if (lookupToken !== wordLookupRequestToken || !target.isConnected) return;
     openWordPopover(target, query || word, meaning, phonetic, source, data.dict_meta || '');
   } catch (_) {
-    if (!target.isConnected) return;
+    if (lookupToken !== wordLookupRequestToken || !target.isConnected) return;
     openWordPopover(target, query || word, '\u67e5\u8be2\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5');
+  } finally {
+    clearTimeout(loadingTimer);
   }
 }
 
 function closeWordPopover() {
+  wordLookupRequestToken += 1;
   const pop = document.getElementById('word-popover');
   if (!pop) return;
   pop.classList.remove('open');
@@ -4149,19 +4163,20 @@ async function masterWordFromPopover(event, word) {
   const button = event.currentTarget;
   button.disabled = true;
   try {
-    // 已收藏的先移出生词本
-    if (savedWordSet.has(normalized)) {
-      await fetch(`/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}`, {method: 'DELETE'});
-      savedWordSet.delete(normalized);
-    }
-    // 标记已掌握（同步 mastered + known_words，后续不再高亮）
-    await fetch(`/api/vocab-review/${encodeURIComponent(normalized)}/lifecycle`, {
-      method: 'PATCH',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mastered: true}),
+    // 收藏、复习本、已掌握和高亮必须由同一个请求完成，避免部分成功后 UI 与数据库分叉。
+    const resp = await fetch(
+      `/api/v2/lessons/${LESSON_ID}/word/${encodeURIComponent(normalized)}/master`,
+      {method: 'POST'},
+    );
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.detail || '标记已掌握失败');
+    const returned = normalizeWord(data.word || normalized);
+    [normalized, returned].filter(Boolean).forEach(item => {
+      savedWordSet.delete(item);
+      reviewBookWordSet.delete(item);
+      readingHiddenWordSet.add(item);
+      delete wordMeaningCache[item];
     });
-    readingHiddenWordSet.add(normalized);
-    delete wordMeaningCache[normalized];
     closeWordPopover();
     updateCurrentSubtitle();
     updateReviewSummary();
@@ -4169,6 +4184,8 @@ async function masterWordFromPopover(event, word) {
     if (activeStudyMode === 'reading') {
       refreshReadingWordStates();
     }
+  } catch (error) {
+    alert(`标记已掌握失败：${error.message}`);
   } finally {
     button.disabled = false;
   }
