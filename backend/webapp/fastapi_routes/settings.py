@@ -1,6 +1,7 @@
 """Phase 7A native FastAPI settings endpoints migrated from Flask."""
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 from typing import Any
 
@@ -8,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from webapp.runtime import ai_config
 from webapp.runtime.access import multiuser_enabled
-from webapp.services import baidu_pan
+from webapp.services import baidu_pan, local_translation_setup
 
 router = APIRouter()
 
@@ -124,7 +125,35 @@ def _loopback_check(request: Request):
             return None
     except ValueError:
         pass
-    return JSONResponse({"detail": "bdpan installation is local-only"}, status_code=403)
+    return JSONResponse({"detail": "local installation is loopback-only"}, status_code=403)
+
+
+@router.get("/api/settings/local-translation")
+def get_local_translation_settings(request: Request):
+    if (deny := _loopback_check(request)) is not None:
+        return deny
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    return local_translation_setup.installer_info()
+
+
+@router.post("/api/settings/local-translation/install")
+async def install_local_translation(request: Request):
+    if (deny := _loopback_check(request)) is not None:
+        return deny
+    if (deny := _admin_check(request)) is not None:
+        return deny
+    data = await _parse_body(request)
+    try:
+        return await asyncio.to_thread(
+            local_translation_setup.install,
+            expected_version=str(data.get("version") or ""),
+            accepted_license=data.get("accepted_license") is True,
+        )
+    except local_translation_setup.LocalTranslationSetupBusyError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+    except (ValueError, local_translation_setup.LocalTranslationSetupError) as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
 
 
 # 公开单用户模式提供本机网页授权；多用户模式仍仅管理员可管理。

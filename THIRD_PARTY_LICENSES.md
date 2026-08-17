@@ -90,10 +90,13 @@ wordlist data shipped in this repo, is original and self-authored.
 
 ### Tencent HY-MT1.5 (local translation)
 
-EchoLingo can drive a user-downloaded Tencent HY-MT1.5 GGUF model (e.g.
+EchoLingo can drive a locally installed Tencent HY-MT1.5 GGUF model (e.g.
 `models/HY-MT1.5-1.8B-Q4_K_M.gguf`) through a local llama.cpp server
 (llama.cpp itself is MIT). **No model weights are distributed by this
-repository** — users download them from Tencent's official releases.
+repository.** The Windows x64 one-click installer downloads the pinned model
+directly from Tencent's official Hugging Face repository and downloads
+llama.cpp directly from its official GitHub release, verifying both SHA-256
+digests before installation.
 
 Tencent HY is licensed under the Tencent HY Community License Agreement,
 Copyright © 2025 Tencent. All Rights Reserved. The trademark rights of
@@ -114,7 +117,16 @@ that apply to anyone using the model with EchoLingo:
 EchoLingo is an independent project by shine11224. Tencent is not affiliated
 with, associated with, sponsoring, or endorsing EchoLingo; the translation
 functionality is provided by each user running their own locally downloaded
-model copy.
+model copy. Clicking the one-click installer constitutes the user's acceptance
+of the linked Tencent HY Community License; the installer is disabled on
+unsupported platforms and clearly displays the territory restriction.
+
+### llama.cpp (local inference runtime)
+
+The one-click installer downloads llama.cpp b10068 from the official
+`ggml-org/llama.cpp` release. llama.cpp is licensed under the MIT License,
+Copyright © 2023-2026 The ggml authors. The complete license text is included
+in `licenses/LLAMA_CPP_LICENSE.txt`.
 
 ## Acknowledgments
 

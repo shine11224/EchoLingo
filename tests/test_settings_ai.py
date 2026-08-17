@@ -107,6 +107,10 @@ def test_public_settings_ui_has_provider_and_baidu_presets_without_paraformer():
     assert 'placeholder="粘贴 B站 / YouTube / 网盘链接' not in html
     assert 'value="paraformer"' not in html
     assert 'id="dashscope-api-key"' not in html
+    assert 'id="local-translation-settings-guide"' in html
+    assert 'id="local-translation-install-btn"' in html
+    assert "同意许可并一键安装" in html
+    assert "无需混元 API Key" in html
 
 
 def test_public_baidu_settings_exposes_installer_and_install_endpoint(tmp_path, monkeypatch):
@@ -134,6 +138,35 @@ def test_public_baidu_settings_exposes_installer_and_install_endpoint(tmp_path, 
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
     assert captured == {"version": "3.8.4", "confirmed": True}
+
+
+def test_public_local_translation_settings_exposes_one_click_install(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    from webapp.services import local_translation_setup
+
+    monkeypatch.setattr(local_translation_setup, "installer_info", lambda: {
+        "installed": False,
+        "supported": True,
+        "version": "test-pack",
+        "platform": "Windows AMD64",
+    })
+    data = client.get("/api/settings/local-translation").json()
+    assert data["supported"] is True
+    assert data["version"] == "test-pack"
+
+    captured = {}
+
+    def fake_install(*, expected_version, accepted_license):
+        captured.update(version=expected_version, accepted=accepted_license)
+        return {"ok": True, "installed": True}
+
+    monkeypatch.setattr(local_translation_setup, "install", fake_install)
+    resp = client.post("/api/settings/local-translation/install", json={
+        "version": "test-pack", "accepted_license": True,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["installed"] is True
+    assert captured == {"version": "test-pack", "accepted": True}
 
 
 def test_paraformer_is_rejected_before_transcription(tmp_path):

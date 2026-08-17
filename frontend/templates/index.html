@@ -2184,6 +2184,35 @@
         </div>
       </div>
 
+      <div class="resource-section" id="local-translation-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
+        <h4>🌐 本地中文字幕翻译</h4>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:12px;line-height:1.7;">
+          一键安装腾讯 HY-MT1.5 本地模型和 llama.cpp 后，生成中文字幕不需要混元 API Key；翻译内容只在本机处理。首次安装约下载 1.08 GB。
+        </p>
+        <div style="padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.8;">
+          <div><strong>模型来源：</strong><a id="local-translation-model-source" href="https://huggingface.co/tencent/HY-MT1.5-1.8B-GGUF" target="_blank" rel="noopener">腾讯官方 Hugging Face</a></div>
+          <div><strong>推理运行时：</strong><a id="local-translation-llama-source" href="https://github.com/ggml-org/llama.cpp/releases/tag/b10068" target="_blank" rel="noopener">llama.cpp 官方发布</a></div>
+          <div><strong>固定版本：</strong><code id="local-translation-version">正在检测…</code></div>
+          <div><strong>适用平台：</strong><span id="local-translation-platform">正在检测…</span></div>
+          <div><strong>安装位置：</strong><span id="local-translation-location">当前 EchoLingo 目录</span></div>
+          <details style="margin-top:4px;color:var(--muted);">
+            <summary style="cursor:pointer;">查看下载地址与 SHA-256</summary>
+            <div style="word-break:break-all;margin-top:4px;">模型：<span id="local-translation-model-url">—</span></div>
+            <div style="word-break:break-all;">模型 SHA-256：<code id="local-translation-model-sha">—</code></div>
+            <div style="word-break:break-all;margin-top:4px;">llama.cpp：<span id="local-translation-llama-url">—</span></div>
+            <div style="word-break:break-all;">llama.cpp SHA-256：<code id="local-translation-llama-sha">—</code></div>
+          </details>
+          <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;">
+            点击安装即表示你接受 <a id="local-translation-license" href="https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt" target="_blank" rel="noopener">Tencent HY Community License</a>。该许可不适用于欧盟、英国和韩国；安装器只从官方来源下载并强制校验 SHA-256。
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button type="button" class="btn btn-primary btn-sm" id="local-translation-install-btn" onclick="installLocalTranslation()" disabled>同意许可并一键安装</button>
+            <button type="button" class="btn btn-sm" onclick="refreshLocalTranslationSettings()">重新检测</button>
+            <span id="local-translation-status" style="font-size:13px;color:var(--muted);">正在检测…</span>
+          </div>
+        </div>
+      </div>
+
       <div class="resource-section" id="ai-settings-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🤖 第三方 AI API 设置</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
@@ -2238,7 +2267,7 @@
             <button class="btn btn-sm" onclick="editAiField('hy-translate-api-key')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('hy_translate_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-hy-translate-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
-            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">中文字幕翻译专用</span>
+            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">可选；本地模型已安装时无需填写</span>
           </div>
           <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 80px; font-weight: 500;">混元 Model</span>
@@ -7353,6 +7382,89 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
   setInterval(() => { if (!_closing) ping(document.hidden); }, 5000);
 })();
 
+// ── Local translation installer ───────────────
+let _localTranslationSettings = null;
+
+function renderLocalTranslationSettings(data) {
+  _localTranslationSettings = data;
+  const status = document.getElementById('local-translation-status');
+  const button = document.getElementById('local-translation-install-btn');
+  if (!status || !button) return;
+  document.getElementById('local-translation-version').textContent =
+    `${data.model || 'HY-MT1.5'} + llama.cpp ${data.llama_version || ''}`;
+  document.getElementById('local-translation-platform').textContent = data.platform || '未知';
+  document.getElementById('local-translation-location').textContent = data.install_location || '当前 EchoLingo 目录';
+  document.getElementById('local-translation-model-url').textContent = data.model_download_url || '—';
+  document.getElementById('local-translation-model-sha').textContent = data.model_sha256 || '—';
+  document.getElementById('local-translation-llama-url').textContent = data.llama_download_url || '—';
+  document.getElementById('local-translation-llama-sha').textContent = data.llama_sha256 || '—';
+  document.getElementById('local-translation-model-source').href = data.model_source || '#';
+  document.getElementById('local-translation-llama-source').href = data.llama_source || '#';
+  document.getElementById('local-translation-license').href = data.license_url || '#';
+  if (data.installed) {
+    button.style.display = 'none';
+    status.style.color = '#15803d';
+    status.textContent = '✓ 本地混元模型与 llama.cpp 已就绪，无需混元 API Key';
+  } else if (!data.supported) {
+    button.style.display = '';
+    button.disabled = true;
+    button.textContent = '当前平台暂不支持一键安装';
+    status.style.color = 'var(--danger)';
+    status.textContent = `当前仅提供 Windows x64 一键安装；检测到 ${data.platform || '未知平台'}`;
+  } else {
+    button.style.display = '';
+    button.disabled = false;
+    button.textContent = '同意许可并一键安装';
+    status.style.color = '#a16207';
+    status.textContent = '未安装；安装后本地翻译会自动启用';
+  }
+}
+
+async function refreshLocalTranslationSettings() {
+  const status = document.getElementById('local-translation-status');
+  if (status) {
+    status.style.color = 'var(--muted)';
+    status.textContent = '正在检测…';
+  }
+  try {
+    const response = await fetch('/api/settings/local-translation', {cache:'no-store'});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || '检测失败');
+    renderLocalTranslationSettings(data);
+  } catch (error) {
+    if (status) {
+      status.style.color = 'var(--danger)';
+      status.textContent = error.message || '检测失败';
+    }
+  }
+}
+
+async function installLocalTranslation() {
+  const data = _localTranslationSettings;
+  if (!data?.supported || data.installed) return;
+  const button = document.getElementById('local-translation-install-btn');
+  const status = document.getElementById('local-translation-status');
+  button.disabled = true;
+  button.textContent = '正在下载并校验…';
+  status.style.color = 'var(--muted)';
+  status.textContent = '正在下载约 1.08 GB，请勿关闭页面；完成后会自动启用本地翻译…';
+  try {
+    const response = await fetch('/api/settings/local-translation/install', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({version:data.version, accepted_license:true}),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || '安装失败');
+    await refreshLocalTranslationSettings();
+  } catch (error) {
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '安装失败';
+    button.disabled = false;
+    button.textContent = '重新安装';
+  }
+}
+
 // ── AI / Groq Settings ────────────────────────
 let _groqKeyConfigured = false;
 
@@ -7605,6 +7717,8 @@ async function initAuthBadge() {
       });
       const panGuide = document.getElementById('baidu-pan-settings-guide');
       if (panGuide) panGuide.style.display = 'none';
+      const localTranslationGuide = document.getElementById('local-translation-settings-guide');
+      if (localTranslationGuide) localTranslationGuide.style.display = 'none';
     } else {
       const adminLink = document.getElementById('admin-import-link');
       if (adminLink) adminLink.style.display = 'block';
@@ -8034,6 +8148,7 @@ function pollBaiduPanImport(jobId) {
 })();
 initBaiduPanCard();
 refreshBaiduPanSettingsGuide();
+refreshLocalTranslationSettings();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}
 function onUserMediaSelected() {

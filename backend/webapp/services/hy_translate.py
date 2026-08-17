@@ -17,7 +17,7 @@ _HEALTH_URL = "http://127.0.0.1:8180/health"
 _ROOT = Path(__file__).resolve().parents[3]
 _MODEL_PATH = _ROOT / "models" / "HY-MT1.5-1.8B-Q4_K_M.gguf"
 _LLAMA_DIR = _ROOT / "llama-cpp"
-_EXECUTABLE = _LLAMA_DIR / "llama-server.exe"
+_EXECUTABLE = _LLAMA_DIR / ("llama-server.exe" if os.name == "nt" else "llama-server")
 _server_proc = None
 _server_lock = threading.Lock()
 _cloud_request_lock = threading.Lock()

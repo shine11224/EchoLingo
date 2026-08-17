@@ -49,7 +49,7 @@ pip install -r requirements.txt
 # ECDICT 已随仓库提供，无需再单独构建词典。
 ```
 
-配置 API key：
+如需 AI 问答、批改等在线 AI 功能，再配置通用 API Key；本地中文字幕翻译不需要 Key：
 
 ```bash
 cp .env.example .env          # 然后编辑 .env，只填 AI_API_KEY 就能跑
@@ -76,7 +76,7 @@ python backend/fastapi_server.py
 
 **词汇**（首页标签页）：复习卡先给语境、自评后才显示释义，避免"看着眼熟"的假熟练。想要叙事强化时，用当天的词生成 AI 记忆故事；随时导出（Markdown / HTML / Anki）。
 
-**设置**（应用内）：设置页写的就是同一个 `.env` 文件——AI key、Whisper 模型大小、词典目录、词表启停都可以在页面上改，不用手动编辑文件。
+**设置**（应用内）：Windows x64 用户可点击“同意许可并一键安装”，自动从腾讯和 llama.cpp 官方来源下载、校验并安装约 1.08 GB 的 HY-MT1.5 本地翻译组件；完成后不填混元 Key 也能生成中文字幕。AI key、Whisper 模型大小、词典目录、词表启停也都可以在页面上改，不用手动编辑文件。
 
 ## 配置要求
 
@@ -84,7 +84,7 @@ python backend/fastapi_server.py
 - **运行时**：Python 3.11+，ffmpeg 加入 PATH
 - **内存**：最低 8 GB；本地跑 Whisper 推荐 16 GB
 - **显卡（可选）**：NVIDIA ≥6 GB 显存可让 large-v3 转写快数倍；纯 CPU 用 base/medium 模型也完全可用，或配置 `GROQ_API_KEY` 走云端转写
-- **磁盘**：应用约 2 GB，随仓库提供的 ECDICT 词典约 90 MB，每个 Whisper 模型 1–3 GB，另有课程缓存
+- **磁盘**：应用约 2 GB，随仓库提供的 ECDICT 词典约 90 MB，本地翻译模型约 1.06 GB，每个 Whisper 模型 1–3 GB，另有课程缓存
 - **麦克风**：整句复述功能需要；推荐 Chrome / Edge 浏览器
 
 ## 配置说明
@@ -93,7 +93,7 @@ python backend/fastapi_server.py
 
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：任意 OpenAI 兼容聊天接口（默认 DeepSeek）
 - `GROQ_API_KEY`：可选，云端快速转写，**每天有免费额度**；到 [console.groq.com/keys](https://console.groq.com/keys) 申请 key（没有它本地 Whisper 照常工作）
-- 本地翻译：把腾讯混元 HY-MT1.5 的 GGUF 放进 `models/`，llama.cpp 的 `llama-server` 放进 `llama-cpp/`；模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束（欧盟/英国/韩国不可用），详见 `THIRD_PARTY_LICENSES.md`
+- 本地翻译：Windows x64 在设置页一键安装腾讯 HY-MT1.5 Q4_K_M 与 llama.cpp b10068，安装器从官方固定版本下载并校验 SHA-256；不配置 `HY_TRANSLATE_API_KEY` 时自动使用本地模型。模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束（欧盟/英国/韩国不可用），详见 `THIRD_PARTY_LICENSES.md`。macOS / Linux 可按官方 llama.cpp 文档安装 `llama-server` 并把同一 GGUF 放进 `models/`
 - 内置词典：随仓库提供可直接使用的 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）SQLite 数据库；只有主动更新词典时才需要运行 `python backend/build_ecdict.py`，详见 `docs/DICTIONARIES.md`
 - 第三方词表（BNC/COCA、BSL、NAWL…）不随仓库分发，下载与编译方法见 `docs/WORDLISTS.md`
 
