@@ -46,10 +46,9 @@ def get_ai_settings(request: Request):
         "base_url": ai_config.AI_BASE_URL,
         "model": ai_config.AI_MODEL,
         "groq_api_key": ai_config.GROQ_API_KEY,
-        # 混元翻译 / 千问转录在调用处实时读 os.environ，这里同源返回
+        # 混元翻译在调用处实时读 os.environ，这里同源返回
         "hy_translate_api_key": os.environ.get("HY_TRANSLATE_API_KEY", ""),
         "hy_translate_model": os.environ.get("HY_TRANSLATE_MODEL", "") or "hy-mt2-plus",
-        "dashscope_api_key": os.environ.get("DASHSCOPE_API_KEY", ""),
     }
 
 
@@ -64,7 +63,6 @@ async def save_ai_settings(request: Request):
     new_groq_key = data.get("groq_api_key", "").strip()
     new_hy_key = data.get("hy_translate_api_key", "").strip()
     new_hy_model = data.get("hy_translate_model", "").strip()
-    new_dashscope_key = data.get("dashscope_api_key", "").strip()
 
     ai_config.save_settings(
         new_key,
@@ -73,7 +71,6 @@ async def save_ai_settings(request: Request):
         new_groq_key,
         hy_translate_api_key=new_hy_key,
         hy_translate_model=new_hy_model,
-        dashscope_api_key=new_dashscope_key,
     )
 
     return {"ok": True, "message": "设置已保存"}
@@ -89,11 +86,10 @@ async def delete_ai_settings(request: Request):
     defaults = {
         "api_key": "",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "groq_api_key": "",
         "hy_translate_api_key": "",
         "hy_translate_model": "",
-        "dashscope_api_key": "",
     }
     if field not in defaults:
         return JSONResponse({"ok": False, "message": f"未知字段: {field}"}, status_code=400)

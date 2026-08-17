@@ -8,14 +8,14 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 
-def test_vocab_story_uses_fast_chat_model_on_official_deepseek(tmp_path, monkeypatch):
+def test_vocab_story_uses_configured_model_on_official_deepseek(tmp_path, monkeypatch):
     import db
     from fastapi_server import create_app
     from webapp.fastapi_routes import vocab
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     monkeypatch.setattr(vocab.ai_config, "AI_BASE_URL", "https://api.deepseek.com")
-    monkeypatch.setattr(vocab.ai_config, "AI_MODEL", "deepseek-v4-pro")
+    monkeypatch.setattr(vocab.ai_config, "AI_MODEL", "deepseek-v4-flash")
     captured = {}
 
     def create(**kwargs):
@@ -44,7 +44,7 @@ def test_vocab_story_uses_fast_chat_model_on_official_deepseek(tmp_path, monkeyp
     )
 
     assert response.status_code == 200
-    assert captured["model"] == "deepseek-chat"
+    assert captured["model"] == "deepseek-v4-flash"
     assert captured["max_tokens"] >= 2500
     assert captured["timeout"] <= 90
     assert response.json()["story"].startswith("A curator")
@@ -317,7 +317,7 @@ def test_story_chat_keeps_selection_and_recent_dialogue_context(tmp_path, monkey
 
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
     monkeypatch.setattr(vocab.ai_config, "AI_BASE_URL", "https://api.deepseek.com")
-    monkeypatch.setattr(vocab.ai_config, "AI_MODEL", "deepseek-v4-pro")
+    monkeypatch.setattr(vocab.ai_config, "AI_MODEL", "deepseek-v4-flash")
     captured = {}
 
     def create(**kwargs):
@@ -350,7 +350,7 @@ def test_story_chat_keeps_selection_and_recent_dialogue_context(tmp_path, monkey
 
     assert response.status_code == 200
     assert response.json()["answer"].startswith("这里强调")
-    assert captured["model"] == "deepseek-chat"
+    assert captured["model"] == "deepseek-v4-flash"
     assert any("curated an exhibition" in item["content"] for item in captured["messages"])
     assert any(item["content"] == "故事讲了什么？" for item in captured["messages"])
 

@@ -1584,13 +1584,13 @@
           <div class="course-source-head">
             <div>
               <h3 class="course-source-title">链接与文件导入</h3>
-              <div class="course-source-note">支持 B站 / YouTube / 文章链接、百度网盘分享链接，也可以选择本地音视频或 PDF 文件。</div>
+              <div class="course-source-note">支持 B站 / YouTube / 文章链接，也可以选择本地音视频或 PDF 文件。</div>
             </div>
             <span class="source-badge" id="source-badge">未选择</span>
           </div>
           <div class="url-row">
             <input class="url-input" type="text" id="url-input"
-                   placeholder="粘贴 B站 / YouTube / 网盘链接，或填入本地文件路径…"
+                   placeholder="粘贴 B站 / YouTube / 文章链接，或填入本地文件路径…"
                    oninput="detectSource(this.value)">
             <button type="button" id="browse-file-btn" onclick="browseLocalFile()"
                     title="选择本地音视频文件"
@@ -1631,14 +1631,12 @@
                   <option value="large-v3">large-v3（本地，最准）</option>
                   <option value="medium">medium（本地，均衡）</option>
                   <option value="base">base（本地，最快）</option>
-                  <option value="paraformer">Paraformer（云端，阿里云百炼）</option>
                 </select>
                 <span class="groq-net-hint" id="link-groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
                   <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
                 </span>
               </div>
               <div id="link-groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
-              <div id="link-dashscope-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置千问 Key — 请先在设置 → API 设置填写（阿里云百炼 API-KEY）</div>
             </div>
           </div>
         </section>
@@ -2165,12 +2163,41 @@
 
       <div id="resource-status" style="margin-top: 20px; font-weight: 600; color: var(--brand);"></div>
 
+      <div class="resource-section" id="baidu-pan-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
+        <h4>☁️ 百度网盘配置</h4>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:10px;">
+          网盘授权只保存在当前电脑，不随公开库同步。每位用户首次使用前都需要单独配置；配置完成后即可导入分享链接，并在“我的网盘”中选择文件。
+        </p>
+        <ol style="font-size:13px;line-height:1.9;margin:0 0 10px 20px;padding:0;">
+          <li>按<a href="https://github.com/baidu-netdisk/bdpan-storage" target="_blank" rel="noopener">百度网盘官方工具说明</a>安装 <code>bdpan 3.8+</code>，确保终端可以运行 <code>bdpan --version</code>。</li>
+          <li>运行 <code>bdpan login --accept-disclaimer --get-auth-url</code>，在浏览器完成百度授权。</li>
+          <li>复制返回的 32 位授权码，运行 <code>bdpan login --accept-disclaimer --set-code &lt;授权码&gt;</code>。</li>
+        </ol>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">
+          若 <code>bdpan</code> 不在 PATH，可在 <code>.env</code> 中设置 <code>ELT_BAIDU_PAN_BIN=完整可执行文件路径</code>。应用只访问百度网盘的应用数据目录。
+        </p>
+        <button type="button" class="btn btn-sm" onclick="refreshBaiduPanSettingsGuide()">重新检测</button>
+        <span id="baidu-pan-settings-status" style="margin-left:10px;font-size:13px;color:var(--muted);">正在检测…</span>
+      </div>
+
       <div class="resource-section" id="ai-settings-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🤖 第三方 AI API 设置</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
-          配置支持 OpenAI 协议的 API（如 DeepSeek, OpenAI, Groq 或本地的 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
+          配置兼容 OpenAI Chat Completions 协议的 API（DeepSeek、Kimi、Kimi Code、OpenAI 或本地 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
         </p>
         <div class="control-stack" style="max-width: 650px;">
+          <div class="input-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="width:80px;font-weight:500;">服务商</span>
+            <select id="ai-provider-preset" onchange="applyAiProviderPreset(this.value)" style="flex:1;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);">
+              <option value="custom">自定义 OpenAI 兼容 API</option>
+              <option value="deepseek">DeepSeek Flash</option>
+              <option value="kimi-platform">Kimi 开放平台</option>
+              <option value="kimi-code">Kimi Code 会员 API</option>
+            </select>
+          </div>
+          <div id="ai-provider-note" style="font-size:12px;color:var(--muted);margin:-2px 0 10px 88px;line-height:1.6;">
+            选择预设只填写 Base URL 和推荐模型，不会读取或改动 API Key。
+          </div>
           <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 80px; font-weight: 500;">Base URL</span>
             <input type="text" id="ai-base-url" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="https://api.deepseek.com">
@@ -2187,7 +2214,7 @@
           </div>
           <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 80px; font-weight: 500;">Model</span>
-            <input type="text" id="ai-model" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="deepseek-chat">
+            <input type="text" id="ai-model" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="deepseek-v4-flash">
             <button class="btn btn-sm" onclick="editAiField('ai-model')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('model')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-model" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
@@ -2214,14 +2241,6 @@
             <button class="btn btn-sm" onclick="editAiField('hy-translate-model')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('hy_translate_model')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-hy-translate-model" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
-          </div>
-          <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
-            <span style="width: 80px; font-weight: 500;">千问 Key</span>
-            <input type="password" id="dashscope-api-key" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="sk-...（阿里云百炼，可选）">
-            <button class="btn btn-sm" onclick="editAiField('dashscope-api-key')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('dashscope_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
-            <span class="ai-configured-badge" id="badge-dashscope-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
-            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">Paraformer 转录专用</span>
           </div>
           <div style="margin-top: 8px;">
             <button class="btn btn-primary" onclick="saveAiSettings()">保存配置</button>
@@ -2799,8 +2818,6 @@ function onLinkWhisperModelChange(val) {
   if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
   const hint = document.getElementById('link-groq-net-hint');
   if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
-  const dashWarn = document.getElementById('link-dashscope-key-warn');
-  if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
 }
 
 async function browseLocalFile() {
@@ -7384,7 +7401,6 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
 
 // ── AI / Groq Settings ────────────────────────
 let _groqKeyConfigured = false;
-let _dashscopeKeyConfigured = false;
 
 const _AI_FIELD_MAP = {
   'ai-base-url':          { field: 'base_url',             badge: 'badge-base-url' },
@@ -7393,8 +7409,59 @@ const _AI_FIELD_MAP = {
   'groq-api-key':         { field: 'groq_api_key',         badge: 'badge-groq-api-key' },
   'hy-translate-api-key': { field: 'hy_translate_api_key', badge: 'badge-hy-translate-api-key' },
   'hy-translate-model':   { field: 'hy_translate_model',   badge: 'badge-hy-translate-model' },
-  'dashscope-api-key':    { field: 'dashscope_api_key',    badge: 'badge-dashscope-api-key' },
 };
+
+const _AI_PROVIDER_PRESETS = {
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-flash',
+    note: 'DeepSeek 官方接口，默认使用 deepseek-v4-flash。',
+  },
+  'kimi-platform': {
+    baseUrl: 'https://api.moonshot.cn/v1',
+    model: '',
+    note: 'Kimi 开放平台按量付费：请选择后再填写控制台中可用的模型 ID。它的 Key 不能用于 Kimi Code。',
+  },
+  'kimi-code': {
+    baseUrl: 'https://api.kimi.com/coding/v1',
+    model: 'kimi-for-coding',
+    note: 'Kimi Code 会员 API：Key 来自 Kimi Code 控制台，不能与 Kimi 开放平台 Key 混用。',
+  },
+};
+
+function setAiProviderNote(value) {
+  const note = document.getElementById('ai-provider-note');
+  if (!note) return;
+  note.textContent = _AI_PROVIDER_PRESETS[value]?.note
+    || '自定义模式：填写兼容 OpenAI Chat Completions 的 Base URL、API Key 与模型 ID。';
+}
+
+function applyAiProviderPreset(value) {
+  const preset = _AI_PROVIDER_PRESETS[value];
+  setAiProviderNote(value);
+  if (!preset) return;
+  const baseUrl = document.getElementById('ai-base-url');
+  const model = document.getElementById('ai-model');
+  if (baseUrl) baseUrl.value = preset.baseUrl;
+  if (model) {
+    model.value = preset.model;
+    model.placeholder = value === 'kimi-platform'
+      ? '请填写 Kimi 开放平台模型 ID'
+      : preset.model;
+    if (!preset.model) model.focus();
+  }
+}
+
+function syncAiProviderPreset(baseUrl, model) {
+  const normalized = String(baseUrl || '').replace(/\/$/, '').toLowerCase();
+  let value = 'custom';
+  if (normalized === 'https://api.deepseek.com' && model === 'deepseek-v4-flash') value = 'deepseek';
+  else if (normalized === 'https://api.moonshot.cn/v1') value = 'kimi-platform';
+  else if (normalized === 'https://api.kimi.com/coding/v1') value = 'kimi-code';
+  const select = document.getElementById('ai-provider-preset');
+  if (select) select.value = value;
+  setAiProviderNote(value);
+}
 
 async function loadAiSettings() {
   try {
@@ -7405,7 +7472,7 @@ async function loadAiSettings() {
     }
 
     _groqKeyConfigured = !!d.groq_api_key;
-    _dashscopeKeyConfigured = !!d.dashscope_api_key;
+    syncAiProviderPreset(d.base_url || '', d.model || '');
 
     // 更新各字段的"已配置"标记
     for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -7451,10 +7518,6 @@ async function deleteAiSetting(field) {
       _groqKeyConfigured = false;
       onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
     }
-    if (field === 'dashscope_api_key') {
-      _dashscopeKeyConfigured = false;
-      onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
-    }
   } catch (e) {
     alert('删除失败：' + e.message);
   }
@@ -7465,6 +7528,13 @@ async function saveAiSettings() {
   const body = {};
   for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
     body[meta.field] = document.getElementById(inputId)?.value.trim() || '';
+  }
+  if (!body.base_url || !body.model) {
+    if (status) {
+      status.style.color = 'var(--danger)';
+      status.textContent = '请填写 Base URL 和模型 ID';
+    }
+    return;
   }
   if (status) { status.style.color = 'var(--brand)'; status.textContent = '保存中…'; }
   try {
@@ -7480,7 +7550,6 @@ async function saveAiSettings() {
     }
     if (d.ok) {
       _groqKeyConfigured = !!body.groq_api_key;
-      _dashscopeKeyConfigured = !!body.dashscope_api_key;
       onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
       // 刷新"已配置"标记
       for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -7501,8 +7570,6 @@ function onWhisperModelChange(val) {
   if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
   const hint = document.getElementById('groq-net-hint');
   if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
-  const dashWarn = document.getElementById('dashscope-key-warn');
-  if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
 }
 
 // ── Init ──────────────────────────────────────
@@ -7572,10 +7639,12 @@ async function initAuthBadge() {
     if (!me.is_admin) {
       const sec = document.getElementById('ai-settings-section');
       if (sec) sec.style.display = 'none';
-      ['groq-key-warn', 'dashscope-key-warn'].forEach(id => {
+      ['groq-key-warn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
+      const panGuide = document.getElementById('baidu-pan-settings-guide');
+      if (panGuide) panGuide.style.display = 'none';
     } else {
       const adminLink = document.getElementById('admin-import-link');
       if (adminLink) adminLink.style.display = 'block';
@@ -7609,11 +7678,31 @@ async function refreshCreditBadge(summary) {
 // ── 百度网盘导入 ───────────────────────────────────────────
 let _baiduPanPoll = null;
 let _panPath = '', _panSelected = null, _panCanBrowse = false;
+function renderBaiduPanSettingsStatus(data) {
+  const status = document.getElementById('baidu-pan-settings-status');
+  if (!status) return;
+  if (data.enabled) {
+    status.style.color = '#15803d';
+    status.textContent = `✓ 已配置${data.username ? `（${data.username}）` : ''}`;
+  } else {
+    status.style.color = 'var(--danger)';
+    status.textContent = `未就绪：${data.reason || '尚未完成授权'}`;
+  }
+}
+async function refreshBaiduPanSettingsGuide() {
+  const status = document.getElementById('baidu-pan-settings-status');
+  if (status) {
+    status.style.color = 'var(--muted)';
+    status.textContent = '正在检测…';
+  }
+  await initBaiduPanCard(true);
+}
 async function initBaiduPanCard(refresh=false) {
   try {
     const resp = await fetch('/api/v2/lessons/baidu-pan/capability' + (refresh ? '?refresh=true' : ''));
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return;
+    if (!resp.ok) throw new Error(data.detail || '检测失败');
+    renderBaiduPanSettingsStatus(data);
     document.getElementById('baidu-pan-source-card').style.display = '';
     document.getElementById('pan-unconfigured').style.display = data.enabled ? 'none' : '';
     document.getElementById('pan-share-pane').style.opacity = data.enabled ? '1' : '.55';
@@ -7621,7 +7710,9 @@ async function initBaiduPanCard(refresh=false) {
     _panCanBrowse = Boolean(data.can_browse);
     document.getElementById('pan-tab-drive').style.display = _panCanBrowse ? '' : 'none';
     if (!_panCanBrowse && document.getElementById('pan-tab-drive').classList.contains('active')) switchPanMode('share');
-  } catch (_) {}
+  } catch (error) {
+    renderBaiduPanSettingsStatus({enabled:false, reason:error.message || '检测失败'});
+  }
 }
 function switchPanMode(mode) {
   if (mode === 'drive' && !_panCanBrowse) return;

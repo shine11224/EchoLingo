@@ -824,14 +824,12 @@ def _segments_punctuation_ratio(segments: list[dict]) -> float:
 
 
 def _transcribe_youtube_segments(url: str) -> list[dict]:
-    """Download audio and transcribe (paraformer/openai/groq/faster-whisper cascade)
+    """Download audio and transcribe (OpenAI/Groq/faster-whisper cascade)
     for punctuation-free auto-captions; whisper output carries sentence punctuation
     so downstream rule-based segmentation works."""
     from sources.baidu import _transcribe_with_optional_whisper
 
-    model = os.environ.get("YOUTUBE_TRANSCRIBE_MODEL", "").strip() or (
-        "paraformer" if os.environ.get("DASHSCOPE_API_KEY") else "large-v3"
-    )
+    model = os.environ.get("YOUTUBE_TRANSCRIBE_MODEL", "").strip() or "large-v3"
     audio_path = download_youtube_audio(url)
     segments = _transcribe_with_optional_whisper(
         Path(audio_path), model, output_dir=user_assets.current_output_root(OUTPUT_DIR)

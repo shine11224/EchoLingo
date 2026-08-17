@@ -18,7 +18,6 @@ playwright==1.59.0
 # AI, transcription and speech
 openai==2.34.0
 groq==1.2.0
-dashscope==1.26.7
 faster-whisper==1.2.1
 edge-tts==7.2.8
 eng-to-ipa==0.0.2

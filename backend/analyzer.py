@@ -119,7 +119,7 @@ def _save_trace(trace_dir: "Path | None", filename: str, data: object) -> None:
 class SentenceAnalyzer:
     def __init__(self, mode: str = "auto", model: str | None = None) -> None:
         self.mode = mode
-        self.model = model or _first_env("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-chat")
+        self.model = model or _first_env("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-v4-flash")
         api_key = _first_env("AI_API_KEY", "DEEPSEEK_API_KEY", "deepseek", "DEEPSEEK")
         base_url = _first_env("AI_BASE_URL", "base_url_deepseek", default="https://api.deepseek.com")
         self._has_key = bool(api_key)

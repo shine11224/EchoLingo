@@ -86,7 +86,7 @@ python backend/fastapi_server.py
 
 **Vocabulary** (home page tab): review cards stay context-first — rate yourself before revealing the meaning. Generate an AI memory story from today's words when you want narrative reinforcement, and export any time (Markdown / HTML / Anki).
 
-**Settings** (in-app): the settings page writes the same `.env` file — AI keys, Whisper model size and wordlists can all be changed without editing files by hand.
+**Settings** (in-app): the settings page writes the same `.env` file — AI provider presets, API keys, Baidu Drive setup, Whisper model size and wordlists can all be changed without editing files by hand.
 
 ## System Requirements
 
@@ -101,8 +101,9 @@ python backend/fastapi_server.py
 
 All settings live in `.env` (or the in-app Settings page, which writes the same file). Only `AI_API_KEY` is needed for AI features; everything else degrades gracefully:
 
-- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` — any OpenAI-compatible chat API (default: DeepSeek)
+- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` — any OpenAI Chat Completions-compatible API. The Settings page includes presets for DeepSeek Flash, Kimi Platform and Kimi Code.
 - `GROQ_API_KEY` — optional, fast cloud transcription with a **free daily tier**; get a key at [console.groq.com/keys](https://console.groq.com/keys) (local Whisper works without it)
+- Baidu Drive — every user authorizes their own account locally. Install `bdpan`, complete OAuth from Settings, then re-run the capability check; see `docs/BAIDU_PAN.md`.
 - Local translation — drop a Tencent HY-MT1.5 GGUF into `models/` plus llama.cpp's `llama-server` into `llama-cpp/`; the model is governed by the [Tencent HY Community License](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt) (not available in the EU/UK/South Korea), see `THIRD_PARTY_LICENSES.md`
 - Built-in dictionary — the ready-to-use [ECDICT](https://github.com/skywind3000/ECDICT) (MIT) SQLite database is bundled; `python backend/build_ecdict.py` is only needed when refreshing it; see `docs/DICTIONARIES.md`
 - Built-in wordlists — frequency/exam wordlists generated from ECDICT are bundled and automatically regenerated when needed; third-party wordlists (BNC/COCA, BSL, NAWL…) are not bundled, see `docs/WORDLISTS.md`
@@ -111,6 +112,17 @@ All settings live in `.env` (or the in-app Settings page, which writes the same 
 
 - `docs/WORDLISTS.md` — where to get wordlists and how to compile them
 - `docs/DICTIONARIES.md` — the built-in ECDICT dictionary
+- `docs/BAIDU_PAN.md` — per-user Baidu Drive installation, authorization and troubleshooting
+
+### OpenAI-compatible provider presets
+
+| Provider | Base URL | Model |
+| --- | --- | --- |
+| DeepSeek Flash | `https://api.deepseek.com` | `deepseek-v4-flash` |
+| Kimi Platform | `https://api.moonshot.cn/v1` | Choose a model ID available in your Platform console |
+| Kimi Code | `https://api.kimi.com/coding/v1` | `kimi-for-coding` |
+
+Kimi Platform and Kimi Code are separate services with different keys and billing. Do not mix a Kimi Platform key with the Kimi Code Base URL, or vice versa. Custom OpenAI-compatible gateways remain supported by entering their Base URL and model ID manually.
 
 ## License
 

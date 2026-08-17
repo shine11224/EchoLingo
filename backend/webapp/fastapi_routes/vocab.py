@@ -450,11 +450,7 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None), request: Re
         theme=data.theme or "（请根据词汇含义自动选择）",
     )
 
-    story_model = (
-        "deepseek-chat"
-        if "api.deepseek.com" in str(ai_config.AI_BASE_URL or "").lower()
-        else ai_config.AI_MODEL
-    )
+    story_model = ai_config.AI_MODEL
     try:
         resp = ai_config.client.chat.completions.create(
             model=story_model,
@@ -632,11 +628,7 @@ def story_chat(body: StoryChatBody, request: Request = None):
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
 
-    chat_model = (
-        "deepseek-chat"
-        if "api.deepseek.com" in str(ai_config.AI_BASE_URL or "").lower()
-        else ai_config.AI_MODEL
-    )
+    chat_model = ai_config.AI_MODEL
     try:
         resp = ai_config.client.chat.completions.create(
             model=chat_model,

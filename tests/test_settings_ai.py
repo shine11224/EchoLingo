@@ -1,6 +1,7 @@
-"""设置页 AI API 配置（含混元翻译 / 千问转录）端点的读写回环测试。"""
+"""设置页通用 AI / Groq / 混元配置端点的读写回环测试。"""
 import os
 import sys
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -12,11 +13,7 @@ def _client(tmp_path, monkeypatch):
 
     # 把可变配置导向临时目录，绝不碰真实 .env
     monkeypatch.setenv("ELT_CONFIG_DIR", str(tmp_path))
-    for key in (
-        "HY_TRANSLATE_API_KEY",
-        "HY_TRANSLATE_MODEL",
-        "DASHSCOPE_API_KEY",
-    ):
+    for key in ("HY_TRANSLATE_API_KEY", "HY_TRANSLATE_MODEL", "DASHSCOPE_API_KEY"):
         monkeypatch.delenv(key, raising=False)
 
     from fastapi_server import create_app
@@ -24,58 +21,94 @@ def _client(tmp_path, monkeypatch):
     return TestClient(create_app()), ai_config
 
 
-def test_get_settings_includes_hy_and_dashscope_fields(tmp_path, monkeypatch):
+def test_get_settings_includes_hy_but_not_removed_dashscope_field(tmp_path, monkeypatch):
     client, _ = _client(tmp_path, monkeypatch)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "must-not-leak")
     data = client.get("/api/settings/ai").json()
     assert "hy_translate_api_key" in data
     assert "hy_translate_model" in data
-    assert "dashscope_api_key" in data
-    # 未配置时模型名回退默认，key 为空
+    assert "dashscope_api_key" not in data
+    # 未配置时模型名回退默认
     assert data["hy_translate_model"] == "hy-mt2-plus"
-    assert data["dashscope_api_key"] == ""
 
 
-def test_save_roundtrip_persists_hy_and_dashscope(tmp_path, monkeypatch):
+def test_save_roundtrip_persists_hy_and_generic_provider(tmp_path, monkeypatch):
     client, ai_config = _client(tmp_path, monkeypatch)
     payload = {
         "api_key": "",
-        "base_url": "https://api.deepseek.com",
-        "model": "deepseek-chat",
+        "base_url": "https://api.kimi.com/coding/v1",
+        "model": "kimi-for-coding",
         "groq_api_key": "",
         "hy_translate_api_key": "hy-test-key",
         "hy_translate_model": "hy-mt2-pro",
-        "dashscope_api_key": "sk-dashscope-test",
     }
     resp = client.post("/api/settings/ai", json=payload)
     assert resp.json()["ok"] is True
 
-    # 运行时环境立即生效（混元/千问在调用处实时读 os.environ）
+    # 运行时环境立即生效
     assert os.environ["HY_TRANSLATE_API_KEY"] == "hy-test-key"
     assert os.environ["HY_TRANSLATE_MODEL"] == "hy-mt2-pro"
-    assert os.environ["DASHSCOPE_API_KEY"] == "sk-dashscope-test"
 
     # .env 持久化，GET 同源读回
     env_text = (tmp_path / ".env").read_text(encoding="utf-8")
     assert "HY_TRANSLATE_API_KEY=hy-test-key" in env_text
-    assert "DASHSCOPE_API_KEY=sk-dashscope-test" in env_text
+    assert "AI_BASE_URL=https://api.kimi.com/coding/v1" in env_text
+    assert "AI_MODEL=kimi-for-coding" in env_text
+    assert "DASHSCOPE_API_KEY" not in env_text
     data = client.get("/api/settings/ai").json()
     assert data["hy_translate_api_key"] == "hy-test-key"
     assert data["hy_translate_model"] == "hy-mt2-pro"
-    assert data["dashscope_api_key"] == "sk-dashscope-test"
+    assert data["base_url"] == "https://api.kimi.com/coding/v1"
+    assert data["model"] == "kimi-for-coding"
 
 
-def test_delete_hy_and_dashscope_fields(tmp_path, monkeypatch):
+def test_delete_hy_field_and_reject_removed_dashscope_field(tmp_path, monkeypatch):
     client, _ = _client(tmp_path, monkeypatch)
     client.post("/api/settings/ai", json={
         "hy_translate_api_key": "hy-x",
-        "dashscope_api_key": "sk-x",
     })
-    for field in ("hy_translate_api_key", "dashscope_api_key"):
-        resp = client.request("DELETE", "/api/settings/ai", json={"field": field})
-        assert resp.status_code == 200, field
-        assert resp.json()["ok"] is True
+    resp = client.request("DELETE", "/api/settings/ai", json={"field": "hy_translate_api_key"})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
     assert os.environ.get("HY_TRANSLATE_API_KEY", "") == ""
-    assert os.environ.get("DASHSCOPE_API_KEY", "") == ""
+
+    resp = client.request("DELETE", "/api/settings/ai", json={"field": "dashscope_api_key"})
+    assert resp.status_code == 400
 
     resp = client.request("DELETE", "/api/settings/ai", json={"field": "no_such"})
     assert resp.status_code == 400
+
+
+def test_delete_model_restores_flash_default(tmp_path, monkeypatch):
+    client, ai_config = _client(tmp_path, monkeypatch)
+    client.post("/api/settings/ai", json={"model": "custom-model"})
+    resp = client.request("DELETE", "/api/settings/ai", json={"field": "model"})
+    assert resp.status_code == 200
+    assert ai_config.AI_MODEL == "deepseek-v4-flash"
+
+
+def test_public_settings_ui_has_provider_and_baidu_presets_without_paraformer():
+    html = (Path(__file__).resolve().parents[1]
+            / "frontend" / "templates" / "index.html").read_text(encoding="utf-8")
+    assert 'value="deepseek">DeepSeek Flash' in html
+    assert 'value="kimi-platform">Kimi 开放平台' in html
+    assert 'value="kimi-code">Kimi Code 会员 API' in html
+    assert "https://api.kimi.com/coding/v1" in html
+    assert "kimi-for-coding" in html
+    assert 'id="baidu-pan-settings-guide"' in html
+    assert "bdpan login --accept-disclaimer --get-auth-url" in html
+    assert "支持 B站 / YouTube / 文章链接、百度网盘分享链接" not in html
+    assert 'placeholder="粘贴 B站 / YouTube / 网盘链接' not in html
+    assert 'value="paraformer"' not in html
+    assert 'id="dashscope-api-key"' not in html
+
+
+def test_paraformer_is_rejected_before_transcription(tmp_path):
+    from sources.baidu import _transcribe_with_optional_whisper
+
+    try:
+        _transcribe_with_optional_whisper(tmp_path / "missing.mp3", "paraformer")
+    except ValueError as exc:
+        assert "不支持的转录模型" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("removed Paraformer model was accepted")

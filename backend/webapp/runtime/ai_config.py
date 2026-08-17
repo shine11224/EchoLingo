@@ -36,7 +36,7 @@ AI_BASE_URL = (
     or os.environ.get("base_url_deepseek")
     or "https://api.deepseek.com"
 )
-AI_MODEL = os.environ.get("AI_MODEL") or "deepseek-chat"
+AI_MODEL = os.environ.get("AI_MODEL") or "deepseek-v4-flash"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 def _make_client() -> OpenAI:
@@ -86,7 +86,6 @@ def save_settings(
     groq_api_key: str,
     hy_translate_api_key: str = "",
     hy_translate_model: str = "",
-    dashscope_api_key: str = "",
 ) -> None:
     global AI_API_KEY, AI_BASE_URL, AI_MODEL, GROQ_API_KEY
     _write_env_updates({
@@ -96,17 +95,15 @@ def save_settings(
         "GROQ_API_KEY": groq_api_key,
         "HY_TRANSLATE_API_KEY": hy_translate_api_key,
         "HY_TRANSLATE_MODEL": hy_translate_model,
-        "DASHSCOPE_API_KEY": dashscope_api_key,
     })
     AI_API_KEY = api_key
     AI_BASE_URL = base_url
     AI_MODEL = model
     GROQ_API_KEY = groq_api_key
     os.environ["GROQ_API_KEY"] = groq_api_key
-    # 混元翻译与千问转录在调用处实时读 os.environ，无需重建 client
+    # 混元翻译在调用处实时读 os.environ，无需重建 client
     os.environ["HY_TRANSLATE_API_KEY"] = hy_translate_api_key
     os.environ["HY_TRANSLATE_MODEL"] = hy_translate_model
-    os.environ["DASHSCOPE_API_KEY"] = dashscope_api_key
     rebuild_openai_client()
 
 
@@ -115,11 +112,10 @@ def delete_setting(field: str) -> str | None:
     defaults = {
         "api_key": "",
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "groq_api_key": "",
         "hy_translate_api_key": "",
         "hy_translate_model": "",
-        "dashscope_api_key": "",
     }
     env_key_map = {
         "api_key": "AI_API_KEY",
@@ -128,7 +124,6 @@ def delete_setting(field: str) -> str | None:
         "groq_api_key": "GROQ_API_KEY",
         "hy_translate_api_key": "HY_TRANSLATE_API_KEY",
         "hy_translate_model": "HY_TRANSLATE_MODEL",
-        "dashscope_api_key": "DASHSCOPE_API_KEY",
     }
     if field not in defaults:
         return None
