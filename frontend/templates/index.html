@@ -2108,7 +2108,7 @@
   <div class="container">
     <div class="gen-panel">
       <h3>🛠️ 资源上传与管理</h3>
-      <p>自行上传词表和重点句式，定制你的个性化学习体验。</p>
+      <p>自行上传词表，定制你的个性化学习体验。</p>
       
       <div class="resource-section" style="margin-top: 24px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>📚 上传自定义词表</h4>
@@ -2121,7 +2121,7 @@
                  maxlength="10" style="max-width:220px;">
           <input type="file" id="wordlist-upload-input" accept=".txt,.csv" style="flex: 1;" onchange="resetExpandedWordlist()">
           <button type="button" id="wordlist-expand-button" onclick="expandSelectedWordlist()">扩展词形</button>
-          <button class="btn btn-primary" onclick="uploadResource('wordlist')">上传并编译</button>
+          <button class="btn btn-primary" onclick="uploadWordlistResource()">上传并编译</button>
         </div>
         <div id="wordlist-expand-preview" style="display:none;margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper);font-size:13px;line-height:1.7;"></div>
       </div>
@@ -2135,20 +2135,6 @@
           <div style="font-size:13px;color:var(--muted);">切换到学习资源时加载…</div>
         </div>
         <div id="wordlist-priority-row" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="resource-section" hidden aria-hidden="true" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
-        <h4>🔑 上传重点句式表</h4>
-        <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
-          推荐上传 <code>.csv</code> 或 <code>.xlsx</code> 表格，也兼容 <code>.json</code>。
-          表头需要包含
-          <code>id</code>、<code>name</code>、<code>template</code>、<code>triggers</code>、<code>explanation_cn</code>、<code>example</code>、<code>ielts_tip</code>。
-          <code>triggers</code> 是用于匹配原句的触发短语；多个触发短语用 <code>|</code> 或分号分隔。
-        </p>
-        <div class="url-row">
-          <input type="file" id="pattern-upload-input" accept=".csv,.xlsx,.json" style="flex: 1;">
-          <button class="btn btn-primary" onclick="uploadResource('pattern')">上传</button>
-        </div>
       </div>
 
       <div class="resource-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
@@ -2542,37 +2528,26 @@ function renderWordlistConfigUI() {
   priorityEl.appendChild(row);
 }
 
-function renderResourceItems(title, items, type) {
+function renderResourceItems(title, items) {
   const selected = new Set(selectedResourceWordlistKeys());
   const rows = (items || []).map(item => {
-    if (type === 'wordlist') {
-      const key = resourceWordlistKey(item);
-      const active = selected.has(key);
-      const color = wlHashColor(key);
-      return `
+    const key = resourceWordlistKey(item);
+    const active = selected.has(key);
+    const color = wlHashColor(key);
+    return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);">
       <button type="button" aria-pressed="${active}" onclick="toggleResourceWordlist('${esc(key)}')"
         style="padding:4px 12px;border-radius:14px;border:1.5px solid ${color};font-size:13px;cursor:pointer;${active ? `background:${color};color:#fff;` : `background:#fff;color:${color};`}">${esc(item.name || item.filename)}（${item.count || 0}）</button>
       <span style="font-size:12px;color:var(--muted);flex:1;min-width:0;">${Math.ceil((item.size || 0) / 1024)} KB${item.tag ? ` · 标签：${esc(item.tag)}` : ''}</span>
       <button type="button" class="text-link-btn" onclick="editWordlistResource('${esc(item.filename)}')">编辑</button>
-      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteResource('wordlist', '${esc(item.filename)}')">删除</button>
-    </div>`;
-    }
-    return `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);">
-      <div style="flex:1;min-width:0;">
-        <span style="font-weight:600;font-size:14px;">${esc(item.name || item.filename)}</span>
-        <span style="font-size:12px;color:var(--muted);">　${item.count || 0} 条 · ${Math.ceil((item.size || 0) / 1024)} KB</span>
-      </div>
-      <button type="button" class="text-link-btn" onclick="editPatternResource('${esc(item.filename)}')">编辑</button>
-      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteResource('pattern', '${esc(item.filename)}')">删除</button>
+      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteWordlistResource('${esc(item.filename)}')">删除</button>
     </div>`;
   }).join('');
   return `
     <section>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
         <h5 style="margin:0;font-size:13px;color:var(--muted);">${title}</h5>
-        ${type === 'wordlist' && items?.length ? '<div style="display:flex;gap:10px;"><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(true)">全部启用</button><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(false)">全部停用</button></div>' : ''}
+        ${items?.length ? '<div style="display:flex;gap:10px;"><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(true)">全部启用</button><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(false)">全部停用</button></div>' : ''}
       </div>
       ${rows || '<div style="font-size:13px;color:var(--muted);padding:10px 0;">暂无上传内容</div>'}
     </section>
@@ -2586,12 +2561,8 @@ async function loadResources() {
   try {
     const data = await fetch('/api/resources').then(r => r.json());
     window._uploadedWordlists = data.wordlists || [];
-    window._uploadedPatterns = data.patterns || [];
     syncResourceWordlistSelection(window._uploadedWordlists);
-    list.innerHTML = [
-      renderResourceItems('词表', data.wordlists || [], 'wordlist'),
-      renderResourceItems('句式表', data.patterns || [], 'pattern')
-    ].join('');
+    list.innerHTML = renderResourceItems('词表', data.wordlists || []);
     loadWordlistConfigUI();
   } catch (e) {
     list.innerHTML = `<div style="font-size:13px;color:var(--danger);">读取失败：${esc(e.message)}</div>`;
@@ -2630,42 +2601,10 @@ async function editWordlistResource(filename) {
   }
 }
 
-async function editPatternResource(filename) {
-  const item = (window._uploadedPatterns || []).find(x => x.filename === filename) || {};
-  const currentName = item.name || filename;
-  const name = await appPrompt('句式表名称', currentName || filename);
-  if (name === null) return;
-
+async function deleteWordlistResource(filename) {
+  if (!confirm(`确定删除词表「${filename}」吗？\n\n删除后学习页刷新才会使用最新资源。`)) return;
   const status = document.getElementById('resource-status');
-  if (status) {
-    status.style.color = 'var(--brand)';
-    status.textContent = '正在保存句式表信息...';
-  }
-  try {
-    const resp = await fetch(`/api/patterns/upload/${encodeURIComponent(filename)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim() })
-    });
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) throw new Error(data.error || '保存失败');
-    if (status) status.textContent = `已更新：${data.name}`;
-    await loadResources();
-  } catch (e) {
-    if (status) {
-      status.style.color = 'var(--danger)';
-      status.textContent = `保存失败：${e.message}`;
-    }
-  }
-}
-
-async function deleteResource(type, filename) {
-  const label = type === 'wordlist' ? '词表' : '句式表';
-  if (!confirm(`确定删除${label}「${filename}」吗？\n\n删除后学习页刷新才会使用最新资源。`)) return;
-  const status = document.getElementById('resource-status');
-  const endpoint = type === 'wordlist'
-    ? `/api/wordlists/upload/${encodeURIComponent(filename)}`
-    : `/api/patterns/upload/${encodeURIComponent(filename)}`;
+  const endpoint = `/api/wordlists/upload/${encodeURIComponent(filename)}`;
   if (status) {
     status.style.color = 'var(--brand)';
     status.textContent = '正在删除...';
@@ -2746,8 +2685,8 @@ async function expandSelectedWordlist() {
   }
 }
 
-async function uploadResource(type) {
-  const input = document.getElementById(type + '-upload-input');
+async function uploadWordlistResource() {
+  const input = document.getElementById('wordlist-upload-input');
   const status = document.getElementById('resource-status');
   if (!input || !input.files.length) {
     status.textContent = '请先选择文件';
@@ -2755,22 +2694,20 @@ async function uploadResource(type) {
   }
 
   const selectedFile = input.files[0];
-  const file = type === 'wordlist' && expandedWordlistSelection?.sourceName === selectedFile.name
+  const file = expandedWordlistSelection?.sourceName === selectedFile.name
     ? expandedWordlistSelection.file
     : selectedFile;
   const formData = new FormData();
   formData.append('file', file);
-  if (type === 'wordlist') {
-    const tagInput = document.getElementById('wordlist-tag-input');
-    const tag = tagInput?.value.trim() || '';
-    if (tag) {
-      formData.append('name', tag);
-      formData.append('tag', tag);
-    }
+  const tagInput = document.getElementById('wordlist-tag-input');
+  const tag = tagInput?.value.trim() || '';
+  if (tag) {
+    formData.append('name', tag);
+    formData.append('tag', tag);
   }
 
   status.textContent = '正在上传...';
-  const endpoint = type === 'wordlist' ? '/api/wordlists/upload' : '/api/patterns/upload';
+  const endpoint = '/api/wordlists/upload';
 
   try {
     const resp = await fetch(endpoint, {
@@ -2785,17 +2722,15 @@ async function uploadResource(type) {
         : '';
       status.textContent = `✅ ${file.name} 上传成功${countText}${invalidText}。刷新学习页后生效。`;
       input.value = '';
-      if (type === 'wordlist') {
-        if (result.key) {
-          const selected = selectedResourceWordlistKeys();
-          if (!selected.includes(result.key)) {
-            localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify([...selected, result.key]));
-          }
+      if (result.key) {
+        const selected = selectedResourceWordlistKeys();
+        if (!selected.includes(result.key)) {
+          localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify([...selected, result.key]));
         }
-        resetExpandedWordlist();
-        const tagInput = document.getElementById('wordlist-tag-input');
-        if (tagInput) tagInput.value = '';
       }
+      resetExpandedWordlist();
+      const tagInput = document.getElementById('wordlist-tag-input');
+      if (tagInput) tagInput.value = '';
       loadResources();
     } else {
       status.textContent = `❌ 失败: ${result.error || '未知错误'}`;

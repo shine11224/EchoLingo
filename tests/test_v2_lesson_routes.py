@@ -1454,7 +1454,7 @@ def test_wordlist_expansion_endpoint_returns_completed_result(monkeypatch):
     assert result["local_family_count"] == 1
     assert result["words"] == ["studied", "studies", "study", "studying"]
 
-def test_homepage_hides_pattern_upload_and_keeps_wordlist_expansion_optional():
+def test_homepage_removes_pattern_upload_and_keeps_wordlist_expansion_optional():
     from fastapi_server import create_app
 
     page = TestClient(create_app()).get("/")
@@ -1470,9 +1470,11 @@ def test_homepage_hides_pattern_upload_and_keeps_wordlist_expansion_optional():
     assert "setAllResourceWordlists(true)" in page.text
     assert "setAllResourceWordlists(false)" in page.text
     assert "KNOWN_USER_WORDLISTS_KEY" in page.text
-    pattern_heading = page.text.index("上传重点句式表")
-    hidden_section = page.text.rfind('class="resource-section" hidden aria-hidden="true"', 0, pattern_heading)
-    assert hidden_section >= 0
+    assert "上传重点句式表" not in page.text
+    assert "句式表" not in page.text
+    assert "pattern-upload-input" not in page.text
+    assert "/api/patterns/upload" not in page.text
+    assert "uploadWordlistResource()" in page.text
 
 
 def test_phase_b_sentence_can_be_deleted(tmp_path, monkeypatch):
