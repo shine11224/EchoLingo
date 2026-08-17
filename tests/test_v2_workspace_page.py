@@ -478,6 +478,7 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     assert '>⚙️ 设置</button>' in resp.text
     assert 'class="review-entry-grid"' in resp.text
     assert "词汇记忆工坊" in resp.text
+    assert "词汇本" not in resp.text
     assert "句子复习" in resp.text
     assert "今日任务" not in resp.text
     assert 'id="tab-sentences"' in resp.text
@@ -506,3 +507,16 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     assert 'id="user-media-whisper-model"' in resp.text
     assert "waitForTranslationReadiness" in resp.text
     assert "translation_ready" in resp.text
+
+
+def test_legacy_vocab_page_redirects_to_memory_workshop(tmp_path, monkeypatch):
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    client = TestClient(create_app())
+
+    resp = client.get("/vocab", follow_redirects=False)
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/#vocab"

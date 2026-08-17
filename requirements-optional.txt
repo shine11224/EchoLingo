@@ -1,0 +1,3 @@
+# Optional high-quality PDF layout recovery. This also installs PyTorch and is
+# intentionally kept out of the default environment because it adds ~2 GB.
+docling>=2,<3

@@ -48,13 +48,13 @@ python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
-python backend/build_ecdict.py   # one-time: builds the built-in ECDICT offline dictionary
+# ECDICT is bundled and ready to use; no separate dictionary build is needed.
 ```
 
 Optional — high-quality PDF reflow via [Docling](https://github.com/docling-project/docling) (better reading order for two-column/mixed-layout PDFs):
 
 ```bash
-pip install docling   # ~2GB incl. torch; layout models auto-download (~1GB) on first PDF import
+pip install -r requirements-optional.txt  # ~2GB incl. torch; models download on first use
 ```
 
 Without it, PDF import falls back to the built-in geometric text extraction. Set `ELT_DOCLING=off` to disable even when installed.
@@ -76,7 +76,7 @@ python backend/fastapi_server.py
 
 **First lesson**: paste a YouTube or Bilibili link on the home page and create a lesson. Short clips (2–10 min) work best for intensive study. Local files and article URLs work the same way.
 
-**Lesson page**: click a sentence to loop it; click a word to look it up and add it to your vocab book; use the AI panel for translation, grammar hints and Q&A about the current sentence.
+**Lesson page**: click a sentence to loop it; click a word to look it up and add it to the Vocabulary Workshop; use the AI panel for translation, grammar hints and Q&A about the current sentence.
 
 **Sentence library** (home page tab): every sentence you save lands here. Recommended daily flow:
 
@@ -94,7 +94,7 @@ python backend/fastapi_server.py
 - **Runtime** — Python 3.11+, ffmpeg on PATH
 - **RAM** — 8 GB minimum; 16 GB recommended when running local Whisper
 - **GPU (optional)** — an NVIDIA GPU with ≥6 GB VRAM makes large-v3 transcription several times faster; CPU-only works fine with the base/medium models, or set `GROQ_API_KEY` for fast cloud transcription
-- **Disk** — ~2 GB for the app, ~160 MB for the built-in ECDICT dictionary, plus 1–3 GB per Whisper model and lesson caches
+- **Disk** — ~2 GB for the app, ~90 MB for the bundled ECDICT dictionary, plus 1–3 GB per Whisper model and lesson caches
 - **Microphone** — needed for the spoken-retell feature; a modern browser (Chrome/Edge recommended)
 
 ## Configuration
@@ -104,8 +104,8 @@ All settings live in `.env` (or the in-app Settings page, which writes the same 
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` — any OpenAI-compatible chat API (default: DeepSeek)
 - `GROQ_API_KEY` — optional, fast cloud transcription with a **free daily tier**; get a key at [console.groq.com/keys](https://console.groq.com/keys) (local Whisper works without it)
 - Local translation — drop a Tencent HY-MT1.5 GGUF into `models/` plus llama.cpp's `llama-server` into `llama-cpp/`; the model is governed by the [Tencent HY Community License](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt) (not available in the EU/UK/South Korea), see `THIRD_PARTY_LICENSES.md`
-- Built-in dictionary — `python backend/build_ecdict.py` downloads [ECDICT](https://github.com/skywind3000/ECDICT) (MIT) once and compiles a local SQLite; see `docs/DICTIONARIES.md`
-- Built-in wordlists — `python backend/build_ecdict.py` also compiles frequency/exam wordlists (from ECDICT, MIT) used for highlighting; third-party wordlists (BNC/COCA, BSL, NAWL…) are not bundled, see `docs/WORDLISTS.md`
+- Built-in dictionary — the ready-to-use [ECDICT](https://github.com/skywind3000/ECDICT) (MIT) SQLite database is bundled; `python backend/build_ecdict.py` is only needed when refreshing it; see `docs/DICTIONARIES.md`
+- Built-in wordlists — frequency/exam wordlists generated from ECDICT are bundled and automatically regenerated when needed; third-party wordlists (BNC/COCA, BSL, NAWL…) are not bundled, see `docs/WORDLISTS.md`
 
 ## Documentation
 

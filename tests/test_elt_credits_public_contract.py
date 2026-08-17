@@ -1,6 +1,6 @@
 """elt_credits.js 公开库边界契约测试（Codex Task11 复审阻塞项修复）。
 
-背景：共享模板（index/workspace/intensive/lesson/vocab.html）直接调用
+背景：共享模板（index/workspace/intensive/lesson）直接调用
 `eltCredits.billableFetch`。若 elt_credits.js 被当作私有资产排除出公开库，
 公开库用户点击相关动作会抛 ReferenceError——404 不是无害失败。
 
@@ -30,8 +30,7 @@ SKILL_AGENTS = REPO / ".agents" / "skills" / "sync-to-public" / "SKILL.md"
 
 SHARED_TEMPLATES = [
     REPO / "frontend" / "templates" / name
-    for name in ("index.html", "workspace.html", "intensive.html",
-                 "lesson.html", "vocab.html")
+    for name in ("index.html", "workspace.html", "intensive.html", "lesson.html")
 ]
 
 

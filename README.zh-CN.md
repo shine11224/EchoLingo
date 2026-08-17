@@ -32,7 +32,7 @@
 - **交互式课程页**：听力 / 阅读双模式，逐句循环播放与精学，内置 ECDICT 离线词典查词，看课过程中生词、好句一键收藏
 - **AI 观看搭子**：AI 自动总结视频结构大纲，点击跳转对应片段；观看中随时向 AI 提问，自动带上当前句子语境
 - **句子库**：从课程或 AI 输出中收藏句子；隐藏原文精听；整句复述 + AI 四象限对比；句式练习由 AI 批改并给出改写 + 更地道表达（这些 AI 生成句也能再收藏）
-- **词汇系统**：内置词频与考试词表（牛津 3000、COCA 前 2000/5000、四六级、考研、雅思、托福、GRE，由 ECDICT 本地生成）、生词高亮、个人词汇本与按词频优先的复习生命周期、AI 记忆故事（支持对话提问）、导出（Markdown / HTML / Anki）
+- **词汇系统**：内置词频与考试词表（牛津 3000、COCA 前 2000/5000、四六级、考研、雅思、托福、GRE，由 ECDICT 本地生成）、生词高亮、词汇记忆工坊与按词频优先的复习生命周期、AI 记忆故事（支持对话提问）、导出（Markdown / HTML / Anki）
 - **本地优先**：课程、词汇数据库、缓存都在本机；AI 功能兼容任意 OpenAI 接口
 
 ## 快速开始
@@ -46,7 +46,7 @@ python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
-python backend/build_ecdict.py   # 一次性：构建内置 ECDICT 离线词典
+# ECDICT 已随仓库提供，无需再单独构建词典。
 ```
 
 配置 API key：
@@ -66,7 +66,7 @@ python backend/fastapi_server.py
 
 **第一课**：在首页粘贴 YouTube 或 B 站链接创建课程。精学建议选 2–10 分钟的短视频；本地文件和文章链接用法相同。
 
-**课程页**：点击句子循环播放；点击单词查词典并加入词汇本；AI 面板可以翻译、讲解语法、针对当前句子自由提问。
+**课程页**：点击句子循环播放；点击单词查词典并加入词汇记忆工坊；AI 面板可以翻译、讲解语法、针对当前句子自由提问。
 
 **句子库**（首页标签页）：你收藏的所有句子都在这里。推荐的每日流程：
 
@@ -84,7 +84,7 @@ python backend/fastapi_server.py
 - **运行时**：Python 3.11+，ffmpeg 加入 PATH
 - **内存**：最低 8 GB；本地跑 Whisper 推荐 16 GB
 - **显卡（可选）**：NVIDIA ≥6 GB 显存可让 large-v3 转写快数倍；纯 CPU 用 base/medium 模型也完全可用，或配置 `GROQ_API_KEY` 走云端转写
-- **磁盘**：应用约 2 GB，内置 ECDICT 词典约 160 MB，每个 Whisper 模型 1–3 GB，另有课程缓存
+- **磁盘**：应用约 2 GB，随仓库提供的 ECDICT 词典约 90 MB，每个 Whisper 模型 1–3 GB，另有课程缓存
 - **麦克风**：整句复述功能需要；推荐 Chrome / Edge 浏览器
 
 ## 配置说明
@@ -94,7 +94,7 @@ python backend/fastapi_server.py
 - `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：任意 OpenAI 兼容聊天接口（默认 DeepSeek）
 - `GROQ_API_KEY`：可选，云端快速转写，**每天有免费额度**；到 [console.groq.com/keys](https://console.groq.com/keys) 申请 key（没有它本地 Whisper 照常工作）
 - 本地翻译：把腾讯混元 HY-MT1.5 的 GGUF 放进 `models/`，llama.cpp 的 `llama-server` 放进 `llama-cpp/`；模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束（欧盟/英国/韩国不可用），详见 `THIRD_PARTY_LICENSES.md`
-- 内置词典：`python backend/build_ecdict.py` 一次性下载 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）并编译本地 SQLite；详见 `docs/DICTIONARIES.md`
+- 内置词典：随仓库提供可直接使用的 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）SQLite 数据库；只有主动更新词典时才需要运行 `python backend/build_ecdict.py`，详见 `docs/DICTIONARIES.md`
 - 第三方词表（BNC/COCA、BSL、NAWL…）不随仓库分发，下载与编译方法见 `docs/WORDLISTS.md`
 
 ## 文档

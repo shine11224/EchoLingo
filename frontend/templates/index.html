@@ -942,7 +942,7 @@
     }
 
     /* ────────────────────────────────────────────────
-       VOCAB TAB  (from vocab.html, unified palette)
+       VOCABULARY WORKSHOP
     ──────────────────────────────────────────────── */
     .today-panel {
       background: var(--surface); border-radius: var(--radius); padding: 20px 24px;
@@ -1947,7 +1947,7 @@
   <section id="vocab-story-view" class="workshop-view" hidden>
     <div class="today-panel" id="today-panel">
       <h2>记忆故事</h2>
-      <p class="subtle-copy">从词汇本指定最多 20 个词，生成一段可回读、可继续造句的记忆故事。</p>
+      <p class="subtle-copy">从词汇记忆工坊指定最多 20 个词，生成一段可回读、可继续造句的记忆故事。</p>
       <div class="gen-settings-card">
         <div class="gen-settings-title">生成设置</div>
         <div class="gen-settings-row">
@@ -5922,7 +5922,7 @@ async function generateVocabAnalysis(event, word) {
 
 async function deleteVocabWord(event, word) {
   event.stopPropagation();
-  if (!confirm(`从词汇本彻底删除「${word}」？`)) return;
+  if (!confirm(`从词汇记忆工坊彻底删除「${word}」？`)) return;
   const resp = await fetch(`/api/vocab-words/${encodeURIComponent(word)}`, { method: 'DELETE' });
   if (!resp.ok) { alert('删除失败，请重试'); return; }
   delete vocabData[word];
@@ -6368,7 +6368,7 @@ function removeStoryWord(word) {
 function addStoryWord(word) {
   const normalized = String(word || '').trim().toLowerCase();
   if (!normalized || !vocabData[normalized]) {
-    alert('请从当前词汇本中选择单词。');
+    alert('请从当前词汇记忆工坊中选择单词。');
     return false;
   }
   if (!_storyWordSet.has(normalized) && _storyWordSet.size >= STORY_WORD_LIMIT) {

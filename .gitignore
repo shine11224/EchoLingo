@@ -75,8 +75,9 @@ llama-cpp/
 models/
 server_*.log
 
-# ECDICT downloaded data (build via backend/build_ecdict.py)
+# ECDICT source data stays local; the ready-to-use database is distributed.
 resources/ecdict/*
+!resources/ecdict/ecdict.db
 !resources/ecdict/gloss_compact.db
 
 # Runtime user wordlists (uploaded/generated locally; never publish)

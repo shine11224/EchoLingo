@@ -48,8 +48,8 @@ https://github.com/rany2/edge-tts
 ## Built-in dictionary data (open license)
 
 - **ECDICT** — the default dictionary database, © skywind3000,
-  [MIT License](https://github.com/skywind3000/ECDICT). Not bundled in the repo;
-  each user builds it locally with `python backend/build_ecdict.py`.
+  [MIT License](https://github.com/skywind3000/ECDICT). EchoLingo bundles a
+  compiled SQLite copy at `resources/ecdict/ecdict.db` for offline use.
 
 ## Online services (user-configured, subject to their own terms)
 
@@ -120,5 +120,5 @@ model copy.
 
 - The video → transcript → AI-notes workflow was partly inspired by
   [BiliNote](https://github.com/JefferyHcool/BiliNote) (MIT License).
-- Dictionary data comes from the MIT-licensed ECDICT, built locally by each
-  user; see `docs/DICTIONARIES.md`.
+- Dictionary data comes from the MIT-licensed ECDICT and is distributed as a
+  compiled SQLite database; see `docs/DICTIONARIES.md`.

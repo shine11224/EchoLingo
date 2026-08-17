@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from webapp.runtime import ai_config
 
@@ -15,8 +16,9 @@ def index(request: Request):
 
 
 @router.get("/vocab")
-def vocab_page(request: Request):
-    return templates.TemplateResponse(request, "vocab.html")
+def vocab_page():
+    """Keep old bookmarks working while exposing one canonical vocab UI."""
+    return RedirectResponse(url="/#vocab", status_code=307)
 
 
 @router.get("/workspace/{lesson_id}")

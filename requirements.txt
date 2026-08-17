@@ -1,20 +1,31 @@
-jinja2
-requests
-beautifulsoup4
-yt-dlp>=2026.07.04
-yt-dlp-ejs
-youtube-transcript-api
-fastapi
-uvicorn[standard]
-python-multipart
-openai
-groq
-faster-whisper
-pdfplumber
-pypdfium2
-pytesseract
-openpyxl
-playwright
+# Web application and templates
+fastapi==0.136.3
+starlette==1.1.0
+pydantic==2.13.4
+uvicorn[standard]==0.48.0
+python-multipart==0.0.29
+jinja2==3.1.6
+
+# HTTP, sources and media acquisition
+requests==2.33.1
+certifi==2026.4.22
+beautifulsoup4==4.14.3
+yt-dlp==2026.7.4
+yt-dlp-ejs==0.8.0
+youtube-transcript-api==1.2.4
+playwright==1.59.0
+
+# AI, transcription and speech
+openai==2.34.0
+groq==1.2.0
+dashscope==1.26.7
+faster-whisper==1.2.1
 edge-tts==7.2.8
-dashscope>=1.20.0
-eng-to-ipa
+eng-to-ipa==0.0.2
+
+# Documents
+pdfplumber==0.11.9
+pypdfium2==5.8.0
+pytesseract==0.3.13
+openpyxl==3.1.5
+pywin32==312; sys_platform == "win32"

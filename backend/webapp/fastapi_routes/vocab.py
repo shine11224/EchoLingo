@@ -45,7 +45,7 @@ def _begin(request: Request, operation_type: str, **kwargs):
             credit_meter.OperationConflictError, ValueError) as exc:
         return None, _billing_error_response(exc)
 
-# GET /vocab (serve vocab.html) is intentionally left in Flask — template rendering
+# GET /vocab is a compatibility redirect to the homepage Vocabulary Workshop.
 # stays in Flask until a shared Jinja2 setup is added in a later phase.
 
 
