@@ -1682,7 +1682,7 @@
             </div>
           </div>
           <div id="pan-unconfigured" style="display:none;margin-top:8px;padding:10px;border:1px solid #eadfbd;background:#fbf7e9;border-radius:8px;font-size:12px;line-height:1.7;color:#75673d">
-            百度网盘尚未配置。公开版本机请先运行 <code>bdpan login --accept-disclaimer --get-auth-url</code>，浏览器授权后再运行 <code>bdpan login --accept-disclaimer --set-code &lt;32位授权码&gt;</code>；云端请联系管理员。<button type="button" class="ghost" onclick="initBaiduPanCard(true)" style="margin-left:8px">重新检测</button>
+            百度网盘尚未配置。请前往“学习资源 → 百度网盘配置”，一键安装官方工具并完成授权，无需运行命令或配置 PATH。<button type="button" class="ghost" onclick="initBaiduPanCard(true)" style="margin-left:8px">重新检测</button>
           </div>
           <div class="pan-task" id="pan-task" style="display:none"></div>
         </section>
@@ -2166,24 +2166,43 @@
       <div class="resource-section" id="baidu-pan-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>☁️ 百度网盘配置</h4>
         <p style="font-size:14px;color:var(--muted);margin-bottom:10px;">
-          网盘授权只保存在当前电脑，不随公开库同步。每位用户首次使用前都需要单独配置；配置完成后即可导入分享链接，并在“我的网盘”中选择文件。
+          网盘授权只保存在当前电脑，不随公开库同步。首次使用按下面提示一键安装并授权；完成后即可导入分享链接，并在“我的网盘”中选择文件。
         </p>
-        <ol style="font-size:13px;line-height:1.9;margin:0 0 10px 20px;padding:0;">
-          <li>按<a href="https://github.com/baidu-netdisk/bdpan-storage" target="_blank" rel="noopener">百度网盘官方工具说明</a>安装 <code>bdpan 3.8+</code>，确保终端可以运行 <code>bdpan --version</code>。</li>
-          <li>运行 <code>bdpan login --accept-disclaimer --get-auth-url</code>，在浏览器完成百度授权。</li>
-          <li>复制返回的 32 位授权码，运行 <code>bdpan login --accept-disclaimer --set-code &lt;授权码&gt;</code>。</li>
-        </ol>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">
-          若 <code>bdpan</code> 不在 PATH，可在 <code>.env</code> 中设置 <code>ELT_BAIDU_PAN_BIN=完整可执行文件路径</code>。应用只访问百度网盘的应用数据目录。
-        </p>
-        <button type="button" class="btn btn-sm" onclick="refreshBaiduPanSettingsGuide()">重新检测</button>
-        <span id="baidu-pan-settings-status" style="margin-left:10px;font-size:13px;color:var(--muted);">正在检测…</span>
+        <div id="baidu-pan-install-card" style="padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.8;">
+          <div><strong>安装来源：</strong><a id="baidu-pan-installer-source" href="https://github.com/baidu-netdisk/bdpan-storage" target="_blank" rel="noopener">百度网盘官方 bdpan-storage</a></div>
+          <div><strong>固定版本：</strong><code id="baidu-pan-installer-version">正在检测…</code></div>
+          <div><strong>适用平台：</strong><span id="baidu-pan-installer-platform">正在检测…</span></div>
+          <div><strong>安装位置：</strong><span id="baidu-pan-installer-location">官方用户级默认目录，应用自动检测</span></div>
+          <details style="margin-top:4px;color:var(--muted);">
+            <summary style="cursor:pointer;">查看下载地址与 SHA-256</summary>
+            <div style="word-break:break-all;margin-top:4px;">下载：<span id="baidu-pan-installer-url">—</span></div>
+            <div style="word-break:break-all;">SHA-256：<code id="baidu-pan-installer-sha">—</code></div>
+          </details>
+          <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;">
+            安全提示：安装会下载并运行上述百度官方安装器。应用会强制校验 SHA-256；只允许本机用户主动触发，失败时不会继续执行。网盘操作范围限制在应用数据目录 <code>/apps/bdpan/</code>。
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button type="button" class="btn btn-primary btn-sm" id="baidu-pan-install-btn" onclick="installBaiduPanAndAuthorize()" disabled>确认并安装</button>
+            <button type="button" class="btn btn-primary btn-sm" id="baidu-pan-auth-btn" onclick="startBaiduPanAuthorization()" style="display:none">开始授权</button>
+            <button type="button" class="btn btn-sm" onclick="refreshBaiduPanSettingsGuide()">重新检测</button>
+            <button type="button" class="btn btn-sm btn-danger" id="baidu-pan-logout-btn" onclick="logoutBaiduPanAuthorization()" style="display:none">解除授权</button>
+            <span id="baidu-pan-settings-status" style="font-size:13px;color:var(--muted);">正在检测…</span>
+          </div>
+          <div id="baidu-pan-auth-code-card" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+            <div style="margin-bottom:8px;">已打开百度授权页。完成授权后，复制页面返回的 32 位授权码粘贴到下方：</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input type="text" id="baidu-pan-auth-code" maxlength="32" autocomplete="off" spellcheck="false" placeholder="粘贴 32 位授权码" style="flex:1;min-width:260px;">
+              <button type="button" class="btn btn-primary btn-sm" id="baidu-pan-complete-btn" onclick="completeBaiduPanAuthorization()">完成授权</button>
+            </div>
+            <a id="baidu-pan-auth-link" href="#" target="_blank" rel="noopener" style="display:none;font-size:12px;margin-top:8px;">授权页没有打开？点此重新打开</a>
+          </div>
+        </div>
       </div>
 
       <div class="resource-section" id="ai-settings-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🤖 第三方 AI API 设置</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
-          配置兼容 OpenAI Chat Completions 协议的 API（DeepSeek、Kimi、Kimi Code、OpenAI 或本地 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
+          配置兼容 OpenAI Chat Completions 协议的 API（DeepSeek、千问、Kimi、Kimi Code、OpenAI 或本地 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
         </p>
         <div class="control-stack" style="max-width: 650px;">
           <div class="input-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -2191,6 +2210,7 @@
             <select id="ai-provider-preset" onchange="applyAiProviderPreset(this.value)" style="flex:1;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);">
               <option value="custom">自定义 OpenAI 兼容 API</option>
               <option value="deepseek">DeepSeek Flash</option>
+              <option value="qwen">千问 Flash（阿里云百炼）</option>
               <option value="kimi-platform">Kimi 开放平台</option>
               <option value="kimi-code">Kimi Code 会员 API</option>
             </select>
@@ -7417,6 +7437,11 @@ const _AI_PROVIDER_PRESETS = {
     model: 'deepseek-v4-flash',
     note: 'DeepSeek 官方接口，默认使用 deepseek-v4-flash。',
   },
+  qwen: {
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen3.6-flash',
+    note: '千问百炼 OpenAI 兼容接口：在下方通用 API Key 中填写百炼 Key，不再使用单独的“千问 Key”字段。',
+  },
   'kimi-platform': {
     baseUrl: 'https://api.moonshot.cn/v1',
     model: '',
@@ -7456,6 +7481,7 @@ function syncAiProviderPreset(baseUrl, model) {
   const normalized = String(baseUrl || '').replace(/\/$/, '').toLowerCase();
   let value = 'custom';
   if (normalized === 'https://api.deepseek.com' && model === 'deepseek-v4-flash') value = 'deepseek';
+  else if (normalized === 'https://dashscope.aliyuncs.com/compatible-mode/v1') value = 'qwen';
   else if (normalized === 'https://api.moonshot.cn/v1') value = 'kimi-platform';
   else if (normalized === 'https://api.kimi.com/coding/v1') value = 'kimi-code';
   const select = document.getElementById('ai-provider-preset');
@@ -7678,12 +7704,40 @@ async function refreshCreditBadge(summary) {
 // ── 百度网盘导入 ───────────────────────────────────────────
 let _baiduPanPoll = null;
 let _panPath = '', _panSelected = null, _panCanBrowse = false;
+let _baiduPanSettings = null;
 function renderBaiduPanSettingsStatus(data) {
   const status = document.getElementById('baidu-pan-settings-status');
   if (!status) return;
+  _baiduPanSettings = data.installer
+    ? data
+    : (_baiduPanSettings ? {..._baiduPanSettings, ...data} : data);
+  const installer = data.installer || null;
+  if (installer) {
+    const source = document.getElementById('baidu-pan-installer-source');
+    source.textContent = installer.source_name || '百度网盘官方 bdpan-storage';
+    source.href = installer.source_repo || 'https://github.com/baidu-netdisk/bdpan-storage';
+    document.getElementById('baidu-pan-installer-version').textContent = `bdpan ${installer.version}`;
+    document.getElementById('baidu-pan-installer-platform').textContent = installer.platform;
+    document.getElementById('baidu-pan-installer-location').textContent = installer.install_location;
+    document.getElementById('baidu-pan-installer-url').textContent = installer.download_url || '当前平台不支持';
+    document.getElementById('baidu-pan-installer-sha').textContent = installer.sha256 || '—';
+    const installBtn = document.getElementById('baidu-pan-install-btn');
+    installBtn.style.display = installer.installed ? 'none' : '';
+    installBtn.disabled = !installer.supported || installer.installed;
+    installBtn.textContent = installer.supported ? `确认并安装 bdpan ${installer.version}` : '当前平台暂不支持一键安装';
+    const authBtn = document.getElementById('baidu-pan-auth-btn');
+    authBtn.style.display = installer.installed && !data.enabled ? '' : 'none';
+    document.getElementById('baidu-pan-logout-btn').style.display = data.enabled ? '' : 'none';
+  }
   if (data.enabled) {
     status.style.color = '#15803d';
     status.textContent = `✓ 已配置${data.username ? `（${data.username}）` : ''}`;
+  } else if (installer && !installer.supported) {
+    status.style.color = 'var(--danger)';
+    status.textContent = `当前平台 ${installer.platform} 暂不支持一键安装`;
+  } else if (installer && installer.installed) {
+    status.style.color = '#a16207';
+    status.textContent = `✓ 已安装${installer.installed_version ? ` bdpan ${installer.installed_version}` : ' bdpan'}，等待授权`;
   } else {
     status.style.color = 'var(--danger)';
     status.textContent = `未就绪：${data.reason || '尚未完成授权'}`;
@@ -7695,7 +7749,116 @@ async function refreshBaiduPanSettingsGuide() {
     status.style.color = 'var(--muted)';
     status.textContent = '正在检测…';
   }
+  try {
+    const resp = await fetch('/api/settings/baidu-pan?refresh=true', {cache: 'no-store'});
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '检测失败');
+    renderBaiduPanSettingsStatus(data);
+  } catch (error) {
+    renderBaiduPanSettingsStatus({enabled:false, reason:error.message || '检测失败'});
+  }
   await initBaiduPanCard(true);
+}
+function prepareBaiduPanAuthWindow() {
+  const popup = window.open('about:blank', 'echolingo-baidu-auth');
+  if (popup) {
+    popup.document.title = 'EchoLingo 百度网盘授权';
+    popup.document.body.innerHTML = '<p style="font:16px system-ui;padding:24px">正在准备百度网盘授权，请稍候…</p>';
+  }
+  return popup;
+}
+async function installBaiduPanAndAuthorize() {
+  const installer = _baiduPanSettings?.installer;
+  if (!installer?.supported || installer.installed) return;
+  const btn = document.getElementById('baidu-pan-install-btn');
+  const status = document.getElementById('baidu-pan-settings-status');
+  const popup = prepareBaiduPanAuthWindow();
+  btn.disabled = true;
+  btn.textContent = '正在下载并校验…';
+  status.style.color = 'var(--muted)';
+  status.textContent = `正在安装 bdpan ${installer.version}，请勿关闭页面…`;
+  try {
+    const resp = await fetch('/api/settings/baidu-pan/install', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({version: installer.version, confirmed: true}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '安装失败');
+    status.style.color = '#15803d';
+    status.textContent = `✓ bdpan ${data.installed_version || installer.version} 安装完成，正在打开授权页…`;
+    await startBaiduPanAuthorization(popup);
+  } catch (error) {
+    if (popup && !popup.closed) popup.close();
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '安装失败';
+    btn.disabled = false;
+    btn.textContent = `确认并安装 bdpan ${installer.version}`;
+  }
+}
+async function startBaiduPanAuthorization(existingWindow=null) {
+  const popup = existingWindow || prepareBaiduPanAuthWindow();
+  const status = document.getElementById('baidu-pan-settings-status');
+  try {
+    const resp = await fetch('/api/settings/baidu-pan/auth-url', {method: 'POST'});
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '生成授权链接失败');
+    const link = document.getElementById('baidu-pan-auth-link');
+    link.href = data.authorization_url;
+    link.style.display = 'inline-block';
+    document.getElementById('baidu-pan-auth-code-card').style.display = '';
+    document.getElementById('baidu-pan-auth-code').focus();
+    if (popup && !popup.closed) popup.location.replace(data.authorization_url);
+    else window.open(data.authorization_url, '_blank', 'noopener');
+    status.style.color = '#a16207';
+    status.textContent = '等待粘贴授权码（授权链接约 10 分钟有效）';
+  } catch (error) {
+    if (popup && !popup.closed) popup.close();
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '生成授权链接失败';
+  }
+}
+async function completeBaiduPanAuthorization() {
+  const input = document.getElementById('baidu-pan-auth-code');
+  const code = input.value.trim();
+  const status = document.getElementById('baidu-pan-settings-status');
+  if (!/^[0-9a-fA-F]{32}$/.test(code)) {
+    status.style.color = 'var(--danger)';
+    status.textContent = '授权码应为 32 位字母或数字';
+    input.focus();
+    return;
+  }
+  const btn = document.getElementById('baidu-pan-complete-btn');
+  btn.disabled = true;
+  btn.textContent = '正在验证…';
+  try {
+    const resp = await fetch('/api/settings/baidu-pan/complete', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '授权失败');
+    input.value = '';
+    document.getElementById('baidu-pan-auth-code-card').style.display = 'none';
+    await refreshBaiduPanSettingsGuide();
+  } catch (error) {
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '授权失败';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '完成授权';
+  }
+}
+async function logoutBaiduPanAuthorization() {
+  const status = document.getElementById('baidu-pan-settings-status');
+  try {
+    const resp = await fetch('/api/settings/baidu-pan', {method: 'DELETE'});
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || '解除授权失败');
+    await refreshBaiduPanSettingsGuide();
+  } catch (error) {
+    status.style.color = 'var(--danger)';
+    status.textContent = error.message || '解除授权失败';
+  }
 }
 async function initBaiduPanCard(refresh=false) {
   try {
@@ -7936,6 +8099,7 @@ function pollBaiduPanImport(jobId) {
   }
 })();
 initBaiduPanCard();
+refreshBaiduPanSettingsGuide();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}
 function onUserMediaSelected() {

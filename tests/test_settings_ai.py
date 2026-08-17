@@ -91,16 +91,49 @@ def test_public_settings_ui_has_provider_and_baidu_presets_without_paraformer():
     html = (Path(__file__).resolve().parents[1]
             / "frontend" / "templates" / "index.html").read_text(encoding="utf-8")
     assert 'value="deepseek">DeepSeek Flash' in html
+    assert 'value="qwen">千问 Flash（阿里云百炼）' in html
     assert 'value="kimi-platform">Kimi 开放平台' in html
     assert 'value="kimi-code">Kimi Code 会员 API' in html
     assert "https://api.kimi.com/coding/v1" in html
     assert "kimi-for-coding" in html
+    assert "https://dashscope.aliyuncs.com/compatible-mode/v1" in html
+    assert "qwen3.6-flash" in html
     assert 'id="baidu-pan-settings-guide"' in html
-    assert "bdpan login --accept-disclaimer --get-auth-url" in html
+    assert 'id="baidu-pan-install-btn"' in html
+    assert 'id="baidu-pan-auth-code"' in html
+    assert "确认并安装 bdpan" in html
+    assert "--set-code <" not in html
     assert "支持 B站 / YouTube / 文章链接、百度网盘分享链接" not in html
     assert 'placeholder="粘贴 B站 / YouTube / 网盘链接' not in html
     assert 'value="paraformer"' not in html
     assert 'id="dashscope-api-key"' not in html
+
+
+def test_public_baidu_settings_exposes_installer_and_install_endpoint(tmp_path, monkeypatch):
+    client, _ = _client(tmp_path, monkeypatch)
+    from webapp.services import baidu_pan
+
+    monkeypatch.setattr(baidu_pan, "capability", lambda **kwargs: {
+        "enabled": False, "installed": False, "reason": "bdpan 未安装",
+    })
+    monkeypatch.setattr(baidu_pan, "installer_info", lambda: {
+        "supported": True, "version": "3.8.4", "installed": False,
+    })
+    data = client.get("/api/settings/baidu-pan?refresh=true").json()
+    assert data["can_manage_auth"] is True
+    assert data["installer"]["version"] == "3.8.4"
+
+    captured = {}
+    def fake_install(*, expected_version, confirmed):
+        captured.update(version=expected_version, confirmed=confirmed)
+        return {"ok": True, "installed_version": "3.8.4"}
+    monkeypatch.setattr(baidu_pan, "install_cli", fake_install)
+    resp = client.post("/api/settings/baidu-pan/install", json={
+        "version": "3.8.4", "confirmed": True,
+    })
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert captured == {"version": "3.8.4", "confirmed": True}
 
 
 def test_paraformer_is_rejected_before_transcription(tmp_path):

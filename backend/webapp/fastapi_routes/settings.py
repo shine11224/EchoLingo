@@ -1,6 +1,7 @@
 """Phase 7A native FastAPI settings endpoints migrated from Flask."""
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -98,21 +99,66 @@ async def delete_ai_settings(request: Request):
     return {"ok": True, "message": f"{field} 已清空"}
 
 
-# 百度授权设置仅存在于私有库账号页：公开版没有 account.html，不会暴露网页授权 UI。
+def _baidu_auth_check(request: Request):
+    """多用户模式限管理员；公开单用户模式只允许本机回环地址管理授权。"""
+    if multiuser_enabled():
+        return _admin_check(request)
+    host = str(request.client.host if request.client else "")
+    if host == "testclient":  # Starlette TestClient 的不可伪造客户端地址
+        return None
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return None
+    except ValueError:
+        pass
+    return JSONResponse({"detail": "Baidu Drive authorization is local-only"}, status_code=403)
+
+
+def _loopback_check(request: Request):
+    """安装本机可执行文件的接口永远只允许从本机访问。"""
+    host = str(request.client.host if request.client else "")
+    if host == "testclient":
+        return None
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return None
+    except ValueError:
+        pass
+    return JSONResponse({"detail": "bdpan installation is local-only"}, status_code=403)
+
+
+# 公开单用户模式提供本机网页授权；多用户模式仍仅管理员可管理。
 @router.get("/api/settings/baidu-pan")
 def get_baidu_pan_settings(request: Request, refresh: bool = False):
-    if not multiuser_enabled():
-        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if (deny := _baidu_auth_check(request)) is not None:
+        return deny
+    data = baidu_pan.capability(refresh=refresh)
+    data["can_manage_auth"] = True
+    data["installer"] = baidu_pan.installer_info()
+    return data
+
+
+@router.post("/api/settings/baidu-pan/install")
+async def install_baidu_pan(request: Request):
+    if (deny := _loopback_check(request)) is not None:
+        return deny
     if (deny := _admin_check(request)) is not None:
         return deny
-    return baidu_pan.capability(refresh=refresh)
+    data = await _parse_body(request)
+    try:
+        return baidu_pan.install_cli(
+            expected_version=str(data.get("version") or ""),
+            confirmed=data.get("confirmed") is True,
+        )
+    except baidu_pan.BaiduPanBusyError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+    except (ValueError, baidu_pan.BaiduPanError) as exc:
+        return JSONResponse({"detail": baidu_pan.friendly_message(exc)}, status_code=400)
 
 
 @router.post("/api/settings/baidu-pan/auth-url")
 def begin_baidu_pan_auth(request: Request):
-    if not multiuser_enabled():
-        return JSONResponse({"detail": "Not found"}, status_code=404)
-    if (deny := _admin_check(request)) is not None:
+    if (deny := _baidu_auth_check(request)) is not None:
         return deny
     try:
         return baidu_pan.begin_web_auth()
@@ -122,9 +168,7 @@ def begin_baidu_pan_auth(request: Request):
 
 @router.post("/api/settings/baidu-pan/complete")
 async def complete_baidu_pan_auth(request: Request):
-    if not multiuser_enabled():
-        return JSONResponse({"detail": "Not found"}, status_code=404)
-    if (deny := _admin_check(request)) is not None:
+    if (deny := _baidu_auth_check(request)) is not None:
         return deny
     data = await _parse_body(request)
     try:
@@ -135,9 +179,7 @@ async def complete_baidu_pan_auth(request: Request):
 
 @router.delete("/api/settings/baidu-pan")
 def delete_baidu_pan_auth(request: Request):
-    if not multiuser_enabled():
-        return JSONResponse({"detail": "Not found"}, status_code=404)
-    if (deny := _admin_check(request)) is not None:
+    if (deny := _baidu_auth_check(request)) is not None:
         return deny
     try:
         baidu_pan.logout_web_auth()
