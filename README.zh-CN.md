@@ -1,108 +1,229 @@
 # EchoLingo
 
-**English version → [README.md](README.md)**
+把你真正感兴趣的英文视频、音频和文章，整理成一套可以听懂、精读、练习和复习的个人课程。
 
-**本地优先、可自托管的英语学习工作台**：把自己的视频、播客、文章变成交互式课程——隐藏原文精听、整句复述 + AI 对比、句式提取复用 + AI 批改、词汇复习一站完成。本地 Whisper 转写、本地翻译、内置 ECDICT 离线词典，AI 兼容任意 OpenAI 接口（DeepSeek / OpenAI / Groq / Ollama…）。
+[English](README.md) · [安装与配置](#安装与配置) · [功能说明](#功能说明) · [项目文档](#项目文档)
 
-## 为什么是 EchoLingo
+> EchoLingo 是一个本地优先、面向个人学习的开源英语学习工具。它不会替你选择“标准教材”，而是尽量保留原始素材的声音、句子和上下文，再把 AI 用在整理、解释与反馈上。
 
-- **数据不出本机**：课程、词汇库、缓存全部存在你自己电脑上；无账号、无订阅
-- **真实语料，不是预制教材**：学你真正感兴趣的内容——YouTube、B 站、外刊文章、本地音视频都可以
-- **输入到输出的完整闭环**：隐藏原文精听 → 整句复述 + AI 对比 → 句式提取复用 + AI 批改 → 词汇记忆故事
-- **AI 可插拔**：任意 OpenAI 兼容接口随你换；转写、翻译、词典全部本地运行，离线也能用核心功能
+![EchoLingo 课程导入页](docs/screenshots/import-sources.png)
 
-## 界面预览
+## 为什么做这个工具
 
-| | |
-|---|---|
-| ![首页——把真实素材变成课程](docs/screenshots/home.png) | ![课程页——双语字幕、大纲、AI 伴学](docs/screenshots/lesson.png) |
-| ![句子库——整句复述 + AI 对比、句式练习](docs/screenshots/sentence-library.png) | ![词汇工坊——语境优先的复习卡](docs/screenshots/vocab.png) |
+我收藏过很多英文课程、YouTube / B 站视频和文章，但它们大多一直躺在网盘和收藏夹里。真正开始看时，我又很容易依赖一键翻译：内容似乎看懂了，声音仍然听不出来，想表达时也用不出来。
 
-## 它是怎么工作的
+EchoLingo 最开始只是一个很简单的想法：把自己感兴趣的英文内容，整理成可以逐句播放、对照字幕和反复听的课程。后来在开发和使用过程中，我逐渐把它整理成一条完整的学习路径：
 
-1. **创建课程**：粘贴 YouTube / B 站链接、文章 URL，或上传本地音视频、粘贴文本。系统自动抓取字幕或用本地 faster-whisper 转写，然后断句、翻译、标注音标和连读现象。
-2. **精学课程**：逐句循环播放；点击任意单词查看内置 ECDICT 离线词典释义；遇到好句子、生词一键收藏。
-3. **句子库复习**：默认隐藏原文，先听音自评"听懂 / 听不懂"；然后整句复述，AI 从信息完整度、遗漏点、语法、表达四个维度对比你的版本和原句；再提取可复用句式造句，AI 批改并给出参考改写和更地道的表达。
-4. **词汇复习**：按"不认识 → 模糊 → 认识 → 已掌握"的生命周期管理；可以生成 AI 记忆故事把当天的词编进 narrative 里，还能边读故事边和 AI 讨论；随时导出 Markdown / HTML / Anki。
+**选择感兴趣的素材 → 先听懂 → 在句子里学词 → 精读表达 → 复述与造句 → 回到语境中复习**
 
-## 功能一览
+这套流程背后有五个原则：
 
-- **多种来源**：YouTube、Bilibili、文章 URL、本地音视频、纯文本 / Markdown
-- **课程生成**：字幕抓取或本地 faster-whisper 转写、智能断句、翻译、音标标注、连读与口语分析
-- **交互式课程页**：听力 / 阅读双模式，逐句循环播放与精学，内置 ECDICT 离线词典查词，看课过程中生词、好句一键收藏
-- **AI 观看搭子**：AI 自动总结视频结构大纲，点击跳转对应片段；观看中随时向 AI 提问，自动带上当前句子语境
-- **句子库**：从课程或 AI 输出中收藏句子；隐藏原文精听；整句复述 + AI 四象限对比；句式练习由 AI 批改并给出改写 + 更地道表达（这些 AI 生成句也能再收藏）
-- **词汇系统**：内置词频与考试词表（牛津 3000、COCA 前 2000/5000、四六级、考研、雅思、托福、GRE，由 ECDICT 本地生成）、生词高亮、词汇记忆工坊与按词频优先的复习生命周期、AI 记忆故事（支持对话提问）、导出（Markdown / HTML / Anki）
-- **本地优先**：课程、词汇数据库、缓存都在本机；AI 功能兼容任意 OpenAI 接口
+1. **先听懂。** 先建立“声音 → 词 → 意义”的连接，再进入更细的词汇和句式分析。
+2. **Learn words in sentences。** 单词不脱离原句学习；查询、收藏和复习都尽量带回第一次遇见它的语境。
+3. **兴趣驱动。** 能长期学习的素材，往往是自己本来就想看的内容。
+4. **i + 1 难度递进。** 用字幕模式和自定义词表控制提示量，让每次学习只比当前水平多一步。
+5. **在使用中掌握语言。** 复述、情境造句和 AI 反馈用于把“看懂了”推进到“自己会用”。
 
-## 快速开始
+AI 在这里不是学习主体。它主要负责生成导航、解释词句、整理重点和提供反馈；原声、原句、你的判断和你的输出始终是学习的中心。
 
-需要 Python 3.11+ 和 [ffmpeg](https://ffmpeg.org/)（加入 PATH）。硬件要求见下方**配置要求**。
+## 学习流程
+
+### 1. 导入自己想学的内容
+
+支持 YouTube、Bilibili、文章链接、本地音视频、文本 / PDF，以及可选的百度网盘导入。课程生成过程会根据你的配置完成转写、翻译和词汇标记。
+
+### 2. 先把内容听懂
+
+Listening 模式支持逐句播放、倍速、循环和句子收藏，并提供盲听、中文字幕、英文字幕、中英对照、英文字幕 + 生词注释等显示方式。推荐顺序是先盲听，再用中文确认意思，随后回到英文找出没有听出来的词和表达；你也可以按自己的习惯自由切换。
+
+![Listening 学习页](docs/screenshots/listening-workspace.png)
+
+### 3. 回到完整语境阅读
+
+Reading 模式保留整篇字幕文稿。你可以点击任意句子播放原声，连续播放一段内容，查询单词，收藏句子，并看到已启用词表的高亮与释义。
+
+![Reading 模式与词汇高亮](docs/screenshots/reading-mode.png)
+
+### 4. 精学词汇、发音和句式
+
+精读页按句子展开音标、重读与连读、重点词汇、口语表达和句式结构。AI 可以从素材中筛选值得学习的词与表达，但分析结果仍应结合原文和词典判断。
+
+![逐句精读与 Sentence Workshop](docs/screenshots/intensive-study.png)
+
+### 5. 用复述和造句完成输出
+
+收藏的句子可以进入整句复述：先听原声、隐藏原文、凭记忆复述，再让 AI 对比遗漏和误听。重点句式还可以生成情境造句练习，获得纠错、改写和更自然表达的建议。
+
+<p>
+  <img src="docs/screenshots/retelling-practice.png" alt="整句复述与 AI 对比" width="49%">
+  <img src="docs/screenshots/pattern-practice.png" alt="句式复用与 AI 批改" width="49%">
+</p>
+
+### 6. 在原句中复习词汇
+
+重点词可以进入词汇记忆工坊，按掌握程度、词频、考试标签和自定义标签筛选。每个词都保留素材中的原句与原声，也可以继续展开词卡或进行情境造句。你还可以选择多个词生成一段记忆故事，把孤立词汇重新放回可理解的上下文中。
+
+<p>
+  <img src="docs/screenshots/vocabulary-workshop.png" alt="词汇记忆工坊" width="49%">
+  <img src="docs/screenshots/vocabulary-story.png" alt="词汇记忆故事" width="49%">
+</p>
+
+## 功能说明
+
+### 素材与课程
+
+- YouTube、Bilibili 和普通文章链接导入
+- 本地音频、视频、TXT / Markdown、DOCX 和 PDF 导入
+- 百度网盘分享链接或应用数据目录导入（可选）
+- 文本素材可生成朗读音频（TTS）
+- 本地 Whisper 或 Groq 云端转写
+- 本地 HY-MT 或已配置接口生成中文字幕
+
+### 听力与阅读
+
+- 盲听、中文字幕、英文字幕、中英对照、英文 + 生词注释
+- 逐句播放、整段连续播放、循环和倍速
+- 点击字幕单词查询，句子收藏与标签
+- AI 内容大纲与时间导航
+- 选中字幕向 AI 提问，并导出问答记录
+
+### 词汇与句式
+
+- 内置 ECDICT：释义、音标、词频和词形变化，无需 API Key
+- 内置常用词、四六级、考研、雅思、托福、GRE、COCA 等词表
+- 上传 `.txt` / `.csv` 自定义词表，可选择自动扩展常见词形
+- 词表命中后在之后的课程中自动高亮并显示释义
+- 重点词卡、近义词、搭配、例句和素材内例句筛选
+- 句式结构、口语表达和发音现象分析
+
+### 输出与复习
+
+- 整句听力复述与 AI 对比
+- 情境造句、句式复用、AI 批改和参考改写
+- 词汇熟悉度、掌握状态、标签和词频筛选
+- 多词记忆故事、朗读和继续造句
+- 导出 Markdown、HTML、CSV / JSON / TXT，以及 Anki 词汇文件
+
+## 安装与配置
+
+### 运行环境
+
+- Python 3.11
+- Git
+- [FFmpeg](https://ffmpeg.org/download.html)（音视频处理必需；安装后确保 `ffmpeg` 在 `PATH` 中）
+- 现代浏览器
+- 可选：NVIDIA GPU。没有 GPU 也可以使用较小的本地 Whisper 模型，或配置 Groq 转写。
+
+### 1. 克隆并安装依赖
 
 ```bash
 git clone https://github.com/shine11224/EchoLingo.git
 cd EchoLingo
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS / Linux
-pip install -r requirements.txt
-# ECDICT 已随仓库提供，无需再单独构建词典。
 ```
 
-如需 AI 问答、批改等在线 AI 功能，再配置通用 API Key；本地中文字幕翻译不需要 Key：
+Windows PowerShell：
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+macOS / Linux：
 
 ```bash
-cp .env.example .env          # 然后编辑 .env，只填 AI_API_KEY 就能跑
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-启动：
+### 2. 配置 AI 接口
+
+编辑 `.env`，或启动后在“设置”页填写同样的内容：
+
+```dotenv
+AI_API_KEY=your_key
+AI_BASE_URL=https://api.deepseek.com
+AI_MODEL=deepseek-v4-flash
+
+# 可选：Groq 云端 Whisper 转写
+GROQ_API_KEY=
+
+# 可选：本地 MDX 词典目录；ECDICT 已内置，无需配置
+DICT_DIR=
+```
+
+`AI_API_KEY` 用于大纲、AI 伴读、词句分析、批改和记忆故事等功能。EchoLingo 通过 OpenAI Chat Completions 兼容接口调用模型；设置页提供 DeepSeek、Qwen、Kimi Platform 和 Kimi Code 的预设，也可以手动填写其他兼容服务的 Base URL 与模型 ID。
+
+> 模型名和可用区域可能随服务商调整，请以你所使用平台的控制台为准。Kimi Platform 与 Kimi Code 使用不同的地址和 Key，不要混用。
+
+### 3. 启动
 
 ```bash
 python backend/fastapi_server.py
-# 浏览器打开 http://localhost:5173
 ```
 
-## 使用指南
+浏览器打开 [http://localhost:5173](http://localhost:5173)。首次使用建议先进入“设置”，确认 AI、转写和翻译三项状态。
 
-**第一课**：在首页粘贴 YouTube 或 B 站链接创建课程。精学建议选 2–10 分钟的短视频；本地文件和文章链接用法相同。
+## 可选组件
 
-**课程页**：点击句子循环播放；点击单词查词典并加入词汇记忆工坊；AI 面板可以翻译、讲解语法、针对当前句子自由提问。
+### 本地 Whisper 转写
 
-**句子库**（首页标签页）：你收藏的所有句子都在这里。推荐的每日流程：
+在“设置 → 本地 Whisper”中选择并下载模型。模型越大通常精度越高，也会占用更多磁盘、内存和计算时间。没有本地模型时，可以填写 `GROQ_API_KEY` 使用云端 Whisper 转写。
 
-1. **精听**：原文默认隐藏，先播放音频，自评"听懂 / 听不懂"，系统据此排序复习优先级
-2. **复述**：点开 🎙 复述，凭记忆说出整句（也可以打字），AI 对比分析你的复述与原句的差异
-3. **句式练习**：提取这句的可复用句式，自由造句（或让 AI 生成中文情景提示），提交后 AI 批改，给出参考改写和更地道的表达——改写得好可以顺手收藏
+### 本地中文字幕翻译
 
-**词汇**（首页标签页）：复习卡先给语境、自评后才显示释义，避免"看着眼熟"的假熟练。想要叙事强化时，用当天的词生成 AI 记忆故事；随时导出（Markdown / HTML / Anki）。
+Windows x64 可在设置页安装 Tencent HY-MT1.5 与配套的 llama.cpp 运行时。安装前会显示来源、固定版本和 SHA-256，安装完成后可以在本机生成中文字幕。该模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束，并有地区限制；完整说明见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
 
-**设置**（应用内）：Windows x64 用户可点击“同意许可并一键安装”，自动从腾讯和 llama.cpp 官方来源下载、校验并安装约 1.08 GB 的 HY-MT1.5 本地翻译组件；完成后不填混元 Key 也能生成中文字幕。设置页也会自动检测 base / medium / large-v3，可按需一键下载；这些本地 Whisper 选项只在公开单机版显示，云端部署不显示也不下载。AI key、词典目录、词表启停也都可以在页面上改，不用手动编辑文件。
+如果没有安装本地翻译组件，翻译需要使用已配置的翻译 / AI 接口。macOS 与 Linux 暂不提供同样的一键安装流程，可按 llama.cpp 与 HY-MT 的官方说明手动配置。
 
-## 配置要求
+### PDF 深度解析
 
-- **系统**：Windows 10/11、macOS 12+ 或 Linux
-- **运行时**：Python 3.11+，ffmpeg 加入 PATH
-- **内存**：最低 8 GB；本地跑 Whisper 推荐 16 GB
-- **显卡（可选）**：NVIDIA ≥6 GB 显存可让 large-v3 转写快数倍；纯 CPU 用 base/medium 模型也完全可用，或配置 `GROQ_API_KEY` 走云端转写
-- **磁盘**：应用约 2 GB，随仓库提供的 ECDICT 词典约 90 MB，本地翻译模型约 1.06 GB，每个 Whisper 模型 1–3 GB，另有课程缓存
-- **麦克风**：整句复述功能需要；推荐 Chrome / Edge 浏览器
+基础 PDF 文本提取已包含在默认依赖中。若需要更复杂的 PDF 解析，可选装 Docling：
 
-## 配置说明
+```bash
+pip install "docling>=2,<3"
+```
 
-所有配置都在 `.env`（或应用内设置页，两者等价）。只有 `AI_API_KEY` 是 AI 功能必需的，其余都有降级方案：
+设置 `ELT_DOCLING=off` 可以强制关闭 Docling，继续使用内置文本提取。
 
-- `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`：任意 OpenAI 兼容聊天接口（默认 DeepSeek）
-- `GROQ_API_KEY`：可选，云端快速转写，**每天有免费额度**；到 [console.groq.com/keys](https://console.groq.com/keys) 申请 key（没有它本地 Whisper 照常工作）
-- 本地转录：公开单机版可在设置页检测并下载 base（约 150 MB）、medium（约 1.5 GB）或 large-v3（约 3 GB）；未配置 Groq Key 时界面默认选择 base。模型固定到 Systran 官方 Hugging Face revision，下载到项目 `.cache/huggingface/hub`
-- 本地翻译：Windows x64 在设置页一键安装腾讯 HY-MT1.5 Q4_K_M 与 llama.cpp b10068，安装器从官方固定版本下载并校验 SHA-256；不配置 `HY_TRANSLATE_API_KEY` 时自动使用本地模型。模型受[腾讯混元社区许可](https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt)约束（欧盟/英国/韩国不可用），详见 `THIRD_PARTY_LICENSES.md`。macOS / Linux 可按官方 llama.cpp 文档安装 `llama-server` 并把同一 GGUF 放进 `models/`
-- 内置词典：随仓库提供可直接使用的 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）SQLite 数据库；只有主动更新词典时才需要运行 `python backend/build_ecdict.py`，详见 `docs/DICTIONARIES.md`
-- 第三方词表（BNC/COCA、BSL、NAWL…）不随仓库分发，下载与编译方法见 `docs/WORDLISTS.md`
+### 百度网盘
 
-## 文档
+百度网盘是可选能力。进入“设置 → 百度网盘”，确认安装官方 `bdpan` 组件并完成本地 OAuth 授权。EchoLingo 不读取百度密码或浏览器 Cookie，授权信息由 `bdpan` 保存在当前电脑；访问范围限制在 `/apps/bdpan/`。详细步骤见 [docs/BAIDU_PAN.md](docs/BAIDU_PAN.md)。
 
-- `docs/WORDLISTS.md`——词表来源与编译方法
-- `docs/DICTIONARIES.md`——内置 ECDICT 词典
+## 配置速查
+
+| 配置 | 是否必需 | 用途 |
+| --- | --- | --- |
+| `AI_API_KEY` | AI 功能必需 | 大纲、问答、分析、批改、故事生成 |
+| `AI_BASE_URL` | AI 功能必需 | OpenAI 兼容接口地址 |
+| `AI_MODEL` | AI 功能必需 | 模型 ID |
+| `GROQ_API_KEY` | 可选 | Groq 云端 Whisper 转写 |
+| `HY_TRANSLATE_API_KEY` | 可选 | 独立的 HY 翻译接口；可在设置页保存 |
+| `HY_TRANSLATE_MODEL` | 可选 | HY 翻译模型名 |
+| `DICT_DIR` | 可选 | 额外的本地 MDX 词典目录 |
+| `ELT_DOCLING=off` | 可选 | 禁用已安装的 Docling |
+
+没有 AI Key 时，内置 ECDICT、词表、基础课程浏览和本地学习数据仍可使用；AI 大纲、问答、深度分析、批改与故事生成不可用。转写和翻译是否需要网络，取决于你选择本地组件还是云端服务。
+
+## 数据与使用边界
+
+- 当前公开版是单机、单用户、本地运行的学习工具，不包含账号系统、订阅、多人协作或云端同步。
+- 课程、收藏和学习记录保存在运行 EchoLingo 的电脑上；第三方 AI / 转写接口会接收完成请求所需的文本或音频，请自行了解所选服务商的隐私政策。
+- YouTube、Bilibili、百度网盘等第三方来源可能因登录、Cookie、地区或平台策略变化而导入失败。
+- AI 生成的词义、句式分析和批改可能出错；重要内容请结合原文和词典复核。
+- 请只处理你有权使用的内容，并遵守素材来源平台的条款与版权要求。
+
+## 项目文档
+
+- [词典说明](docs/DICTIONARIES.md)
+- [词表说明](docs/WORDLISTS.md)
+- [百度网盘配置](docs/BAIDU_PAN.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+- [第三方许可证](THIRD_PARTY_LICENSES.md)
 
 ## 许可证
 
-[PolyForm Noncommercial 1.0.0](LICENSE)——个人、教育和非营利使用免费；商业使用需另行获得作者授权。第三方组件遵循其各自许可证，详见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
+[PolyForm Noncommercial 1.0.0](LICENSE)：个人、教育与非营利使用免费；商业使用需要另行获得作者授权。第三方组件继续遵循各自的许可证，详见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
