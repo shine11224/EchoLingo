@@ -155,7 +155,7 @@ def _v2_lesson_sentence_item(lesson: dict, sentence: str, cache: dict) -> dict |
     lesson_id = int(lesson["id"])
     if lesson_id not in cache:
         ranges = db.get_v2_phase_b_sentences(lesson_id)
-        if not ranges:
+        if str(lesson.get("source_type") or "") == "reading_text" and not ranges:
             from webapp.services.v2_intensive import reading_sentence_key
             ranges = [
                 {
@@ -166,6 +166,21 @@ def _v2_lesson_sentence_item(lesson: dict, sentence: str, cache: dict) -> dict |
                 }
                 for block in db.get_v2_reading_blocks(lesson_id)
                 for sentence_index, sentence_item in enumerate(block.get("sentences") or [])
+            ]
+        elif str(lesson.get("source_type") or "") != "reading_text":
+            from webapp.services.mfa_alignment import apply_aligned_unit_times
+            from webapp.services.v2_translation import build_translation_units
+
+            subtitle_units = apply_aligned_unit_times(
+                lesson_id,
+                build_translation_units(db.get_v2_subtitle_segments(lesson_id)),
+            )
+            ranges = [
+                *ranges,
+                *(
+                    {**item, "segment_index": int(item.get("index", index))}
+                    for index, item in enumerate(subtitle_units)
+                ),
             ]
         cache[lesson_id] = ranges
     return _matching_context_item(cache[lesson_id], sentence)
@@ -451,15 +466,21 @@ def vocab_story(body: Optional[VocabStoryBody] = Body(default=None), request: Re
     )
 
     story_model = ai_config.AI_MODEL
+    completion_kwargs = {
+        "model": story_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 2500,
+        "timeout": 90,
+        "response_format": {"type": "json_object"},
+    }
+    if (
+        "api.deepseek.com" in str(ai_config.AI_BASE_URL or "").lower()
+        and str(story_model).lower().startswith("deepseek-v4")
+    ):
+        completion_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     try:
-        resp = ai_config.client.chat.completions.create(
-            model=story_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=2500,
-            timeout=90,
-            response_format={"type": "json_object"},
-        )
+        resp = ai_config.client.chat.completions.create(**completion_kwargs)
     except Exception as exc:
         # AI/网络异常：释放预授权
         credit_meter.release_sync(op, reason=f"vocab_story request failed: {exc}"[:500])

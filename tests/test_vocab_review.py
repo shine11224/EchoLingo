@@ -47,6 +47,7 @@ def test_vocab_story_uses_configured_model_on_official_deepseek(tmp_path, monkey
     assert captured["model"] == "deepseek-v4-flash"
     assert captured["max_tokens"] >= 2500
     assert captured["timeout"] <= 90
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
     assert response.json()["story"].startswith("A curator")
     history = client.get("/api/vocab-story/history")
     assert history.status_code == 200
@@ -211,6 +212,33 @@ def test_vocab_log_attaches_translation_and_lesson_link_for_v2_context(tmp_path,
     assert context["translation"] == "我们需要在这个项目中权衡质量与速度。"
     assert context["lesson_id"] == int(lesson["id"])
     assert context["segment_index"] == 3
+    assert context["audio"] == {
+        "kind": "youtube", "video_id": "abc123def45", "start": 12.0, "end": 16.5,
+    }
+
+
+def test_vocab_log_attaches_youtube_audio_from_unsaved_subtitle_sentence(tmp_path, monkeypatch):
+    """精读词汇即使未收藏整句，也应从课程字幕句单元回填原音时间轴。"""
+    import db
+    from fastapi_server import create_app
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
+    db.init_db()
+    lesson = db.create_v2_lesson(
+        "youtube", "https://youtu.be/abc123def45", "abc123def45", "Side Hustle", 60)
+    sentence = "You can make substantially more than you could have made with your degree."
+    db.replace_v2_subtitle_segments(int(lesson["id"]), [
+        {"index": 9, "start": 12.0, "end": 16.5, "text": sentence},
+    ])
+    db.activate_word_review("substantially", source="intensive", lesson_id=int(lesson["id"]))
+    db.add_context("substantially", "Side Hustle", sentence)
+
+    response = TestClient(create_app()).get("/vocab-log")
+
+    assert response.status_code == 200
+    context = response.json()["substantially"]["contexts"][0]
+    assert context["lesson_id"] == int(lesson["id"])
+    assert context["segment_index"] == 0
     assert context["audio"] == {
         "kind": "youtube", "video_id": "abc123def45", "start": 12.0, "end": 16.5,
     }

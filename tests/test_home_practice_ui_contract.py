@@ -343,6 +343,17 @@ def test_practice_cards_can_open_cached_attempt_history_and_review_errors():
     assert "练习记录只保存用户实际提交的造句" in INDEX_HTML
 
 
+def test_link_import_copy_only_describes_video_links_and_local_media():
+    card_intro = INDEX_HTML.split('id="link-source-card"', 1)[1].split(
+        '<div class="course-settings">', 1
+    )[0]
+    assert "支持 B站 / YouTube 链接，也可以选择本地音视频文件。" in card_intro
+    assert 'placeholder="粘贴 B站 / YouTube 链接，或选择本地音视频文件…"' in card_intro
+    assert "文章链接" not in card_intro
+    assert "PDF" not in card_intro
+    assert "网盘" not in card_intro
+
+
 def test_inline_javascript_is_syntax_valid_when_node_is_available():
     node = shutil.which("node")
     if not node:
