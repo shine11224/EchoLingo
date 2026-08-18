@@ -1473,6 +1473,7 @@
     .sentence-workshop-shell + .sentence-workshop-shell { margin-top: -1px; border-top-left-radius: 0; border-top-right-radius: 0; }
     .sentence-workshop-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
     .sentence-workshop-head h3 { margin: 2px 0 0; font: 700 20px/1.35 Georgia, "Noto Serif SC", serif; }
+    .sentence-analysis-trigger { flex: 0 0 auto; white-space: nowrap; }
     .pattern-reuse-strip { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 11px 12px; border-left: 3px solid var(--accent); background: #fffaf0; }
     .pattern-reuse-strip[hidden] { display: none; }
     .pattern-reuse-strip code { flex: 1; white-space: normal; color: var(--brand-dark); font-weight: 750; }
@@ -4528,7 +4529,6 @@ function renderSentenceReviewList() {
                 ${links.map((link,index) => `<option value="${index}" ${index === selectedSourceIndex ? 'selected' : ''}>${esc(link.title)}</option>`).join('')}
               </select></label>` : ''}
             ${firstLink ? `<a class="sentence-row-link" href="/workspace/${firstLink.lesson_id}/intensive?sentence_key=${encodeURIComponent(firstLink.segment_index)}">← 返回原课程</a>` : ''}
-            <button type="button" onclick="openSentenceAnalysis(${sentence.id})">${oralAnalysis ? '查看句式分析与练习' : 'AI 句式分析'}</button>
             <button type="button" onclick="toggleSentenceArchive(${sentence.id},${sentence.archived ? 'false' : 'true'})">${sentence.archived ? '恢复句子' : '归档句子'}</button>
           </div>
         </div>
@@ -4830,7 +4830,6 @@ function sentenceOralAnalysis(sentence) {
 
 function renderSentenceAnalysisPanel(sentence, errorMessage='') {
   const data = sentenceOralAnalysis(sentence) || {};
-  const pattern = sentencePatternTemplate(sentence) || String(data.template || '').trim();
   return `<section class="sentence-workshop-shell">
     <div class="sentence-workshop-head">
       <div><div class="detail-label">AI 句式分析</div><h3>${esc(data.pattern_name || '可复用句式')}</h3></div>
@@ -4843,7 +4842,6 @@ function renderSentenceAnalysisPanel(sentence, errorMessage='') {
       <div class="sentence-analysis-item"><span class="sentence-analysis-label">C · 雅思复用</span>${esc(data.ielts_reuse || 'AI 将给出适合迁移的场景。')}</div>
       <div class="sentence-analysis-item"><span class="sentence-analysis-label">D · 参考迁移</span>${data.template_example ? esc(data.template_example) : '生成后显示参考表达。'}</div>
     </div>
-    ${pattern ? `<div class="pattern-reuse-strip"><strong>复用句式</strong><code>${esc(pattern)}</code></div>` : ''}
   </section>`;
 }
 
@@ -4852,20 +4850,22 @@ function renderSentencePatternPractice(sentence, errorMessage='') {
   const scenario = sentencePatternScenario(sentence);
   const answer = String(sentence._pattern_answer || '');
   const pattern = sentencePatternTemplate(sentence);
+  const analysis = sentenceOralAnalysis(sentence);
   const hintVisible = Boolean(sentence._pattern_hint_visible && scenario);
-  const patternVisible = Boolean(sentence._pattern_template_visible);
+  const patternVisible = Boolean(pattern && sentence._pattern_template_visible);
   const exampleReady = Boolean(sentence._pattern_has_submitted);
   return `<section class="sentence-workshop-shell">
     <div class="sentence-workshop-head">
       <div><div class="detail-label">句式练习</div><h3>先凭记忆自由复用</h3></div>
+      ${analysis ? '' : `<button type="button" class="sentence-analysis-trigger" data-billable-op="oral_analysis" onclick="openSentenceAnalysis(${sentence.id})">AI 句式分析</button>`}
     </div>
     ${errorMessage ? `<p style="color:var(--danger)">练习暂时不可用：${esc(errorMessage)}</p>` : ''}
     <div class="practice-stage">
       <div class="sentence-practice-actions">
-        <button type="button" id="sentence-pattern-toggle-${sentence.id}" onclick="toggleSentencePatternTemplate(${sentence.id})">${patternVisible ? '隐藏句式骨架' : '查看句式骨架'}</button>
+        ${pattern ? `<button type="button" id="sentence-pattern-toggle-${sentence.id}" onclick="toggleSentencePatternTemplate(${sentence.id})">${patternVisible ? '隐藏句式骨架' : '查看句式骨架'}</button>` : ''}
         <button type="button" data-billable-op="sentence_scenario" id="sentence-hint-btn-${sentence.id}" onclick="${hintVisible ? `generateSentencePatternScenario(${sentence.id},true)` : `showSentencePatternHint(${sentence.id})`}">${hintVisible ? '换一个提示' : 'AI 中文提示'}</button>
       </div>
-      <div class="pattern-reuse-strip" id="sentence-pattern-template-${sentence.id}" ${patternVisible ? '' : 'hidden'}><strong>复用句式</strong><code>${esc(pattern)}</code></div>
+      ${pattern ? `<div class="pattern-reuse-strip" id="sentence-pattern-template-${sentence.id}" ${patternVisible ? '' : 'hidden'}><strong>复用句式</strong><code>${esc(pattern)}</code></div>` : ''}
       <div class="hint-row">
         <span class="hint-text${hintVisible ? '' : ' placeholder'}" id="sentence-hint-${sentence.id}">${hintVisible ? esc(scenario) : '默认自由复用；需要提示时再生成中文情景。'}</span>
       </div>
@@ -4900,6 +4900,7 @@ function applySentenceAnalysisPayload(sentence, data) {
   sentence.pattern = {...(sentence.pattern || {}), analysis, pattern_template:nextPattern};
   sentence.pattern_template = nextPattern;
   sentence.has_pattern = Boolean(nextPattern);
+  if (nextPattern) sentence._pattern_template_visible = true;
   if (nextPattern && nextPattern !== previousPattern) {
     sentence.pattern.scenario_cn = '';
     sentence.pattern_scenario = '';
@@ -4954,7 +4955,7 @@ function toggleSentencePatternTemplate(sentenceId) {
   const sentence = _sentenceReviewData.find(item => Number(item.id) === Number(sentenceId));
   const panel = document.getElementById(`sentence-pattern-template-${sentenceId}`);
   const button = document.getElementById(`sentence-pattern-toggle-${sentenceId}`);
-  if (!sentence || !panel || !button) return;
+  if (!sentence || !sentencePatternTemplate(sentence) || !panel || !button) return;
   sentence._pattern_template_visible = !sentence._pattern_template_visible;
   if (sentence._pattern_template_visible) sentence._pattern_skeleton_used = true;
   panel.hidden = !sentence._pattern_template_visible;

@@ -102,7 +102,7 @@ def test_sentence_rows_merge_analysis_and_practice_in_one_expanded_flow():
     assert "toggleSentenceArchive" in INDEX_HTML
     assert "openSentenceAnalysis" in INDEX_HTML
     assert "AI 句式分析" in INDEX_HTML
-    assert "查看句式分析与练习" in INDEX_HTML
+    assert 'class="sentence-analysis-trigger"' in INDEX_HTML
     assert "openSentencePatternPractice" not in INDEX_HTML
     assert "renderSentencePatternPractice(sentence)}`" in INDEX_HTML
     assert "返回原课程" in INDEX_HTML
@@ -115,6 +115,11 @@ def test_sentence_rows_reuse_or_offer_analysis_and_pattern_focused_ai_practice()
     assert "先凭记忆自由复用" in INDEX_HTML
     assert "默认自由复用；需要提示时再生成中文情景。" in INDEX_HTML
     assert "查看句式骨架" in INDEX_HTML
+    assert 'class="sentence-analysis-trigger"' in INDEX_HTML
+    assert "const patternVisible = Boolean(pattern && sentence._pattern_template_visible);" in INDEX_HTML
+    assert "sentence._pattern_template_visible = true;" in INDEX_HTML
+    assert "${pattern ? `<button type=\"button\" id=\"sentence-pattern-toggle-" in INDEX_HTML
+    assert "${pattern ? `<div class=\"pattern-reuse-strip\"" in INDEX_HTML
     assert ".pattern-reuse-strip[hidden] { display: none; }" in INDEX_HTML
     assert "AI 中文提示" in INDEX_HTML
     assert "换一个提示" in INDEX_HTML
@@ -127,6 +132,10 @@ def test_sentence_rows_reuse_or_offer_analysis_and_pattern_focused_ai_practice()
     assert "practice_type:'pattern'" in INDEX_HTML
     assert "确认句式骨架" not in INDEX_HTML
     assert "确认或编辑句式骨架" not in INDEX_HTML
+    analysis_panel = INDEX_HTML.split("function renderSentenceAnalysisPanel", 1)[1].split(
+        "function renderSentencePatternPractice", 1
+    )[0]
+    assert "pattern-reuse-strip" not in analysis_panel
 
 
 def test_direct_sentence_library_navigation_checks_ai_availability():
