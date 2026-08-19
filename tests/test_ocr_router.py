@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -99,3 +100,17 @@ def test_explicit_tesseract_does_not_silently_switch(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Tesseract binary not found"):
         ocr_router.route_page(object())
+
+
+def test_find_tesseract_checks_standard_windows_install_path(monkeypatch, tmp_path):
+    program_files = tmp_path / "Program Files"
+    binary = program_files / "Tesseract-OCR" / "tesseract.exe"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("stub", encoding="utf-8")
+
+    monkeypatch.setattr(ocr_router.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ocr_router.sys, "prefix", str(tmp_path / "venv"))
+    monkeypatch.setenv("ProgramFiles", str(program_files))
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+
+    assert ocr_router._find_tesseract_binary() == str(binary)

@@ -1,0 +1,64 @@
+name: Build Windows Release Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build source package
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          if (-not $version -or $version -eq "master") {
+            $version = "snapshot-${{ github.sha }}".Substring(0, 16)
+          }
+          $name = "EchoLingo-$version-windows"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          $sourceArchive = Join-Path $env:RUNNER_TEMP "$name-source.zip"
+          $zip = Join-Path $env:GITHUB_WORKSPACE "$name.zip"
+          $sha = Join-Path $env:GITHUB_WORKSPACE "$name.sha256"
+
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          git archive --format=zip --output=$sourceArchive HEAD
+          Expand-Archive -LiteralPath $sourceArchive -DestinationPath $stage -Force
+          Remove-Item -LiteralPath $sourceArchive -Force
+
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path -Leaf $zip)" | Set-Content -LiteralPath $sha -Encoding ascii
+
+          "zip_path=$zip" >> $env:GITHUB_OUTPUT
+          "sha_path=$sha" >> $env:GITHUB_OUTPUT
+          Write-Host "Created $zip"
+          Write-Host "SHA256 $hash"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EchoLingo-windows-package
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.sha_path }}
+
+      - name: Attach package to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.sha_path }}

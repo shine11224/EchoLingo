@@ -59,6 +59,8 @@ def _find_tesseract_binary() -> str | None:
         Path(sys.prefix) / "Library" / "bin" / "tesseract.exe",
         Path(sys.prefix) / "bin" / "tesseract",
         Path(sys.prefix) / "bin" / "tesseract.exe",
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tesseract-OCR" / "tesseract.exe",
+        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Tesseract-OCR" / "tesseract.exe",
     )
     for candidate in candidates:
         if candidate.exists():
@@ -70,6 +72,8 @@ def _find_tessdata_prefix() -> str | None:
     for candidate in (
         Path(sys.prefix) / "share" / "tessdata",
         Path(sys.prefix) / "Library" / "share" / "tessdata",
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tesseract-OCR" / "tessdata",
+        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Tesseract-OCR" / "tessdata",
     ):
         if (candidate / "eng.traineddata").exists():
             return str(candidate)

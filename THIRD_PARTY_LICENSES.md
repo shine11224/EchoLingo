@@ -78,6 +78,16 @@ governed by each provider's terms of service:
 - **Bilibili** — subtitle/audio access is subject to Bilibili's terms; only
   process content you have the rights to
 
+## Release installer downloads
+
+The Windows Release installer can use Microsoft's `winget` to download Python,
+the Gyan FFmpeg shared build, and the UB Mannheim Tesseract package. These are
+installed on the user's machine at install time; they are not bundled in the
+Git repository or the Release ZIP. Each downloaded package remains under its
+own license and source distribution terms. The installer also downloads Python
+packages and EasyOCR/Docling model weights through pip when the corresponding
+options are selected.
+
 ## Third-party wordlists (not bundled)
 
 The graded wordlists the app can compile locally are **not distributed** with

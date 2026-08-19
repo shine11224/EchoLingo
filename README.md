@@ -167,6 +167,24 @@ python backend/fastapi_server.py
 
 Open [http://localhost:5173](http://localhost:5173). On first run, visit Settings and verify the AI, transcription, and translation status before creating a course.
 
+### Windows Release package
+
+Each `v*` tag can publish a `EchoLingo-<version>-windows.zip` asset. Extract it
+to a folder you own, then run PowerShell from that folder:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\installer\install.ps1 -InstallAll
+.\installer\start.ps1
+```
+
+The package contains the public source and installer scripts, not a private
+`.env`, Python virtual environment, native binaries, or model weights. `-InstallAll`
+installs Python 3.11, the optional Docling/EasyOCR stack, and the LGPL FFmpeg
+shared build plus Tesseract through `winget`. If you want a smaller install, use
+`-InstallOptional` and/or `-InstallNativeTools` separately. The installer does
+not overwrite an existing `.env` unless `-ForceEnv` is supplied.
+
 ## Optional components
 
 ### Local Whisper transcription
@@ -238,6 +256,7 @@ Without an AI key, the bundled ECDICT, wordlists, basic lesson browsing, and loc
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Third-party licenses](THIRD_PARTY_LICENSES.md)
+- [Windows release installer](installer/README.md)
 
 ## License
 

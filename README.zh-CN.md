@@ -167,6 +167,23 @@ python backend/fastapi_server.py
 
 浏览器打开 [http://localhost:5173](http://localhost:5173)。首次使用建议先进入“设置”，确认 AI、转写和翻译三项状态。
 
+### Windows Release 安装包
+
+每个 `v*` 标签都会生成一个 `EchoLingo-<版本>-windows.zip` Release 资产。
+下载并解压后，在解压目录中用 PowerShell 执行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\installer\install.ps1 -InstallAll
+.\installer\start.ps1
+```
+
+安装包只包含公开源码和安装脚本，不包含私有 `.env`、Python 虚拟环境、
+原生二进制或模型权重。`-InstallAll` 会通过 `winget` 安装 Python 3.11、
+Docling/EasyOCR 可选组件、LGPL FFmpeg shared 版本和 Tesseract。想要更小的
+安装，可以分别使用 `-InstallOptional` 和/或 `-InstallNativeTools`。已有的
+`.env` 默认不会被覆盖，只有显式传入 `-ForceEnv` 才会覆盖。
+
 ## 可选组件
 
 ### 本地 Whisper 转写
@@ -236,6 +253,7 @@ pip install -r requirements-optional.txt
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 - [第三方许可证](THIRD_PARTY_LICENSES.md)
+- [Windows Release 安装器](installer/README.md)
 
 ## 许可证
 
