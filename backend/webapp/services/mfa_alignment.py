@@ -383,16 +383,11 @@ def _mfa_command() -> list[str]:
 
 
 def _ffmpeg_command() -> str:
-    configured = str(os.environ.get("FFMPEG_PATH") or "").strip()
-    if configured and Path(configured).exists():
-        return configured
-    conda_ffmpeg = Path(sys.executable).parent / "Library" / "bin" / "ffmpeg.exe"
-    if conda_ffmpeg.exists():
-        return str(conda_ffmpeg)
-    executable = shutil.which("ffmpeg")
-    if executable:
-        return executable
-    raise RuntimeError("FFmpeg is unavailable")
+    from sources.media_bins import find_ffmpeg
+    try:
+        return find_ffmpeg()
+    except FileNotFoundError:
+        raise RuntimeError("FFmpeg is unavailable")
 
 
 def _run_process(command: list[str], *, timeout: int) -> None:

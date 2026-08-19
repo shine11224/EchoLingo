@@ -127,13 +127,8 @@ def _synthesize_edge_mp3_with_timestamps(
 
 
 def _ffmpeg_command() -> str:
-    conda_ffmpeg = Path(sys.executable).parent / "Library" / "bin" / "ffmpeg.exe"
-    if conda_ffmpeg.exists():
-        return str(conda_ffmpeg)
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-    raise FileNotFoundError("ffmpeg is required to create cached neural TTS WAV files")
+    from sources.media_bins import find_ffmpeg
+    return find_ffmpeg()
 
 
 def _transcode_to_wav(mp3_path: Path, wav_path: Path) -> None:

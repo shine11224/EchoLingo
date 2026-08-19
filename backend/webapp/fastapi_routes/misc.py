@@ -61,13 +61,11 @@ def health():
         return multiuser_enabled()
 
     def check_ffmpeg() -> dict:
-        conda_root = Path(sys.executable).parent
-        candidates = [
-            conda_root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg"),
-            conda_root / "Library" / "bin" / "ffmpeg.exe",
-            conda_root / "Library" / "bin" / "ffmpeg",
-        ]
-        path = shutil.which("ffmpeg") or next((str(p) for p in candidates if p.exists()), "")
+        from sources.media_bins import find_ffmpeg
+        try:
+            path = find_ffmpeg()
+        except FileNotFoundError:
+            path = ""
         return {"available": bool(path), "path": path or ""}
 
     def check_sqlite() -> dict:
@@ -602,12 +600,28 @@ async def api_patch_pattern(filename: str, request: Request):
 
 
 @router.post("/api/transcribe")
-async def api_transcribe(audio: UploadFile = File(default=None)):
+async def api_transcribe(request: Request, audio: UploadFile = File(default=None)):
     if audio is None:
         return JSONResponse({"error": "未收到音频数据"}, status_code=400)
     audio_bytes = await audio.read()
     if not audio_bytes:
         return JSONResponse({"error": "音频为空"}, status_code=400)
+
+    # retell_transcribe 计费：按次 1 分；reference_id 用音频内容哈希，
+    # 同一录音重复提交可命中 operation 重放/幂等，不重复扣费
+    audio_hash = hashlib.sha256(audio_bytes).hexdigest()[:32]
+    try:
+        op, replay = credit_meter.begin_sync_operation(
+            request, "retell_transcribe",
+            reference_type="retell_audio", reference_id=audio_hash,
+            estimated_usage={"audio_bytes": len(audio_bytes)})
+    except (credit_meter.InsufficientCredits,
+            credit_meter.OperationConflictError, ValueError) as exc:
+        status, detail = credit_meter.billing_error(exc)
+        return JSONResponse(detail if isinstance(detail, dict) else {"error": detail},
+                            status_code=status)
+    if replay is not None:
+        return replay
 
     def _transcribe():
         filename = audio.filename or "recording.webm"
@@ -619,7 +633,7 @@ async def api_transcribe(audio: UploadFile = File(default=None)):
                     file=(filename, audio_bytes),
                     model="whisper-large-v3-turbo",
                 )
-                return {"text": resp.text.strip()}
+                return {"text": resp.text.strip()}, "groq"
             except Exception:
                 pass
         import tempfile
@@ -630,13 +644,17 @@ async def api_transcribe(audio: UploadFile = File(default=None)):
             tmp.write_bytes(audio_bytes)
             model = WhisperModel("base", device="cpu", compute_type="int8")
             segs, _ = model.transcribe(str(tmp))
-            return {"text": " ".join(s.text.strip() for s in segs)}
+            return {"text": " ".join(s.text.strip() for s in segs)}, "faster_whisper"
         finally:
             tmp.unlink(missing_ok=True)
 
     try:
-        return await run_in_threadpool(_transcribe)
+        result, engine = await run_in_threadpool(_transcribe)
+        credit_meter.settle_sync(op, actual_usage={
+            "engine": engine, "audio_bytes": len(audio_bytes)}, response=result)
+        return result
     except Exception as exc:
+        credit_meter.release_sync(op, reason=f"retell_transcribe failed: {exc}"[:500])
         return JSONResponse({"error": f"转写失败：{exc}"}, status_code=500)
 
 

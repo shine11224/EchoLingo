@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$InstallOptional,
     [switch]$InstallNativeTools,
@@ -16,6 +16,8 @@ $VenvDir = Join-Path $RepoRoot ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $BundledTesseractDir = Join-Path $RepoRoot "tools\tesseract"
 $BundledTesseract = Join-Path $BundledTesseractDir "tesseract.exe"
+$BundledFfmpegDir = Join-Path $RepoRoot "tools\ffmpeg"
+$BundledFfmpeg = Join-Path $BundledFfmpegDir "ffmpeg.exe"
 
 function Write-Step([string]$Message) {
     Write-Host "`n==> $Message" -ForegroundColor Cyan
@@ -49,6 +51,15 @@ function Enable-BundledTesseract {
     if (Test-Path -LiteralPath (Join-Path $tessdata "eng.traineddata")) {
         $env:TESSDATA_PREFIX = $tessdata
     }
+    return $true
+}
+
+function Enable-BundledFfmpeg {
+    if (-not (Test-Path -LiteralPath $BundledFfmpeg)) {
+        return $false
+    }
+
+    $env:Path = "$BundledFfmpegDir;$env:Path"
     return $true
 }
 
@@ -97,6 +108,10 @@ $hasBundledTesseract = Enable-BundledTesseract
 if ($hasBundledTesseract) {
     Write-Host "Release 包内已包含 Tesseract，优先使用本地运行时。" -ForegroundColor Green
 }
+$hasBundledFfmpeg = Enable-BundledFfmpeg
+if ($hasBundledFfmpeg) {
+    Write-Host "Release 包内已包含 FFmpeg，优先使用本地运行时。" -ForegroundColor Green
+}
 
 Write-Step "检查 Python 3.11"
 $Python = Find-Python311
@@ -142,11 +157,14 @@ if ((Test-Path -LiteralPath ".env.example") -and ((-not (Test-Path -LiteralPath 
 
 if ($InstallNativeTools) {
     Write-Step "安装 FFmpeg 与 Tesseract"
-    if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    if (-not $hasBundledFfmpeg -and -not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
         Install-WingetPackage "Gyan.FFmpeg.Shared"
     }
     if (-not $hasBundledTesseract -and -not (Get-Command tesseract -ErrorAction SilentlyContinue)) {
         Install-WingetPackage "UB-Mannheim.TesseractOCR"
+    }
+    if ($hasBundledFfmpeg) {
+        Write-Host "跳过 winget FFmpeg 安装（使用 Release 包内版本）。"
     }
     if ($hasBundledTesseract) {
         Write-Host "跳过 winget Tesseract 安装（使用 Release 包内版本）。"
@@ -154,12 +172,15 @@ if ($InstallNativeTools) {
 }
 
 Write-Step "环境检查"
-& $VenvPython -c @"
-import importlib.util
-print("Docling: " + ("已安装" if importlib.util.find_spec("docling") else "未安装"))
-print("EasyOCR: " + ("已安装" if importlib.util.find_spec("easyocr") else "未安装（可选）"))
-print("Tesseract: " + ("已找到" if __import__("shutil").which("tesseract") else "未找到（PDF 扫描 OCR 不可用）"))
-"@
+# 纯 ASCII 且走 stdin 传代码：避免 PS 5.1 原生命令参数/管道编码破坏内嵌引号与中文
+$envCheck = @'
+import importlib.util, shutil
+print("Docling: " + ("installed" if importlib.util.find_spec("docling") else "missing"))
+print("EasyOCR: " + ("installed" if importlib.util.find_spec("easyocr") else "missing (optional)"))
+print("Tesseract: " + (shutil.which("tesseract") or "NOT FOUND (scanned-PDF OCR unavailable)"))
+print("FFmpeg: " + (shutil.which("ffmpeg") or "NOT FOUND (audio/video pipeline unavailable)"))
+'@
+$envCheck | & $VenvPython -
 
 Write-Host "`n安装完成。启动命令：" -ForegroundColor Green
 Write-Host "  .\installer\start.ps1"

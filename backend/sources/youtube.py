@@ -85,8 +85,7 @@ def _download_audio(url: str, video_id: str, cache_dir: Path, cookies_file: str 
         return audio_path
 
     print("  下载 YouTube 音频中…", flush=True)
-    import sys, pathlib
-    _conda_ffmpeg = pathlib.Path(sys.executable).parent / "Library" / "bin"
+    from sources.media_bins import find_ffmpeg_dir
     opts = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": str(cache_dir / f"{video_id}.%(ext)s"),
@@ -94,8 +93,9 @@ def _download_audio(url: str, video_id: str, cache_dir: Path, cookies_file: str 
         "quiet": True,
         "no_warnings": True,
     }
-    if (_conda_ffmpeg / "ffmpeg.exe").exists():
-        opts["ffmpeg_location"] = str(_conda_ffmpeg)
+    _ffmpeg_dir = find_ffmpeg_dir()
+    if _ffmpeg_dir:
+        opts["ffmpeg_location"] = _ffmpeg_dir
     if cookies_file:
         opts["cookiefile"] = cookies_file
     if proxy := _yt_proxy():

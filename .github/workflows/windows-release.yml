@@ -89,6 +89,31 @@ jobs:
           "@ | Set-Content -LiteralPath (Join-Path $bundleDir "BUNDLE-NOTICE.txt") -Encoding UTF8
           Write-Host "Bundled Tesseract runtime at $bundleDir"
 
+          Write-Host "Downloading FFmpeg essentials build for the portable release bundle..."
+          $ffmpegZip = Join-Path $env:RUNNER_TEMP "ffmpeg-release-essentials.zip"
+          & curl.exe -L --fail --silent --show-error -o $ffmpegZip "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          if ($LASTEXITCODE -ne 0) {
+            throw "FFmpeg 下载失败（退出码 $LASTEXITCODE）"
+          }
+          $ffmpegExtract = Join-Path $env:RUNNER_TEMP "ffmpeg-essentials"
+          Expand-Archive -LiteralPath $ffmpegZip -DestinationPath $ffmpegExtract -Force
+          $ffmpegRoot = Get-ChildItem -LiteralPath $ffmpegExtract -Directory | Select-Object -First 1
+          $ffmpegBin = Join-Path $ffmpegRoot.FullName "bin"
+          $ffmpegBundleDir = Join-Path $stage "tools\ffmpeg"
+          New-Item -ItemType Directory -Force -Path $ffmpegBundleDir | Out-Null
+          foreach ($exe in @("ffmpeg.exe", "ffprobe.exe")) {
+            $exeSource = Join-Path $ffmpegBin $exe
+            if (-not (Test-Path -LiteralPath $exeSource)) {
+              throw "FFmpeg 构建缺少 $exe"
+            }
+            Copy-Item -LiteralPath $exeSource -Destination $ffmpegBundleDir -Force
+          }
+          Get-ChildItem -LiteralPath $ffmpegRoot.FullName -File |
+            Where-Object { $_.Name -match "^(LICENSE|COPYING|README)" } |
+            Copy-Item -Destination $ffmpegBundleDir -Force
+          $ffmpegVersion = (& (Join-Path $ffmpegBundleDir "ffmpeg.exe") -version 2>$null | Select-Object -First 1)
+          Write-Host "Bundled FFmpeg runtime at $ffmpegBundleDir ($ffmpegVersion)"
+
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $zip)" | Set-Content -LiteralPath $sha -Encoding ascii
