@@ -1,3 +1,8 @@
 # Optional high-quality PDF layout recovery. This also installs PyTorch and is
 # intentionally kept out of the default environment because it adds ~2 GB.
 docling>=2,<3
+
+# Optional OCR fallback for image-heavy or low-confidence scanned pages.
+# Tesseract remains the lightweight default OCR engine; EasyOCR also downloads
+# its recognition models on first use.
+easyocr>=1.7,<2

@@ -74,6 +74,7 @@ Reading 模式保留整篇字幕文稿。你可以点击任意句子播放原声
 
 - YouTube、Bilibili 和普通文章链接导入
 - 本地音频、视频、TXT / Markdown、DOCX 和 PDF 导入
+- PDF 自动路由：优先读取文本层，扫描页使用 Tesseract，低置信度时可升级到 EasyOCR
 - 百度网盘分享链接或应用数据目录导入（可选）
 - 文本素材可生成朗读音频（TTS）
 - 本地 Whisper 或 Groq 云端转写
@@ -180,13 +181,21 @@ Windows x64 可在设置页安装 Tencent HY-MT1.5 与配套的 llama.cpp 运行
 
 ### PDF 深度解析
 
-基础 PDF 文本提取已包含在默认依赖中。若需要更复杂的 PDF 解析，可选装 Docling：
+PDF 导入会按下面的链路自动选择：
+
+1. 如果已安装 Docling，优先使用它进行版面感知解析；未安装或无法提取有效文本时，回退到内置的 `pdfplumber` 文本层解析。
+2. 如果没有可用文本层，对扫描页渲染图片，再使用 Tesseract OCR。
+3. 如果 Tesseract 置信度低于阈值，且已安装 EasyOCR，则自动升级到 EasyOCR。
+
+默认环境包含轻量的文本提取依赖和 Tesseract 的 Python 封装。需要扫描 PDF 支持时，可一次安装可选的 PDF/OCR 组件：
 
 ```bash
-pip install "docling>=2,<3"
+pip install -r requirements-optional.txt
 ```
 
-设置 `ELT_DOCLING=off` 可以强制关闭 Docling，继续使用内置文本提取。
+`pytesseract` 只是 Python 封装，仍需自行安装 Tesseract 可执行程序，并将它加入 `PATH`。EasyOCR 是可选的增强回退方案，首次使用会下载识别模型。普通的文字型 PDF 不需要安装这两个 OCR 后端。
+
+设置 `ELT_DOCLING=off` 可以跳过 Docling；设置 `ELT_OCR_ENGINE=tesseract` 或 `easyocr` 可以强制指定 OCR 后端；保持 `auto` 即使用上面的自动路由。
 
 ### 百度网盘
 
@@ -204,6 +213,12 @@ pip install "docling>=2,<3"
 | `HY_TRANSLATE_MODEL` | 可选 | HY 翻译模型名 |
 | `DICT_DIR` | 可选 | 额外的本地 MDX 词典目录 |
 | `ELT_DOCLING=off` | 可选 | 禁用已安装的 Docling |
+| `ELT_OCR_ENGINE` | 可选 | 扫描 PDF 的 OCR 后端：`auto`、`tesseract` 或 `easyocr` |
+| `ELT_OCR_CONFIDENCE_THRESHOLD` | 可选 | 自动模式升级 EasyOCR 的 Tesseract 置信度阈值（0–100，默认 `65`） |
+| `ELT_OCR_LANG` | 可选 | Tesseract 语言，默认 `eng` |
+| `ELT_EASYOCR_LANGS` | 可选 | EasyOCR 语言列表（逗号分隔），默认 `en` |
+| `ELT_EASYOCR_GPU` | 可选 | EasyOCR GPU 模式：`auto`、`true` 或 `false` |
+| `ELT_EASYOCR_MODEL_DIR` | 可选 | EasyOCR 模型下载目录 |
 
 没有 AI Key 时，内置 ECDICT、词表、基础课程浏览和本地学习数据仍可使用；AI 大纲、问答、深度分析、批改与故事生成不可用。转写和翻译是否需要网络，取决于你选择本地组件还是云端服务。
 

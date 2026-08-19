@@ -74,6 +74,7 @@ The Vocabulary Atelier filters words by familiarity, mastery, frequency, exam li
 
 - YouTube, Bilibili, and regular article URLs
 - Local audio, video, TXT / Markdown, DOCX, and PDF files
+- Automatic PDF routing: text-layer extraction first, then Tesseract OCR for scanned pages and optional EasyOCR escalation for low-confidence results
 - Optional Baidu Drive share links or app-data browsing
 - Text-to-speech audio for text material
 - Local Whisper or Groq cloud transcription
@@ -180,13 +181,21 @@ Without the local translation component, translation requires a configured trans
 
 ### Deeper PDF parsing
 
-Basic PDF text extraction is included in the default dependencies. Install Docling only if you need its heavier document pipeline:
+PDF import uses an automatic route:
+
+1. Use Docling when it is installed; if it is unavailable or cannot extract useful text, fall back to the built-in `pdfplumber` text-layer parser.
+2. If no usable text layer is found, render image-only pages and run Tesseract OCR.
+3. If Tesseract's confidence is below the configured threshold, use EasyOCR when it is installed.
+
+The default environment includes the lightweight text extraction and Tesseract Python wrapper. Install the optional PDF/OCR stack together when you need scanned-PDF support:
 
 ```bash
-pip install "docling>=2,<3"
+pip install -r requirements-optional.txt
 ```
 
-Set `ELT_DOCLING=off` to force the built-in text extraction path even when Docling is installed.
+`pytesseract` is only a Python wrapper; install the Tesseract executable separately and put it on `PATH`. EasyOCR is an optional heavier fallback: its recognition models are downloaded on first use. Normal text-based PDFs do not need either OCR backend.
+
+Set `ELT_DOCLING=off` to skip Docling. Set `ELT_OCR_ENGINE=tesseract` or `easyocr` to force one OCR backend, or leave it as `auto` for the route above.
 
 ### Baidu Drive
 
@@ -204,6 +213,12 @@ Baidu Drive is optional. Open **Settings → Baidu Drive**, confirm installation
 | `HY_TRANSLATE_MODEL` | Optional | HY translation model name |
 | `DICT_DIR` | Optional | Additional local MDX dictionary directory |
 | `ELT_DOCLING=off` | Optional | Disable an installed Docling pipeline |
+| `ELT_OCR_ENGINE` | Optional | `auto`, `tesseract`, or `easyocr` for scanned-PDF OCR |
+| `ELT_OCR_CONFIDENCE_THRESHOLD` | Optional | Tesseract confidence (0–100) below which auto mode escalates to EasyOCR; default `65` |
+| `ELT_OCR_LANG` | Optional | Tesseract language, default `eng` |
+| `ELT_EASYOCR_LANGS` | Optional | Comma-separated EasyOCR languages, default `en` |
+| `ELT_EASYOCR_GPU` | Optional | EasyOCR GPU mode: `auto`, `true`, or `false` |
+| `ELT_EASYOCR_MODEL_DIR` | Optional | Directory for EasyOCR model downloads |
 
 Without an AI key, the bundled ECDICT, wordlists, basic lesson browsing, and local learning data remain available. AI outlines, Q&A, deep analysis, correction, and story generation do not. Whether transcription and translation use the network depends on the local or cloud options you select.
 

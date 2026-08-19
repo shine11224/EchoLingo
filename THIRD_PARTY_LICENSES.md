@@ -23,6 +23,7 @@ installed via pip and can be replaced or upgraded independently.
 | pdfplumber | MIT | PDF text extraction |
 | pypdfium2 | Apache-2.0 / BSD-3-Clause | PDF rendering |
 | pytesseract | Apache-2.0 | OCR |
+| easyocr | Apache-2.0 | Optional OCR fallback for low-confidence scanned pages |
 | openpyxl | MIT | spreadsheet import |
 | playwright | Apache-2.0 | browser QA |
 | edge-tts | **LGPLv3** | neural text-to-speech |
@@ -40,10 +41,15 @@ https://github.com/rany2/edge-tts
 - **ffmpeg** — LGPL/GPL depending on build. EchoLingo invokes the ffmpeg/yt-dlp
   executables you install yourself as separate processes; no ffmpeg code or
   binaries are included in this repository.
+- **Tesseract** — Apache-2.0. `pytesseract` is only the Python wrapper; the
+  Tesseract executable and language data must be installed separately by the
+  user and are not distributed in this repository.
 
 ## Models (downloaded at runtime, not distributed)
 
 - **Whisper** (via faster-whisper / CTranslate2) — model weights MIT © OpenAI
+- **EasyOCR** — optional recognition models are downloaded by EasyOCR on first
+  use and are not distributed in this repository.
 
 ## Built-in dictionary data (open license)
 

@@ -7,7 +7,6 @@ from typing import TypedDict
 from io import BytesIO
 import os
 import shutil
-import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -558,39 +557,9 @@ def _is_missing_ocr_runtime(exc: Exception) -> bool:
     )
 
 
-def _find_tesseract_binary() -> str | None:
-    from_path = shutil.which("tesseract")
-    if from_path:
-        return from_path
-
-    conda_tesseract = Path(sys.prefix) / "Library" / "bin" / "tesseract.exe"
-    if conda_tesseract.exists():
-        return str(conda_tesseract)
-
-    return None
-
-
-def _find_tessdata_prefix() -> str | None:
-    for candidate in (
-        Path(sys.prefix) / "share" / "tessdata",
-        Path(sys.prefix) / "Library" / "share" / "tessdata",
-    ):
-        if (candidate / "eng.traineddata").exists():
-            return str(candidate)
-    return None
-
-
 def _ocr_pdf_bytes(content: bytes, pages: list[int] | None = None) -> str:
     import pypdfium2 as pdfium
-    import pytesseract
-
-    tesseract_binary = _find_tesseract_binary()
-    if not tesseract_binary:
-        raise RuntimeError("Tesseract binary not found")
-    pytesseract.pytesseract.tesseract_cmd = tesseract_binary
-    tessdata_prefix = _find_tessdata_prefix()
-    if tessdata_prefix:
-        os.environ.setdefault("TESSDATA_PREFIX", tessdata_prefix)
+    from webapp.services.ocr_router import route_page
 
     pdf = pdfium.PdfDocument(content)
     chunks: list[str] = []
@@ -600,7 +569,7 @@ def _ocr_pdf_bytes(content: bytes, pages: list[int] | None = None) -> str:
         try:
             bitmap = page.render(scale=2)
             image = bitmap.to_pil()
-            text = pytesseract.image_to_string(image, lang="eng") or ""
+            text = route_page(image).text or ""
         finally:
             close = getattr(page, "close", None)
             if callable(close):
