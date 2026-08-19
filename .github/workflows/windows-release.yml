@@ -37,6 +37,58 @@ jobs:
           Expand-Archive -LiteralPath $sourceArchive -DestinationPath $stage -Force
           Remove-Item -LiteralPath $sourceArchive -Force
 
+          Write-Host "Installing Tesseract OCR for the portable release bundle..."
+          $winget = Get-Command winget -ErrorAction Stop
+          & $winget.Source install --id UB-Mannheim.TesseractOCR --exact --source winget `
+            --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
+          if ($LASTEXITCODE -ne 0) {
+            throw "无法在构建机上安装 Tesseract（退出码 $LASTEXITCODE）"
+          }
+
+          $tesseractRoots = @(
+            (Join-Path $env:ProgramFiles "Tesseract-OCR"),
+            (Join-Path ${env:ProgramFiles(x86)} "Tesseract-OCR")
+          )
+          $tesseractSource = $tesseractRoots |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_ "tesseract.exe") } |
+            Select-Object -First 1
+          if (-not $tesseractSource) {
+            throw "找不到 winget 安装的 Tesseract-OCR 目录"
+          }
+
+          # Bundle only the runtime files needed by pytesseract: the CLI,
+          # shared libraries, English OCR data, and orientation data. This
+          # avoids shipping the training utilities and every language pack.
+          $bundleDir = Join-Path $stage "tools\tesseract"
+          $bundleTessdata = Join-Path $bundleDir "tessdata"
+          New-Item -ItemType Directory -Force -Path $bundleTessdata | Out-Null
+          Copy-Item -LiteralPath (Join-Path $tesseractSource "tesseract.exe") -Destination $bundleDir -Force
+          Get-ChildItem -LiteralPath $tesseractSource -Filter "*.dll" -File |
+            Copy-Item -Destination $bundleDir -Force
+          foreach ($dataFile in @("eng.traineddata", "osd.traineddata")) {
+            $sourceData = Join-Path $tesseractSource "tessdata\$dataFile"
+            if (-not (Test-Path -LiteralPath $sourceData)) {
+              throw "Tesseract 缺少 OCR 数据文件: $sourceData"
+            }
+            Copy-Item -LiteralPath $sourceData -Destination $bundleTessdata -Force
+          }
+          Get-ChildItem -LiteralPath $tesseractSource -File |
+            Where-Object { $_.Name -match "^(LICENSE|NOTICE|COPYING)" } |
+            Copy-Item -Destination $bundleDir -Force
+          $versionLine = (& (Join-Path $bundleDir "tesseract.exe") --version 2>$null | Select-Object -First 1)
+          @"
+          EchoLingo portable Tesseract runtime
+          $versionLine
+
+          This directory was assembled from the UB-Mannheim.TesseractOCR
+          winget package. This bundle does not change the licenses of Tesseract,
+          Leptonica, or the shared libraries it depends on. Upstream source,
+          license, and notice information is available at
+          https://github.com/tesseract-ocr/tesseract and
+          https://github.com/UB-Mannheim/tesseract/wiki.
+          "@ | Set-Content -LiteralPath (Join-Path $bundleDir "BUNDLE-NOTICE.txt") -Encoding UTF8
+          Write-Host "Bundled Tesseract runtime at $bundleDir"
+
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $zip)" | Set-Content -LiteralPath $sha -Encoding ascii

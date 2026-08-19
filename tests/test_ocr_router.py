@@ -114,3 +114,31 @@ def test_find_tesseract_checks_standard_windows_install_path(monkeypatch, tmp_pa
     monkeypatch.delenv("ProgramFiles(x86)", raising=False)
 
     assert ocr_router._find_tesseract_binary() == str(binary)
+
+
+def test_find_tesseract_prefers_release_bundle(monkeypatch, tmp_path):
+    bundle = tmp_path / "tools" / "tesseract"
+    binary = bundle / "tesseract.exe"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("stub", encoding="utf-8")
+
+    monkeypatch.setattr(ocr_router.shutil, "which", lambda name: None)
+    monkeypatch.setattr(ocr_router, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(ocr_router, "_BUNDLED_TESSERACT_DIR", bundle)
+    monkeypatch.setattr(ocr_router.sys, "prefix", str(tmp_path / "venv"))
+    monkeypatch.delenv("ProgramFiles", raising=False)
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+
+    assert ocr_router._find_tesseract_binary() == str(binary)
+
+
+def test_find_tessdata_prefers_release_bundle(monkeypatch, tmp_path):
+    tessdata = tmp_path / "tools" / "tesseract" / "tessdata"
+    tessdata.mkdir(parents=True)
+    (tessdata / "eng.traineddata").write_text("stub", encoding="utf-8")
+
+    monkeypatch.setattr(ocr_router, "_BUNDLED_TESSERACT_DIR", tessdata.parent)
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    monkeypatch.setattr(ocr_router.sys, "prefix", str(tmp_path / "venv"))
+
+    assert ocr_router._find_tessdata_prefix() == str(tessdata)

@@ -14,6 +14,8 @@ Set-StrictMode -Version Latest
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $VenvDir = Join-Path $RepoRoot ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+$BundledTesseractDir = Join-Path $RepoRoot "tools\tesseract"
+$BundledTesseract = Join-Path $BundledTesseractDir "tesseract.exe"
 
 function Write-Step([string]$Message) {
     Write-Host "`n==> $Message" -ForegroundColor Cyan
@@ -35,6 +37,19 @@ function Refresh-Path {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $env:Path = "$machinePath;$userPath"
+}
+
+function Enable-BundledTesseract {
+    if (-not (Test-Path -LiteralPath $BundledTesseract)) {
+        return $false
+    }
+
+    $env:Path = "$BundledTesseractDir;$env:Path"
+    $tessdata = Join-Path $BundledTesseractDir "tessdata"
+    if (Test-Path -LiteralPath (Join-Path $tessdata "eng.traineddata")) {
+        $env:TESSDATA_PREFIX = $tessdata
+    }
+    return $true
 }
 
 function Find-Python311 {
@@ -66,7 +81,7 @@ function Install-WingetPackage([string]$Id) {
     Invoke-Tool $winget.Source @(
         "install", "--id", $Id, "--exact", "--source", "winget",
         "--accept-package-agreements", "--accept-source-agreements",
-        "--silent"
+        "--silent", "--disable-interactivity"
     )
     Refresh-Path
 }
@@ -78,6 +93,10 @@ if ($InstallAll) {
 }
 
 Set-Location -LiteralPath $RepoRoot
+$hasBundledTesseract = Enable-BundledTesseract
+if ($hasBundledTesseract) {
+    Write-Host "Release 包内已包含 Tesseract，优先使用本地运行时。" -ForegroundColor Green
+}
 
 Write-Step "检查 Python 3.11"
 $Python = Find-Python311
@@ -126,8 +145,11 @@ if ($InstallNativeTools) {
     if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
         Install-WingetPackage "Gyan.FFmpeg.Shared"
     }
-    if (-not (Get-Command tesseract -ErrorAction SilentlyContinue)) {
+    if (-not $hasBundledTesseract -and -not (Get-Command tesseract -ErrorAction SilentlyContinue)) {
         Install-WingetPackage "UB-Mannheim.TesseractOCR"
+    }
+    if ($hasBundledTesseract) {
+        Write-Host "跳过 winget Tesseract 安装（使用 Release 包内版本）。"
     }
 }
 
@@ -136,6 +158,7 @@ Write-Step "环境检查"
 import importlib.util
 print("Docling: " + ("已安装" if importlib.util.find_spec("docling") else "未安装"))
 print("EasyOCR: " + ("已安装" if importlib.util.find_spec("easyocr") else "未安装（可选）"))
+print("Tesseract: " + ("已找到" if __import__("shutil").which("tesseract") else "未找到（PDF 扫描 OCR 不可用）"))
 "@
 
 Write-Host "`n安装完成。启动命令：" -ForegroundColor Green

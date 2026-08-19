@@ -18,6 +18,8 @@ from typing import Any
 
 DEFAULT_CONFIDENCE_THRESHOLD = 65.0
 _easyocr_reader: Any | None = None
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_BUNDLED_TESSERACT_DIR = _REPO_ROOT / "tools" / "tesseract"
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,7 @@ def _find_tesseract_binary() -> str | None:
         return from_path
 
     candidates = (
+        _BUNDLED_TESSERACT_DIR / "tesseract.exe",
         Path(sys.prefix) / "Library" / "bin" / "tesseract.exe",
         Path(sys.prefix) / "bin" / "tesseract",
         Path(sys.prefix) / "bin" / "tesseract.exe",
@@ -69,12 +72,18 @@ def _find_tesseract_binary() -> str | None:
 
 
 def _find_tessdata_prefix() -> str | None:
-    for candidate in (
+    configured = os.environ.get("TESSDATA_PREFIX", "").strip()
+    candidates = (
+        Path(configured) if configured else None,
+        _BUNDLED_TESSERACT_DIR / "tessdata",
         Path(sys.prefix) / "share" / "tessdata",
         Path(sys.prefix) / "Library" / "share" / "tessdata",
         Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tesseract-OCR" / "tessdata",
         Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Tesseract-OCR" / "tessdata",
-    ):
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
         if (candidate / "eng.traineddata").exists():
             return str(candidate)
     return None
