@@ -148,7 +148,7 @@ AI_API_KEY=your_key
 AI_BASE_URL=https://api.deepseek.com
 AI_MODEL=deepseek-v4-flash
 
-# 可选：Groq 云端 Whisper 转写
+# 可选：Groq 云端 Whisper 转写, 注册Groq账号后具备免费额度可覆盖使用
 GROQ_API_KEY=
 
 # 可选：本地 MDX 词典目录；ECDICT 已内置，无需配置
@@ -171,7 +171,7 @@ python backend/fastapi_server.py
 
 ### 本地 Whisper 转写
 
-在“设置 → 本地 Whisper”中选择并下载模型。模型越大通常精度越高，也会占用更多磁盘、内存和计算时间。没有本地模型时，可以填写 `GROQ_API_KEY` 使用云端 Whisper 转写。
+在“设置 → 本地 Whisper”中选择并下载模型。模型越大通常精度越高，也会占用更多磁盘、内存和计算时间。没有本地模型时，可以填写 `GROQ_API_KEY` 使用云端 Whisper 转写，注册groq后可赠送免费额度使用
 
 ### 本地中文字幕翻译
 
@@ -223,8 +223,6 @@ pip install -r requirements-optional.txt
 没有 AI Key 时，内置 ECDICT、词表、基础课程浏览和本地学习数据仍可使用；AI 大纲、问答、深度分析、批改与故事生成不可用。转写和翻译是否需要网络，取决于你选择本地组件还是云端服务。
 
 ## 数据与使用边界
-
-- 当前公开版是单机、单用户、本地运行的学习工具，不包含账号系统、订阅、多人协作或云端同步。
 - 课程、收藏和学习记录保存在运行 EchoLingo 的电脑上；第三方 AI / 转写接口会接收完成请求所需的文本或音频，请自行了解所选服务商的隐私政策。
 - YouTube、Bilibili、百度网盘等第三方来源可能因登录、Cookie、地区或平台策略变化而导入失败。
 - AI 生成的词义、句式分析和批改可能出错；重要内容请结合原文和词典复核。
