@@ -162,13 +162,18 @@ def _translate_with_cloud_ai(text: str) -> str:
                         {"role": "user", "content": _PROMPT_EN_ZH.format(text=text.strip())},
                     ],
                     temperature=0.1,
-                    max_tokens=512,
+                    # 专用 Hy-MT 不推理，512 足够；主 AI 回退可能是推理模型
+                    # （reasoning 先吃 token），512 会被思考耗尽导致 content 为空，
+                    # 回退路径放宽到 4096。
+                    max_tokens=512 if cfg else 4096,
                 )
                 content = str(response.choices[0].message.content or "").strip()
                 if content:
                     return content
+                finish = getattr(response.choices[0], "finish_reason", "")
                 raise TranslationServiceError(
-                    "Hy-MT cloud translation returned an empty response",
+                    "Hy-MT cloud translation returned an empty response"
+                    + (f" (finish_reason={finish})" if finish else ""),
                     retryable=True,
                 )
             except Exception as exc:

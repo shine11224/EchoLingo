@@ -446,14 +446,22 @@ def translate_lesson_subtitles(lesson_id: int) -> dict:
         lesson_id, status="translating", done=0, total=total,
         buffer_seconds=0, rate=0, ready=False, error="",
     )
+    failures = 0
     try:
         for unit in units:
             cached = db.get_v2_sentence(unit["text"])
             translation = str((cached or {}).get("translation") or "").strip()
             if not translation:
-                translation = hy_translate(unit["text"])
+                try:
+                    translation = hy_translate(unit["text"])
+                except Exception:
+                    translation = ""
                 if not translation:
-                    raise RuntimeError("Hy-MT returned an empty translation")
+                    # 单句彻底失败不中止整课：记数跳过，其余句子继续；
+                    # 结束后按 failed+retryable 标记，启动恢复会续跑缺口。
+                    failures += 1
+                    done += 1
+                    continue
                 db.upsert_v2_sentence(unit["text"], translation=translation)
             done += 1
             buffer_seconds = float(unit["end"] or 0)
@@ -474,6 +482,14 @@ def translate_lesson_subtitles(lesson_id: int) -> dict:
             ready=False, error=str(exc),
         )
         return {"status": "failed", "done": done, "total": total, "error": str(exc)}
+
+    if failures:
+        error = f"Hy-MT returned an empty translation for {failures}/{total} sentence(s)"
+        db.update_v2_translation_status(
+            lesson_id, status="failed", done=done, total=total,
+            ready=False, error=error,
+        )
+        return {"status": "failed", "done": done, "total": total, "error": error}
 
     db.update_v2_translation_status(
         lesson_id,
