@@ -2,11 +2,35 @@
 
 Turn English videos, audio, and articles you genuinely care about into personal lessons for listening, close reading, practice, and review.
 
-[简体中文](README.zh-CN.md) · [Installation](#installation-and-configuration) · [Features](#features) · [Documentation](#documentation)
+[简体中文](README.zh-CN.md) · [Quick Start](#quick-start) · [Installation](#installation-and-configuration) · [Features](#features) · [Troubleshooting](#troubleshooting) · [Documentation](#documentation)
 
 > EchoLingo is an open-source, local-first learning tool for individual learners. It keeps the original audio, sentences, and context at the center, then uses AI for organization, explanation, and feedback.
 
 ![EchoLingo course import](docs/screenshots/import-sources.png)
+
+## Quick Start
+
+```bash
+git clone https://github.com/shine11224/EchoLingo.git
+cd EchoLingo
+python -m venv .venv        # macOS: python3.11 -m venv .venv  (see Requirements)
+source .venv/bin/activate   # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt   # first run downloads several GB; 20–30 min is normal
+cp .env.example .env        # Windows: Copy-Item .env.example .env
+python backend/fastapi_server.py  # then open http://localhost:5173
+```
+
+Requires Python 3.11 and FFmpeg. Per-platform details: [Installation and configuration](#installation-and-configuration).
+
+## Platform support
+
+| Capability | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Course import, listening, reading, vocabulary | ✓ | ✓ | ✓ |
+| Local Whisper / Groq transcription | ✓ | ✓ | ✓ |
+| Scanned-PDF OCR (Tesseract / EasyOCR) | ✓ | ✓ | ✓ |
+| One-click local translation (HY-MT) | ✓ | manual setup | manual setup |
+| Ready-made Release package | ✓ | — (install from source) | — (install from source) |
 
 ## Why EchoLingo exists
 
@@ -70,6 +94,10 @@ The Vocabulary Atelier filters words by familiarity, mastery, frequency, exam li
 
 ## Features
 
+### Works without an API key
+
+EchoLingo is useful before you configure any AI provider. The bundled ECDICT dictionary (definitions, IPA, frequency, and inflections), the bundled general-frequency, CET, postgraduate exam, IELTS, TOEFL, GRE, and COCA wordlists, listening and reading modes, sentence collection, and your local learning data all work without a key. AI outlines, Q&A, deep analysis, correction, and story generation require `AI_API_KEY`. Whether transcription and translation use the network depends on the local or cloud options you select.
+
 ### Material and course creation
 
 - YouTube, Bilibili, and regular article URLs
@@ -109,9 +137,9 @@ The Vocabulary Atelier filters words by familiarity, mastery, frequency, exam li
 
 ### Requirements
 
-- Python 3.11
+- Python 3.11 — verify with `python --version`. If your system only has an older `python3` (common on macOS), install 3.11 first, e.g. `uv python install 3.11` (then create the environment with `uv venv --python 3.11`), Homebrew, or python.org.
 - Git
-- [FFmpeg](https://ffmpeg.org/download.html) for audio and video processing; make sure `ffmpeg` is on `PATH`
+- [FFmpeg](https://ffmpeg.org/download.html) for audio and video processing; make sure `ffmpeg` is on `PATH`, or set `FFMPEG_PATH` to the executable's full path.
 - A modern browser
 - Optional: an NVIDIA GPU. CPU-only systems can use smaller local Whisper models, or Groq transcription can be configured instead.
 
@@ -120,12 +148,12 @@ The Vocabulary Atelier filters words by familiarity, mastery, frequency, exam li
 ```bash
 git clone https://github.com/shine11224/EchoLingo.git
 cd EchoLingo
-python -m venv .venv
 ```
 
 Windows PowerShell:
 
 ```powershell
+py -3.11 -m venv .venv      # or: python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
@@ -134,10 +162,13 @@ Copy-Item .env.example .env
 macOS / Linux:
 
 ```bash
+python3.11 -m venv .venv    # any command that gives you a Python 3.11 interpreter
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
+
+The first `pip install` downloads several GB (PyTorch and other large packages) and typically takes 20–30 minutes. A long quiet stretch is normal, not a hang.
 
 ### 2. Configure an AI provider
 
@@ -165,9 +196,13 @@ DICT_DIR=
 python backend/fastapi_server.py
 ```
 
-Open [http://localhost:5173](http://localhost:5173). On first run, visit Settings and verify the AI, transcription, and translation status before creating a course.
+Open [http://localhost:5173](http://localhost:5173). On first run, visit Settings and verify the AI, transcription, and translation status before creating a course. The interactive API reference is served at [http://localhost:5173/api/docs](http://localhost:5173/api/docs).
+
+> **Network exposure:** by default the server listens on `0.0.0.0:5173` with no authentication and permissive CORS, so every device on your network can reach it (the startup log prints the LAN address). To keep it on this computer only, set `ELT_HOST=127.0.0.1` in `.env`. Use `ELT_PORT` to change the port.
 
 ### Windows Release package
+
+Release assets are currently Windows-only (`EchoLingo-<version>-windows.zip`). On macOS and Linux, install from source as described above.
 
 Each `v*` tag can publish a `EchoLingo-<version>-windows.zip` asset. Extract it
 to a folder you own, then run PowerShell from that folder:
@@ -230,6 +265,15 @@ Baidu Drive is optional. Open **Settings → Baidu Drive**, confirm installation
 | `HY_TRANSLATE_API_KEY` | Optional | Separate HY translation service; can be saved in Settings |
 | `HY_TRANSLATE_MODEL` | Optional | HY translation model name |
 | `DICT_DIR` | Optional | Additional local MDX dictionary directory |
+| `ELT_HOST` | Optional | Bind address, default `0.0.0.0` (all interfaces); use `127.0.0.1` for local-only |
+| `ELT_PORT` | Optional | Port, default `5173` |
+| `ELT_AUTH_ENABLED` | Optional | `1` enables login and multi-user mode in builds that ship the auth modules; the public build always runs single-user without authentication |
+| `FFMPEG_PATH` | Optional | Full path to the ffmpeg executable; checked before the bundled copy and `PATH` |
+| `ELT_CONFIG_DIR` | Optional | Directory EchoLingo reads `.env` and platform cookie files from; default is the project root |
+| `ELT_TIMEZONE` | Optional | IANA timezone for scheduled jobs, default `Asia/Shanghai` |
+| `ELT_TTS_CONCURRENCY` | Optional | Parallel TTS workers, default `3` |
+| `ELT_MEDIA_UPLOAD_MAX_MB` | Optional | Maximum browser upload size in MB, default `500` |
+| `ELT_BAIDU_PAN_ENABLED` | Optional | Set `0` to disable the Baidu Drive integration |
 | `ELT_DOCLING=off` | Optional | Disable an installed Docling pipeline |
 | `ELT_OCR_ENGINE` | Optional | `auto`, `tesseract`, or `easyocr` for scanned-PDF OCR |
 | `ELT_OCR_CONFIDENCE_THRESHOLD` | Optional | Tesseract confidence (0–100) below which auto mode escalates to EasyOCR; default `65` |
@@ -238,7 +282,17 @@ Baidu Drive is optional. Open **Settings → Baidu Drive**, confirm installation
 | `ELT_EASYOCR_GPU` | Optional | EasyOCR GPU mode: `auto`, `true`, or `false` |
 | `ELT_EASYOCR_MODEL_DIR` | Optional | Directory for EasyOCR model downloads |
 
-Without an AI key, the bundled ECDICT, wordlists, basic lesson browsing, and local learning data remain available. AI outlines, Q&A, deep analysis, correction, and story generation do not. Whether transcription and translation use the network depends on the local or cloud options you select.
+See [Works without an API key](#works-without-an-api-key) for what runs with no `AI_API_KEY` configured.
+
+## Troubleshooting
+
+- **`git clone` fails with `unexpected disconnect while reading sideband packet`.** The connection dropped mid-fetch. Retry, or download a source snapshot instead: `https://codeload.github.com/shine11224/EchoLingo/zip/refs/heads/main`.
+- **`python: command not found` on macOS / Linux.** Use the 3.11 interpreter explicitly: `python3.11 -m venv .venv`, or `uv venv --python 3.11`.
+- **`pip install` looks stuck.** The first install downloads several GB; 20–30 minutes with little output is normal.
+- **`ffmpeg not found`.** Install FFmpeg and make sure it is on `PATH`, or set `FFMPEG_PATH` to the executable's full path. The Windows Release installer can install it for you.
+- **Port 5173 is already in use.** Set `ELT_PORT=<free port>` in `.env`.
+- **Where are Whisper models stored?** In `~/.cache/huggingface/hub` or the project's `.cache/huggingface/hub`; override with `HUGGINGFACE_HUB_CACHE` or `HF_HOME`.
+- **`http://localhost:5173/docs` returns 404.** The API docs were moved: use `/api/docs` (ReDoc at `/api/redoc`, schema at `/api/openapi.json`).
 
 ## Data and project boundaries
 
@@ -257,6 +311,7 @@ Without an AI key, the bundled ECDICT, wordlists, basic lesson browsing, and loc
 - [Security policy](SECURITY.md)
 - [Third-party licenses](THIRD_PARTY_LICENSES.md)
 - [Windows release installer](installer/README.md)
+- Interactive API reference: `/api/docs` on a running server
 
 ## License
 

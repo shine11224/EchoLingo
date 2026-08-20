@@ -2,11 +2,35 @@
 
 把你真正感兴趣的英文视频、音频和文章，整理成一套可以听懂、精读、练习和复习的个人课程。
 
-[English](README.md) · [安装与配置](#安装与配置) · [功能说明](#功能说明) · [项目文档](#项目文档)
+[English](README.md) · [快速开始](#快速开始) · [安装与配置](#安装与配置) · [功能说明](#功能说明) · [常见问题](#常见问题) · [项目文档](#项目文档)
 
 > EchoLingo 是一个本地优先、面向个人学习的开源英语学习工具。它不会替你选择“标准教材”，而是尽量保留原始素材的声音、句子和上下文，再把 AI 用在整理、解释与反馈上。
 
 ![EchoLingo 课程导入页](docs/screenshots/import-sources.png)
+
+## 快速开始
+
+```bash
+git clone https://github.com/shine11224/EchoLingo.git
+cd EchoLingo
+python -m venv .venv        # macOS 用 python3.11 -m venv .venv（见“运行环境”）
+source .venv/bin/activate   # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt   # 首次安装需下载数 GB，20–30 分钟属正常
+cp .env.example .env        # Windows: Copy-Item .env.example .env
+python backend/fastapi_server.py  # 然后打开 http://localhost:5173
+```
+
+需要 Python 3.11 和 FFmpeg。各平台细节见[安装与配置](#安装与配置)。
+
+## 平台支持
+
+| 能力 | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| 课程导入、听读、词汇 | ✓ | ✓ | ✓ |
+| 本地 Whisper / Groq 转写 | ✓ | ✓ | ✓ |
+| 扫描版 PDF OCR（Tesseract / EasyOCR） | ✓ | ✓ | ✓ |
+| 本地翻译一键安装（HY-MT） | ✓ | 手动配置 | 手动配置 |
+| Release 安装包 | ✓ | —（源码安装） | —（源码安装） |
 
 ## 为什么做这个工具
 
@@ -70,6 +94,10 @@ Reading 模式保留整篇字幕文稿。你可以点击任意句子播放原声
 
 ## 功能说明
 
+### 不配 AI Key 也能用
+
+在配置任何 AI 服务之前，EchoLingo 已经可以完成很多事：内置 ECDICT 词典（释义、音标、词频、词形变化）、内置常用词 / 四六级 / 考研 / 雅思 / 托福 / GRE / COCA 七套词表、听读模式、句子收藏和本地学习数据都不需要 Key。AI 大纲、问答、深度分析、批改和记忆故事需要 `AI_API_KEY`。转写和翻译是否需要网络，取决于你选择本地组件还是云端服务。
+
 ### 素材与课程
 
 - YouTube、Bilibili 和普通文章链接导入
@@ -109,9 +137,9 @@ Reading 模式保留整篇字幕文稿。你可以点击任意句子播放原声
 
 ### 运行环境
 
-- Python 3.11
+- Python 3.11 — 用 `python --version` 确认。如果系统只有较旧的 `python3`（macOS 常见），先安装 3.11：例如 `uv python install 3.11`（然后 `uv venv --python 3.11` 创建环境）、Homebrew 或 python.org 安装包。
 - Git
-- [FFmpeg](https://ffmpeg.org/download.html)（音视频处理必需；安装后确保 `ffmpeg` 在 `PATH` 中）
+- [FFmpeg](https://ffmpeg.org/download.html)（音视频处理必需；安装后确保 `ffmpeg` 在 `PATH` 中，或在 `.env` 里用 `FFMPEG_PATH` 指向可执行文件的完整路径）
 - 现代浏览器
 - 可选：NVIDIA GPU。没有 GPU 也可以使用较小的本地 Whisper 模型，或配置 Groq 转写。
 
@@ -120,12 +148,12 @@ Reading 模式保留整篇字幕文稿。你可以点击任意句子播放原声
 ```bash
 git clone https://github.com/shine11224/EchoLingo.git
 cd EchoLingo
-python -m venv .venv
 ```
 
 Windows PowerShell：
 
 ```powershell
+py -3.11 -m venv .venv      # 或：python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
@@ -134,10 +162,13 @@ Copy-Item .env.example .env
 macOS / Linux：
 
 ```bash
+python3.11 -m venv .venv    # 任何能得到 Python 3.11 解释器的命令都可以
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
+
+首次 `pip install` 会下载数 GB 依赖（PyTorch 等大包），通常需要 20–30 分钟。长时间没有输出是正常现象，不是卡死。
 
 ### 2. 配置 AI 接口
 
@@ -165,9 +196,13 @@ DICT_DIR=
 python backend/fastapi_server.py
 ```
 
-浏览器打开 [http://localhost:5173](http://localhost:5173)。首次使用建议先进入“设置”，确认 AI、转写和翻译三项状态。
+浏览器打开 [http://localhost:5173](http://localhost:5173)。首次使用建议先进入“设置”，确认 AI、转写和翻译三项状态。交互式 API 文档在 [http://localhost:5173/api/docs](http://localhost:5173/api/docs)。
+
+> **网络暴露提示：** 默认服务监听 `0.0.0.0:5173`，无鉴权、CORS 放开，同一网络下的其他设备都能访问（启动日志会打印局域网地址）。如果只想本机使用，在 `.env` 中设置 `ELT_HOST=127.0.0.1`。改端口用 `ELT_PORT`。
 
 ### Windows Release 安装包
+
+Release 目前只提供 Windows 包（`EchoLingo-<版本>-windows.zip`）；macOS 和 Linux 请按上文从源码安装。
 
 每个 `v*` 标签都会生成一个 `EchoLingo-<版本>-windows.zip` Release 资产。
 下载并解压后，在解压目录中用 PowerShell 执行：
@@ -229,6 +264,15 @@ pip install -r requirements-optional.txt
 | `HY_TRANSLATE_API_KEY` | 可选 | 独立的 HY 翻译接口；可在设置页保存 |
 | `HY_TRANSLATE_MODEL` | 可选 | HY 翻译模型名 |
 | `DICT_DIR` | 可选 | 额外的本地 MDX 词典目录 |
+| `ELT_HOST` | 可选 | 监听地址，默认 `0.0.0.0`（所有网卡）；只限本机用 `127.0.0.1` |
+| `ELT_PORT` | 可选 | 端口，默认 `5173` |
+| `ELT_AUTH_ENABLED` | 可选 | 在包含认证模块的构建中设为 `1` 可开启登录/多用户模式；公开版始终是无鉴权的单用户模式 |
+| `FFMPEG_PATH` | 可选 | ffmpeg 可执行文件完整路径；优先于内置副本和 `PATH` |
+| `ELT_CONFIG_DIR` | 可选 | 读取 `.env` 和平台 Cookie 文件的目录；默认为项目根目录 |
+| `ELT_TIMEZONE` | 可选 | 定时任务的 IANA 时区，默认 `Asia/Shanghai` |
+| `ELT_TTS_CONCURRENCY` | 可选 | TTS 并发生成数，默认 `3` |
+| `ELT_MEDIA_UPLOAD_MAX_MB` | 可选 | 浏览器上传大小上限（MB），默认 `500` |
+| `ELT_BAIDU_PAN_ENABLED` | 可选 | 设为 `0` 关闭百度网盘集成 |
 | `ELT_DOCLING=off` | 可选 | 禁用已安装的 Docling |
 | `ELT_OCR_ENGINE` | 可选 | 扫描 PDF 的 OCR 后端：`auto`、`tesseract` 或 `easyocr` |
 | `ELT_OCR_CONFIDENCE_THRESHOLD` | 可选 | 自动模式升级 EasyOCR 的 Tesseract 置信度阈值（0–100，默认 `65`） |
@@ -237,9 +281,20 @@ pip install -r requirements-optional.txt
 | `ELT_EASYOCR_GPU` | 可选 | EasyOCR GPU 模式：`auto`、`true` 或 `false` |
 | `ELT_EASYOCR_MODEL_DIR` | 可选 | EasyOCR 模型下载目录 |
 
-没有 AI Key 时，内置 ECDICT、词表、基础课程浏览和本地学习数据仍可使用；AI 大纲、问答、深度分析、批改与故事生成不可用。转写和翻译是否需要网络，取决于你选择本地组件还是云端服务。
+不配 `AI_API_KEY` 时哪些功能可用，见[不配 AI Key 也能用](#不配-ai-key-也能用)。
+
+## 常见问题
+
+- **`git clone` 报 `unexpected disconnect while reading sideband packet`。** 拉取中途断连。重试，或直接下载源码快照：`https://codeload.github.com/shine11224/EchoLingo/zip/refs/heads/main`。
+- **macOS / Linux 提示 `python: command not found`。** 显式使用 3.11 解释器：`python3.11 -m venv .venv`，或 `uv venv --python 3.11`。
+- **`pip install` 像卡住了。** 首次安装要下载数 GB 依赖，20–30 分钟没有多少输出是正常的。
+- **提示找不到 ffmpeg。** 安装 FFmpeg 并加入 `PATH`，或用 `FFMPEG_PATH` 指向可执行文件完整路径。Windows Release 安装器可以自动安装。
+- **5173 端口被占用。** 在 `.env` 中设置 `ELT_PORT=<空闲端口>`。
+- **Whisper 模型存在哪里？** `~/.cache/huggingface/hub` 或项目目录下的 `.cache/huggingface/hub`；可用 `HUGGINGFACE_HUB_CACHE` 或 `HF_HOME` 改位置。
+- **`http://localhost:5173/docs` 返回 404。** API 文档已搬到 `/api/docs`（ReDoc 在 `/api/redoc`，schema 在 `/api/openapi.json`）。
 
 ## 数据与使用边界
+- 公开版是单用户本地应用，不包含账号、订阅、多用户协作或云同步。
 - 课程、收藏和学习记录保存在运行 EchoLingo 的电脑上；第三方 AI / 转写接口会接收完成请求所需的文本或音频，请自行了解所选服务商的隐私政策。
 - YouTube、Bilibili、百度网盘等第三方来源可能因登录、Cookie、地区或平台策略变化而导入失败。
 - AI 生成的词义、句式分析和批改可能出错；重要内容请结合原文和词典复核。
@@ -254,6 +309,7 @@ pip install -r requirements-optional.txt
 - [安全策略](SECURITY.md)
 - [第三方许可证](THIRD_PARTY_LICENSES.md)
 - [Windows Release 安装器](installer/README.md)
+- 交互式 API 文档：服务运行时的 `/api/docs`
 
 ## 许可证
 
