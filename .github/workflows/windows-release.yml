@@ -114,6 +114,26 @@ jobs:
           $ffmpegVersion = (& (Join-Path $ffmpegBundleDir "ffmpeg.exe") -version 2>$null | Select-Object -First 1)
           Write-Host "Bundled FFmpeg runtime at $ffmpegBundleDir ($ffmpegVersion)"
 
+          # Bundle VC++ 2015-2022 runtime DLLs (redistributable per VS license):
+          # ctranslate2 (faster-whisper 依赖) 在未装 vcredist 的干净 Windows 上
+          # 因缺 msvcp140.dll 无法加载；后端启动时经 add_dll_directory 登记此目录。
+          $vcredistBundleDir = Join-Path $stage "tools\vcredist"
+          New-Item -ItemType Directory -Force -Path $vcredistBundleDir | Out-Null
+          foreach ($dll in @("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll",
+                             "msvcp140_atomic_wait.dll", "concrt140.dll",
+                             "vccorlib140.dll", "vcruntime140.dll",
+                             "vcruntime140_1.dll", "vcruntime140_threads.dll")) {
+            $dllSource = Join-Path $env:SystemRoot "System32\$dll"
+            if (-not (Test-Path -LiteralPath $dllSource)) {
+              Write-Host "Runner 无 $dll（可选组件，跳过）"
+              continue
+            }
+            Copy-Item -LiteralPath $dllSource -Destination $vcredistBundleDir -Force
+          }
+          "Visual C++ Redistributable runtime files (msvcp140/vcruntime140).`r`nRedistributed under the Microsoft Visual Studio redistribution terms.`r`nhttps://learn.microsoft.com/visualstudio/releases/redistribution" |
+            Set-Content -LiteralPath (Join-Path $vcredistBundleDir "README.txt") -Encoding utf8
+          Write-Host "Bundled VC++ runtime at $vcredistBundleDir"
+
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $zip)" | Set-Content -LiteralPath $sha -Encoding ascii

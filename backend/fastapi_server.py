@@ -15,6 +15,13 @@ _backend_dir = Path(__file__).parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
+# Release 包内 tools/vcredist 等目录登记进 DLL 搜索路径（Windows 干净机器缺
+# msvcp140.dll 时 ctranslate2 加载失败的修复），必须在任何 whisper/ctranslate2
+# 导入之前执行。
+from sources.media_bins import enable_bundled_runtime
+
+enable_bundled_runtime()
+
 import db
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,9 +32,11 @@ from webapp.fastapi_routes.ai import router as ai_router
 # 多用户认证仅存在于私有库/云端：公开库不含 webapp.auth 与 auth 路由，导入失败时静默降级为单用户模式
 try:
     from webapp.fastapi_routes.auth import router as auth_router
+    from webapp.fastapi_routes.survey import router as survey_router
     from webapp.auth.middleware import AuthMiddleware
 except ImportError:  # pragma: no cover - 公开库路径
     auth_router = None
+    survey_router = None
     AuthMiddleware = None
 
 # 管理员私有导入页仅私有库/云端提供；公开库缺少模板/路由时静默降级
@@ -183,6 +192,8 @@ def create_app() -> FastAPI:
     app.include_router(basics_router)
     if auth_router is not None:
         app.include_router(auth_router)
+    if survey_router is not None:
+        app.include_router(survey_router)
     app.include_router(lessons_router)
     app.include_router(study_router)
     app.include_router(vocab_router)

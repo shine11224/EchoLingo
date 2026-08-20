@@ -17,7 +17,7 @@ _HEALTH_URL = "http://127.0.0.1:8180/health"
 _ROOT = Path(__file__).resolve().parents[3]
 _MODEL_PATH = _ROOT / "models" / "HY-MT1.5-1.8B-Q4_K_M.gguf"
 _LLAMA_DIR = _ROOT / "llama-cpp"
-_EXECUTABLE = _LLAMA_DIR / ("llama-server.exe" if os.name == "nt" else "llama-server")
+_EXECUTABLE = _LLAMA_DIR / "llama-server.exe"
 _server_proc = None
 _server_lock = threading.Lock()
 _cloud_request_lock = threading.Lock()
@@ -107,14 +107,18 @@ def _hy_remote_config() -> dict | None:
 
 
 def _cloud_translation_ready() -> bool:
-    """Use the configured remote model on constrained production hosts."""
+    """Use the configured remote model when no local Hy-MT runtime is available."""
     if _hy_remote_config():
         return True
-    if os.environ.get("ELT_DEPLOYMENT") != "cloud":
-        return False
     from webapp.runtime import ai_config
 
-    return bool(ai_config.AI_API_KEY and ai_config.AI_MODEL)
+    if not (ai_config.AI_API_KEY and ai_config.AI_MODEL):
+        return False
+    if os.environ.get("ELT_DEPLOYMENT") == "cloud":
+        return True
+    # 本地模式：装了本地 Hy-MT 模型就优先本地（免费、离线、不烧 API 额度）；
+    # 没装才回退到主 AI 配置，让 README 承诺的「已配置 AI 接口即可翻译」成立。
+    return not (_MODEL_PATH.exists() and _EXECUTABLE.exists())
 
 
 def _translate_with_cloud_ai(text: str) -> str:

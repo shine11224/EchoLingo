@@ -174,11 +174,27 @@ if ($InstallNativeTools) {
 Write-Step "环境检查"
 # 纯 ASCII 且走 stdin 传代码：避免 PS 5.1 原生命令参数/管道编码破坏内嵌引号与中文
 $envCheck = @'
-import importlib.util, shutil
+import importlib.util, os, shutil, sys
+from pathlib import Path
+repo = Path(sys.prefix).parent
+vcredist = repo / "tools" / "vcredist"
+if vcredist.is_dir() and hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(str(vcredist))
 print("Docling: " + ("installed" if importlib.util.find_spec("docling") else "missing"))
 print("EasyOCR: " + ("installed" if importlib.util.find_spec("easyocr") else "missing (optional)"))
 print("Tesseract: " + (shutil.which("tesseract") or "NOT FOUND (scanned-PDF OCR unavailable)"))
 print("FFmpeg: " + (shutil.which("ffmpeg") or "NOT FOUND (audio/video pipeline unavailable)"))
+try:
+    import ctranslate2
+    print("CTranslate2: " + ctranslate2.__version__)
+except OSError as e:
+    print("CTranslate2: LOAD FAILED (Whisper unavailable): " + str(e)[:80])
+try:
+    from zoneinfo import ZoneInfo
+    ZoneInfo("Asia/Shanghai")
+    print("tzdata: ok")
+except Exception:
+    print("tzdata: MISSING (Baidu Pan import unavailable)")
 '@
 $envCheck | & $VenvPython -
 

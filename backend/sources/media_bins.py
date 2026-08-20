@@ -12,6 +12,27 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_FFMPEG_DIR = _REPO_ROOT / "tools" / "ffmpeg"
+BUNDLED_VCREDIST_DIR = _REPO_ROOT / "tools" / "vcredist"
+
+
+def enable_bundled_runtime() -> None:
+    """把 Release 包内的运行时 DLL 目录加入 Windows DLL 搜索路径。
+
+    Python 3.8+ 解析 ctypes/pyd 依赖时不再查 PATH 和 exe 所在目录，只认
+    ``os.add_dll_directory()``。未装 VC++ 2015-2022 Redistributable 的干净
+    Windows 上 ctranslate2.dll 会因缺 msvcp140.dll 加载失败（Whisper 全挂），
+    因此 Release 打包 tools/vcredist 并在这里登记。tesseract/ffmpeg 目录一
+    并登记，便于其依赖解析；目录不存在时静默跳过（云端/开发环境无 tools/）。
+    必须在 import ctranslate2 / faster_whisper 之前调用。
+    """
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return
+    for directory in (BUNDLED_VCREDIST_DIR, BUNDLED_FFMPEG_DIR, _REPO_ROOT / "tools" / "tesseract"):
+        try:
+            if directory.is_dir():
+                os.add_dll_directory(str(directory))
+        except OSError:
+            continue
 
 
 def _exe(name: str) -> str:
