@@ -1550,7 +1550,7 @@
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-btn-lessons" onclick="switchTab('lessons')">📺 课程</button>
-    <a class="tab-btn" href="/planning" style="display:flex;align-items:center;text-decoration:none;">👤 个人档案</a>
+    <a class="tab-btn" id="planning-tab-link" href="/planning" style="display:flex;align-items:center;text-decoration:none;">👤 个人档案</a>
     <button class="tab-btn" id="tab-btn-resources" onclick="switchTab('resources')">⚙️ 设置</button>
   </div>
 </div>
@@ -7567,9 +7567,16 @@ async function initAuthBadge() {
   try {
     const h = await fetch('/health', {cache: 'no-store'});
     if (h.ok) {
-      const v = (await h.json()).auth_enabled;
+      const hj = await h.json();
+      const v = hj.auth_enabled;
       // 只接受严格布尔值：缺字段/null/字符串/数字一律信号不明，保持隐藏
       if (v === true || v === false) authEnabled = v;
+      // 个人档案路由仅私有库/云端注册：后端明确说没有时才隐藏入口；
+      // 字段缺失或请求失败保持可见，避免私有单用户模式被误隐藏。
+      if (hj.planning_enabled === false) {
+        const tab = document.getElementById('planning-tab-link');
+        if (tab) tab.style.display = 'none';
+      }
     }
   } catch (e) { /* 信号不明：保持隐藏 */ }
   if (authEnabled === false) {

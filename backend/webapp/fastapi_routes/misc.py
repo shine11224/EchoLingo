@@ -60,6 +60,14 @@ def health():
         from webapp.runtime.access import multiuser_enabled
         return multiuser_enabled()
 
+    def planning_enabled() -> bool:
+        """学习规划页仅私有库/云端注册；公开库无此路由，前端据此隐藏入口。"""
+        try:
+            from webapp.fastapi_routes import planning  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
     def check_ffmpeg() -> dict:
         from sources.media_bins import find_ffmpeg
         try:
@@ -168,6 +176,7 @@ def health():
     return {
         "status": "ok",
         "auth_enabled": auth_enabled(),
+        "planning_enabled": planning_enabled(),
         "environment": {
             "python": python_info,
             "ffmpeg": ffmpeg_info,
