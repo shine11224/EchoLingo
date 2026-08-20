@@ -11,11 +11,6 @@ from typing import Any, List, Optional
 from urllib.parse import quote
 
 import db
-
-try:
-    from webapp.services import planning as planning_service
-except ImportError:  # pragma: no cover - 公开库不含规划模块
-    planning_service = None
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse, Response
 from prompts import STORY_CHAT_SYSTEM_PROMPT, STORY_PROMPT
@@ -45,7 +40,7 @@ def _begin(request: Request, operation_type: str, **kwargs):
             credit_meter.OperationConflictError, ValueError) as exc:
         return None, _billing_error_response(exc)
 
-# GET /vocab is a compatibility redirect to the homepage Vocabulary Workshop.
+# GET /vocab (serve vocab.html) is intentionally left in Flask — template rendering
 # stays in Flask until a shared Jinja2 setup is added in a later phase.
 
 
@@ -312,14 +307,6 @@ def set_review_familiarity(target: str, body: ReviewWordFamiliarityBody):
         return JSONResponse({"error": str(exc)}, status_code=400)
     if not item:
         return JSONResponse({"error": "review target not found"}, status_code=404)
-    if planning_service is not None:
-        try:
-            planning_service.record_verified_event(
-                "review_vocabulary", item.get("target_type") or "word", target,
-                evidence_ref=f"word-familiarity:{target}:{datetime.date.today().isoformat()}",
-            )
-        except Exception:
-            pass
     return item
 
 
@@ -355,15 +342,6 @@ def review_word(body: Optional[ReviewWordBody] = Body(default=None)):
     new_count = db.review_word(word, today)
     if new_count is None:
         return JSONResponse({"error": "word not found"}, status_code=404)
-    if planning_service is not None:
-        try:
-            review_item = db.get_review_word_item(word) or {}
-            planning_service.record_verified_event(
-                "review_vocabulary", review_item.get("target_type") or "word", word,
-                evidence_ref=f"word-review:{word}:{today}",
-            )
-        except Exception:
-            pass
     return {"word": word, "count": new_count, "last_studied": today}
 
 
@@ -649,7 +627,11 @@ def story_chat(body: StoryChatBody, request: Request = None):
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
 
-    chat_model = ai_config.AI_MODEL
+    chat_model = (
+        "deepseek-chat"
+        if "api.deepseek.com" in str(ai_config.AI_BASE_URL or "").lower()
+        else ai_config.AI_MODEL
+    )
     try:
         resp = ai_config.client.chat.completions.create(
             model=chat_model,

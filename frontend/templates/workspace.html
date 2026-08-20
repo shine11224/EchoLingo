@@ -1,6 +1,7 @@
 ﻿<!doctype html>
 <html lang="zh-CN">
 <head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Video Workspace - EchoLingo</title>
@@ -1616,8 +1617,8 @@
       <span class="home-link-arrow" aria-hidden="true">←</span>
       <span class="home-link-label">首页</span>
     </a>
-    <h1 id="video-title">Loading video...</h1>
-    <span id="status-badge" class="status-badge">subtitles pending</span>
+    <h1 id="video-title">视频加载中…</h1>
+    <span id="status-badge" class="status-badge">字幕生成中</span>
     <button id="tts-cancel-btn" type="button" style="display:none; border:1px solid #fca5a5; color:#a33b2f; background:none; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; white-space:nowrap;" onclick="cancelReadingTts()">取消生成音频</button>
     <a id="credit-badge" href="/account" title="积分余额（点击查看详情）" style="display:none; border:1px solid #dde5d6; background:#f8f9f7; color:#33502b; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap; font-variant-numeric:tabular-nums;"></a>
     <a id="login-btn" href="/login" style="display:none; border:1px solid #4f6ef7; color:#4f6ef7; border-radius:6px; padding:3px 10px; font-size:12px; text-decoration:none; white-space:nowrap;">登录</a>
@@ -1638,17 +1639,17 @@
 
       <div class="learning-controls" aria-label="playback and subtitle controls">
         <label class="control-group">
-          Subtitles
+          字幕
           <select id="subtitle-mode" onchange="onSubtitleModeChange()">
-            <option value="lookup" selected>English + lookup</option>
-            <option value="english">English</option>
+            <option value="lookup" selected>英文 + 点词查询</option>
+            <option value="english">英文</option>
             <option value="chinese">中文</option>
             <option value="bilingual">中英双语</option>
-            <option value="none">None</option>
+            <option value="none">隐藏字幕</option>
           </select>
         </label>
         <label class="control-group">
-          Speed
+          倍速
           <select id="playback-rate" onchange="onPlaybackRateChange()">
             <option value="0.5">0.5x</option>
             <option value="0.75">0.75x</option>
@@ -1659,18 +1660,18 @@
           </select>
         </label>
         <div id="study-mode-switch" class="study-mode-switch" hidden>
-          <button data-study-mode="listening" onclick="switchStudyMode('listening')">Listening</button>
-          <button data-study-mode="reading" onclick="switchStudyMode('reading')">Reading</button>
+          <button data-study-mode="listening" onclick="switchStudyMode('listening')">精听</button>
+          <button data-study-mode="reading" onclick="switchStudyMode('reading')">阅读</button>
         </div>
       </div>
 
       <section class="subtitle-card" aria-label="current subtitle">
         <div class="subtitle-label">
-          <strong>Current sentence</strong>
+          <strong>当前句</strong>
           <span class="sentence-actions">
-            <button id="prev-sentence" class="sentence-nav" onclick="jumpSentence(-1)" disabled title="Previous sentence" aria-label="Previous sentence">&#x2039;</button>
-            <span id="subtitle-position">waiting for subtitles</span>
-            <button id="next-sentence" class="sentence-nav" onclick="jumpSentence(1)" disabled title="Next sentence" aria-label="Next sentence">&#x203A;</button>
+            <button id="prev-sentence" class="sentence-nav" onclick="jumpSentence(-1)" disabled title="上一句" aria-label="上一句">&#x2039;</button>
+            <span id="subtitle-position">等待字幕</span>
+            <button id="next-sentence" class="sentence-nav" onclick="jumpSentence(1)" disabled title="下一句" aria-label="下一句">&#x203A;</button>
             <button id="save-sentence" class="star-save" onclick="saveCurrentSentence()" disabled
                     title="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" data-tooltip="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;" aria-label="&#x52A0;&#x5165;&#x7CBE;&#x8BFB;">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1679,9 +1680,9 @@
             </button>
           </span>
         </div>
-        <div id="current-subtitle">Subtitles are loading in the background.</div>
+        <div id="current-subtitle">字幕正在后台加载…</div>
         <div id="subtitle-translation"></div>
-        <div class="subtitle-meta" id="subtitle-meta">Video playback is available before subtitles are ready.</div>
+        <div class="subtitle-meta" id="subtitle-meta">字幕就绪前可正常播放视频。</div>
         <div class="sentence-tools">
           <div id="vocab-chips" class="vocab-chips"></div>
         </div>
@@ -1689,7 +1690,7 @@
 
       <section id="reading-phase-a" class="reading-mode-panel" aria-label="reading passage" hidden>
         <div class="reading-toolbar">
-          <strong>Reading Phase A</strong>
+          <strong>整篇阅读</strong>
           <span>点句末书签收藏整句 · 拖选收藏词或短语</span>
         </div>
         <article id="reading-passage" class="reading-passage" data-segment-index="" data-start-seconds="" data-end-seconds=""></article>
@@ -1714,34 +1715,34 @@
 
       <section id="content-outline-panel" class="timeline-card" data-sidebar-panel="outline">
         <div class="panel-head">
-          <h2>Content outline</h2>
-          <span class="panel-note">Jump by topic. Use A/B to select a discussion range.</span>
+          <h2>内容大纲</h2>
+          <span class="panel-note">按主题跳转。用 A/B 按钮选取讨论区间。</span>
           <button id="generate-outline-summary" class="outline-generate-btn" type="button" onclick="requestDocumentOutline()">AI 总结结构</button>
         </div>
         <div id="document-summary" class="document-summary" hidden></div>
         <div id="subtitle-timeline">
-          <div class="empty-state">Building content outline...</div>
+          <div class="empty-state">正在生成内容大纲…</div>
         </div>
       </section>
 
       <section id="reading-phase-b" class="review-card study-collection-card sidebar-panel-inactive"
                data-sidebar-panel="collection" aria-hidden="true">
         <div class="panel-head">
-          <h2>Study collection</h2>
-          <span class="panel-note">Phase B · words, sentences and tags.</span>
+          <h2>学习收集</h2>
+          <span class="panel-note">Phase B · 本课收藏的词、句子和标签。</span>
         </div>
         <div id="study-collection">
           <div id="reading-saved-items" class="reading-saved-list">
-            <div class="empty-state">Save words or sentences from Phase A.</div>
+            <div class="empty-state">在上方阅读中收藏单词或句子后会显示在这里。</div>
           </div>
           <div class="review-body">
             <div class="review-counts">
-              <span id="review-word-count">0 words</span>
-              <span id="review-sentence-count">0 sentences</span>
+              <span id="review-word-count">0 词</span>
+              <span id="review-sentence-count">0 句</span>
             </div>
             <div class="review-action-row">
-              <button class="review-action" type="button" onclick="copyReviewMarkdown()">Copy Markdown</button>
-              <button class="review-action" type="button" onclick="exportReviewHtml()">Export HTML</button>
+              <button class="review-action" type="button" onclick="copyReviewMarkdown()">复制 Markdown</button>
+              <button class="review-action" type="button" onclick="exportReviewHtml()">导出 HTML</button>
               <button class="review-action review-action--intensive" type="button" onclick="openIntensiveExport(this)">进入精读</button>
               <span id="review-copy-status" class="review-copy-status"></span>
             </div>
@@ -1754,16 +1755,16 @@
                data-sidebar-panel="ai" aria-hidden="true">
         <div class="panel-head">
           <div class="ai-panel-heading">
-            <h2>AI companion</h2>
-            <span class="panel-note">Uses current sentence or selected outline range.</span>
+            <h2>AI 学伴</h2>
+            <span class="panel-note">基于当前句或选定的大纲区间回答。</span>
           </div>
           <div class="ai-panel-actions">
             <select id="chat-session-select" class="chat-session-select" aria-label="Chat conversation"
                     onchange="selectChatSession(this.value)"></select>
             <button id="chat-new-session" class="chat-session-action" type="button"
-                    onclick="newChatSession()" title="Start a new conversation">New</button>
+                    onclick="newChatSession()" title="开始新对话">新对话</button>
             <button id="chat-export-session" class="chat-session-action" type="button"
-                    onclick="exportChatSession()" title="Export current conversation as Markdown">Export</button>
+                    onclick="exportChatSession()" title="导出当前对话为 Markdown">导出</button>
           </div>
         </div>
         <div id="chat-messages"></div>
@@ -1783,13 +1784,13 @@
             <option value="zh-CN">中</option>
           </select>
           <button id="chat-voice-toggle" class="chat-voice-toggle" type="button"
-                  aria-pressed="false" onclick="toggleChatVoice()" title="Voice input">Mic</button>
+                  aria-pressed="false" onclick="toggleChatVoice()" title="语音输入">🎙</button>
           <div class="chat-input-field">
-            <input id="chat-input" type="text" placeholder="Ask about this part..."
+            <input id="chat-input" type="text" placeholder="就当前内容提问…"
                    onkeydown="if(event.key==='Enter') sendMessage()">
             <span id="chat-voice-status" class="chat-voice-status" aria-live="polite"></span>
           </div>
-          <button id="chat-send" data-billable-op="lesson_chat" onclick="sendMessage()">Send</button>
+          <button id="chat-send" data-billable-op="lesson_chat" onclick="sendMessage()">发送</button>
         </div>
       </section>
     </aside>
@@ -2057,7 +2058,7 @@ function toggleAiFocusMode(force) {
     : !sideColumn.classList.contains('ai-focus-mode');
   sideColumn.classList.toggle('ai-focus-mode', focused);
   button.setAttribute('aria-pressed', String(focused));
-  button.textContent = focused ? 'Restore' : 'Focus AI';
+  button.textContent = focused ? '还原' : '聚焦 AI';
   if (!focused) applySidebarPanelHeights(sidebarPreferredPanelHeights, false, false);
 }
 
@@ -2147,13 +2148,13 @@ function updateChatVoiceState(state) {
   if (button) {
     button.classList.toggle('recording', listening);
     button.setAttribute('aria-pressed', String(listening));
-    button.textContent = listening ? 'Stop' : 'Mic';
-    button.title = listening ? 'Stop voice input' : 'Voice input';
+    button.textContent = listening ? '停止' : '🎙';
+    button.title = listening ? '停止语音输入' : '语音输入';
   }
   if (language) language.disabled = listening;
   const status = document.getElementById('chat-voice-status');
   if (state === 'idle' && !status?.classList.contains('error')) setChatVoiceStatus('');
-  if (listening) setChatVoiceStatus('Listening…');
+  if (listening) setChatVoiceStatus('正在聆听…');
 }
 
 function initChatVoiceInput() {
@@ -2161,17 +2162,17 @@ function initChatVoiceInput() {
   if (!button || typeof window.createVoiceInput !== 'function') {
     if (button) {
       button.disabled = true;
-      button.title = 'Voice input is unavailable.';
+      button.title = '当前浏览器不支持语音输入。';
     }
     return;
   }
   chatVoiceInput = window.createVoiceInput({
-    onInterim: transcript => setChatVoiceStatus(transcript ? `“${transcript}”` : 'Listening…'),
+    onInterim: transcript => setChatVoiceStatus(transcript ? `“${transcript}”` : '正在聆听…'),
     onFinal: appendChatVoiceTranscript,
     onStateChange: updateChatVoiceState,
     onError: error => {
-      setChatVoiceStatus(error?.message || 'Voice input failed.', true);
-      button.title = error?.message || 'Voice input failed.';
+      setChatVoiceStatus(error?.message || '语音输入失败。', true);
+      button.title = error?.message || '语音输入失败。';
     },
   });
   if (!chatVoiceInput.isSupported()) {
@@ -2577,7 +2578,7 @@ async function loadReadingLesson({render = activeStudyMode === 'reading'} = {}) 
   const root = document.getElementById('reading-passage');
   const shouldRender = () => render && activeStudyMode === 'reading';
   if (root && !readingBlocks.length && shouldRender()) {
-    root.innerHTML = '<div class="empty-state">Loading reading passage...</div>';
+    root.innerHTML = '<div class="empty-state">正在加载阅读内容…</div>';
   }
   try {
     if (!readingBlocks.length) {
@@ -2600,7 +2601,7 @@ async function loadReadingLesson({render = activeStudyMode === 'reading'} = {}) 
     renderReadingSavedItems();
   } catch (err) {
     if (root && shouldRender()) {
-      root.innerHTML = '<div class="empty-state">Reading passage failed to load. Please retry after checking the server log.</div>';
+      root.innerHTML = '<div class="empty-state">阅读内容加载失败，请查看服务日志后重试。</div>';
     }
   }
 }
@@ -2638,7 +2639,8 @@ function startPolling() {
 function updateStatusBadge(status) {
   const badge = document.getElementById('status-badge');
   const value = status || 'pending';
-  badge.textContent = value === 'reading' ? 'reading mode' : `subtitles ${value}`;
+  const labelMap = {reading: '阅读模式', ready: '字幕就绪', pending: '字幕生成中', failed: '字幕失败'};
+  badge.textContent = labelMap[value] || `字幕 ${value}`;
   badge.className = `status-badge ${value === 'ready' || value === 'reading' ? 'ready' : value === 'failed' ? 'failed' : ''}`;
   const cancelBtn = document.getElementById('tts-cancel-btn');
   if (cancelBtn) {
@@ -2866,6 +2868,8 @@ function buildOutlineSections(units) {
     const first = bucket[0];
     const last = bucket[bucket.length - 1];
     const index = sections.length;
+    // 标题已含首句摘要时，预览跳过首句避免重复
+    const previewUnits = index > 0 && bucket.length > 1 ? bucket.slice(1) : bucket;
     sections.push({
       index,
       title: makeSectionTitle(index, bucket),
@@ -2873,7 +2877,7 @@ function buildOutlineSections(units) {
       end: last.end,
       sentence_indexes: bucket.map(item => item.index),
       segment_ids: bucket.flatMap(item => item.segment_ids || []),
-      preview: clipText(bucket.map(item => item.text).join(' '), 150),
+      preview: clipText(previewUnits.map(item => item.text).join(' '), 150),
     });
     bucket = [];
   }
@@ -2892,18 +2896,18 @@ function buildOutlineSections(units) {
 }
 
 function makeSectionTitle(index, bucket) {
-  if (index === 0) return 'Opening';
+  if (index === 0) return '开场';
   const firstText = bucket[0] ? bucket[0].text : '';
   const cue = clipText(firstText.replace(/^[,.\s]+/, ''), 58);
-  return cue ? `Section ${index}: ${cue}` : `Section ${index}`;
+  return cue ? `第 ${index} 段：${cue}` : `第 ${index} 段`;
 }
 
 function renderOutline() {
   const container = document.getElementById('subtitle-timeline');
   if (!outlineSections.length) {
     const message = lessonData && lessonData.subtitle_status === 'failed'
-      ? 'No subtitles were found. Upload fallback is not implemented in this P0 screen yet.'
-      : 'Building a content outline after subtitles are ready. You can keep watching the video.';
+      ? '未找到字幕。'
+      : '字幕就绪后自动生成内容大纲，期间可正常观看视频。';
     container.innerHTML = `<div class="empty-state">${message}</div>`;
     return;
   }
@@ -2912,14 +2916,14 @@ function renderOutline() {
     const selected = isInSelectedRange(idx) ? ' selected' : '';
     const active = idx === activeSectionIdx ? ' active' : '';
     return `<div class="outline-section${active}${selected}" data-idx="${idx}" onclick="onOutlineJump(${idx})">
-      <span class="outline-time">${formatTime(section.start)}<br>${formatTime(section.end)}</span>
+      <span class="outline-time">${formatTime(section.start)} – ${formatTime(section.end)}</span>
       <span class="outline-body">
         <span class="outline-title">${escapeHtml(section.title)}</span>
         <span class="outline-preview">${escapeHtml(section.preview)}</span>
       </span>
       <span class="outline-actions">
-        <button class="mark-btn ${rangeStartIdx === idx ? 'active' : ''}" onclick="setRangeStart(event, ${idx})" title="Set range start">A</button>
-        <button class="mark-btn ${rangeEndIdx === idx ? 'active' : ''}" onclick="setRangeEnd(event, ${idx})" title="Set range end">B</button>
+        <button class="mark-btn ${rangeStartIdx === idx ? 'active' : ''}" onclick="setRangeStart(event, ${idx})" title="设为讨论区间起点">A</button>
+        <button class="mark-btn ${rangeEndIdx === idx ? 'active' : ''}" onclick="setRangeEnd(event, ${idx})" title="设为讨论区间终点">B</button>
       </span>
     </div>`;
   }).join('');
@@ -2930,7 +2934,9 @@ function renderDocumentOutline(outline, cached = false) {
   if (!root || !outline) return;
   const sections = Array.isArray(outline.sections) ? outline.sections : [];
   root.hidden = false;
-  root.innerHTML = `<div class="document-summary-type">${escapeHtml(outline.document_type || 'document')}${cached ? ' · cached' : ''}</div>
+  const docTypeMap = {guide: '导读', document: '文档'};
+  const docType = docTypeMap[outline.document_type] || outline.document_type || '文档';
+  root.innerHTML = `<div class="document-summary-type">${escapeHtml(docType)}${cached ? ' · 缓存' : ''}</div>
     <div class="document-summary-copy">${escapeHtml(outline.summary || '')}</div>
     <div class="document-summary-sections">${sections.map(section => (
       `<button class="document-summary-link" type="button" onclick="jumpToDocumentAnchor('${escapeHtml(section.anchor_type || '')}', '${escapeHtml(section.anchor_id)}')">
@@ -3136,7 +3142,7 @@ function renderReadingPassage() {
   readingPassageSignature = signature;
   const renderVersion = ++readingRenderVersion;
   if (!readingBlocks.length) {
-    root.innerHTML = '<p data-segment-index="" data-start-seconds="" data-end-seconds="" hidden></p><div class="empty-state">No reading passage blocks found.</div>';
+    root.innerHTML = '<p data-segment-index="" data-start-seconds="" data-end-seconds="" hidden></p><div class="empty-state">未找到阅读段落内容。</div>';
     return;
   }
   root.innerHTML = '';
@@ -3158,7 +3164,7 @@ function renderReadingPassage() {
       const blockEnd = Number(block.end_seconds);
       const hasPlaybackRange = Number.isFinite(blockStart) && Number.isFinite(blockEnd) && blockEnd > blockStart;
       if (hasPlaybackRange) {
-        innerHtml += ` <button class="reading-play-button" type="button" data-start="${blockStart}" data-end="${blockEnd}" onclick="event.stopPropagation();playReadingRange(${blockStart},${blockEnd})" title="Play this paragraph">▶</button>`;
+        innerHtml += ` <button class="reading-play-button" type="button" data-start="${blockStart}" data-end="${blockEnd}" onclick="event.stopPropagation();playReadingRange(${blockStart},${blockEnd})" title="播放本段">▶</button>`;
       }
       innerHtml += renderReadingBlockTranslation(block);
       paragraph.innerHTML = innerHtml;
@@ -3685,7 +3691,7 @@ function renderReadingSavedItems() {
   const savedWords = [...savedWordSet].sort();
   const sentenceItems = savedSentences || [];
   if (!savedWords.length && !sentenceItems.length) {
-    root.innerHTML = '<div class="empty-state">Save words or sentences from Phase A.</div>';
+    root.innerHTML = '<div class="empty-state">在上方阅读中收藏单词或句子后会显示在这里。</div>';
     return;
   }
   const wordHtml = savedWords.map(word => {
@@ -3927,9 +3933,9 @@ function updateCurrentSubtitle() {
   const mode = document.getElementById('subtitle-mode').value;
 
   if (mode === 'none') {
-    textEl.textContent = 'Subtitles hidden.';
-    posEl.textContent = 'no subtitles mode';
-    metaEl.textContent = 'Switch back to English or English + lookup when you want support.';
+    textEl.textContent = '字幕已隐藏。';
+    posEl.textContent = '无字幕模式';
+    metaEl.textContent = '需要辅助时可切回英文或英文 + 点词查询。';
     chipsEl.innerHTML = '';
     document.getElementById('subtitle-translation').textContent = '';
     saveBtn.disabled = true;
@@ -3940,10 +3946,10 @@ function updateCurrentSubtitle() {
   }
   if (!sentenceUnits.length) {
     textEl.textContent = lessonData && lessonData.subtitle_status === 'failed'
-      ? 'No subtitles are available for this video.'
-      : 'Subtitles are loading in the background.';
-    posEl.textContent = lessonData ? `subtitles ${lessonData.subtitle_status}` : 'waiting';
-    metaEl.textContent = 'Video playback stays available while learning data loads.';
+      ? '该视频暂无可用字幕。'
+      : '字幕正在后台加载…';
+    posEl.textContent = lessonData ? `字幕${lessonData.subtitle_status === 'ready' ? '就绪' : lessonData.subtitle_status === 'failed' ? '失败' : '生成中'}` : '等待中';
+    metaEl.textContent = '学习数据加载期间可正常播放视频。';
     chipsEl.innerHTML = '';
     saveBtn.disabled = true;
     prevBtn.disabled = true;
@@ -3962,7 +3968,7 @@ function updateCurrentSubtitle() {
     textEl.innerHTML = renderSubtitleText(sentence);
   }
   posEl.textContent = `${idx + 1} / ${sentenceUnits.length}`;
-  metaEl.textContent = `${formatTime(sentence.start)} - ${formatTime(sentence.end)} | ${sentence.segment_ids.length} subtitle line${sentence.segment_ids.length > 1 ? 's' : ''}`;
+  metaEl.textContent = `${formatTime(sentence.start)} - ${formatTime(sentence.end)} ｜ ${sentence.segment_ids.length} 行字幕`;
   chipsEl.innerHTML = '';
   const transEl = document.getElementById('subtitle-translation');
   if (transEl) {
@@ -4017,18 +4023,18 @@ function updateContextSummary() {
   const clearButton = document.getElementById('reading-context-clear');
   if (contextMode === 'reading_selection' && readingChatSelection) {
     const preview = readingChatSelection.length > 110 ? `${readingChatSelection.slice(0, 110)}…` : readingChatSelection;
-    el.textContent = `Context: selected Reading text — ${preview}`;
+    el.textContent = `上下文：阅读中选中文本 — ${preview}`;
     if (clearButton) clearButton.hidden = false;
     return;
   }
   if (clearButton) clearButton.hidden = true;
   if (contextMode === 'selected_range' && selectedIds.length) {
-    el.textContent = `Context: selected range ${formatTime(selectedStart)} - ${formatTime(selectedEnd)} (${selectedIds.length} subtitle lines)`;
+    el.textContent = `上下文：已选区间 ${formatTime(selectedStart)} - ${formatTime(selectedEnd)}（${selectedIds.length} 行字幕）`;
     return;
   }
   if (activeSentenceIdx >= 0 && sentenceUnits[activeSentenceIdx]) {
     const sentence = sentenceUnits[activeSentenceIdx];
-    el.textContent = `Context: current sentence ${formatTime(sentence.start)} - ${sentence.text}`;
+    el.textContent = `上下文：当前句 ${formatTime(sentence.start)} - ${sentence.text}`;
     return;
   }
   el.textContent = 'Context: current playback point.';
@@ -4363,12 +4369,12 @@ async function masterWordFromPopover(event, word) {
 function updateReviewSummary() {
   const wordCount = document.getElementById('review-word-count');
   const sentenceCount = document.getElementById('review-sentence-count');
-  if (wordCount) wordCount.textContent = `${savedWordSet.size} word${savedWordSet.size === 1 ? '' : 's'}`;
-  if (sentenceCount) sentenceCount.textContent = `${savedSentences.length} sentence${savedSentences.length === 1 ? '' : 's'}`;
+  if (wordCount) wordCount.textContent = `${savedWordSet.size} 词`;
+  if (sentenceCount) sentenceCount.textContent = `${savedSentences.length} 句`;
 }
 
 function buildReviewMarkdown() {
-  const title = lessonData?.title || 'English listening review';
+  const title = lessonData?.title || '英语精学复习';
   const wordRows = [...savedWordSet].sort().map(word => {
     const meaning = wordMeaningCache[word] || '';
     return `| ${word} | ${meaning} | |`;
@@ -4400,9 +4406,9 @@ async function copyReviewMarkdown() {
   const markdown = buildReviewMarkdown();
   try {
     await navigator.clipboard.writeText(markdown);
-    if (status) status.textContent = 'Copied';
+    if (status) status.textContent = '已复制';
   } catch (_) {
-    if (status) status.textContent = 'Copy failed';
+    if (status) status.textContent = '复制失败';
   }
   if (status) setTimeout(() => { status.textContent = ''; }, 1600);
 }
@@ -4414,7 +4420,7 @@ async function exportReviewHtml() {
     const resp = await fetch(`/api/v2/lessons/${LESSON_ID}/review-export`);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || 'Export failed');
-    if (status) status.textContent = `Exported ${data.sentence_count || 0} sentences`;
+    if (status) status.textContent = `已导出 ${data.sentence_count || 0} 句`;
     window.open(data.export_url, '_blank');
   } catch (e) {
     if (status) status.textContent = e.message || 'Export failed';
@@ -4531,7 +4537,7 @@ async function newChatSession({focusInput = true} = {}) {
     activeChatSessionId = Number(session.id);
     renderChatSessionOptions();
     const container = document.getElementById('chat-messages');
-    if (container) container.innerHTML = '<div class="empty-state">New conversation. Ask about the lesson when you are ready.</div>';
+    if (container) container.innerHTML = '<div class="empty-state">新对话已创建，可以就本课内容提问了。</div>';
     if (focusInput) document.getElementById('chat-input')?.focus();
   } catch (error) {
     const container = document.getElementById('chat-messages');
@@ -4558,7 +4564,7 @@ function exportChatSession() {
 async function loadChatHistory(sessionId = activeChatSessionId) {
   const container = document.getElementById('chat-messages');
   if (!container || !sessionId) return;
-  container.innerHTML = '<div class="empty-state">Loading conversation…</div>';
+  container.innerHTML = '<div class="empty-state">正在加载对话…</div>';
   try {
     const resp = await fetch(`/api/v2/chat/history/${LESSON_ID}?session_id=${encodeURIComponent(sessionId)}`);
     if (!resp.ok) throw new Error('无法加载聊天记录');
@@ -4571,7 +4577,7 @@ async function loadChatHistory(sessionId = activeChatSessionId) {
       addChatMessage('ai', item.ai_response || '', item);
     }
     if (!(data.messages || []).length) {
-      container.innerHTML = '<div class="empty-state">No messages in this conversation yet.</div>';
+      container.innerHTML = '<div class="empty-state">这个对话还没有消息。</div>';
     }
   } catch (error) {
     if (Number(sessionId) === Number(activeChatSessionId)) {
@@ -4956,7 +4962,7 @@ function addChatMessage(role, content, meta = null) {
   container.querySelector('.empty-state')?.remove();
   const item = document.createElement('div');
   item.className = 'chat-msg ' + role;
-  item.innerHTML = `<div class="role">${role === 'user' ? 'You' : 'AI'}</div><div class="chat-message-body"></div>`;
+  item.innerHTML = `<div class="role">${role === 'user' ? '你' : 'AI'}</div><div class="chat-message-body"></div>`;
   setChatMessageContent(item, content);
   if (role === 'ai' && meta) renderAiMessageExtras(item, meta);
   container.appendChild(item);
@@ -5022,6 +5028,9 @@ function sentenceForWord(normalized) {
 }
 async function initAuthBadge() {
   try {
+    // 单用户/公开库模式没有登录概念，直接跳过，避免 /api/auth/me 401 噪音和误显示登录入口
+    const h = await fetch('/health', {cache: 'no-store'});
+    if (h.ok && (await h.json()).auth_enabled === false) return;
     const r = await fetch('/api/auth/me');
     if (!r.ok) {
       if (r.status === 401) document.getElementById('login-btn').style.display = '';

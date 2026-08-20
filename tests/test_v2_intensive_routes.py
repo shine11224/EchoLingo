@@ -521,7 +521,7 @@ def test_intensive_document_contains_all_sentences_and_saved_tags(tmp_path, monk
     assert 'data-toggle-tag-editor="${sentence.key}"' in page.text
     assert "openTagEditorKeys" in page.text
     assert 'data-play-sentence="${sentence.key}"' in page.text
-    assert 'data-sentence-speed-select="${sentence.key}"' in page.text
+    assert 'data-sentence-speed-select="${sentence.key}"' not in page.text
     assert "/api/v2/lessons/${LESSON_ID}/word" in page.text
     assert "saveSentenceTags" in page.text
     assert "/api/v2/lessons/${LESSON_ID}/intensive" in page.text

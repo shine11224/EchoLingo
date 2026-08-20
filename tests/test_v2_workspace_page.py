@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 
 def test_workspace_page_renders(tmp_path, monkeypatch):
-    # The workspace uses one tabbed sidebar surface instead of three stacked panes.
     import db
     from fastapi_server import create_app
 
@@ -28,8 +27,8 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "youtube-player" in resp.text
     assert "subtitle-timeline" in resp.text
     assert "chat-panel" in resp.text
-    assert "Current sentence" in resp.text
-    assert "Content outline" in resp.text
+    assert "当前句" in resp.text
+    assert "内容大纲" in resp.text
     assert "save-sentence" in resp.text
     assert "vocab-chips" in resp.text
     assert "star-save" in resp.text
@@ -84,7 +83,7 @@ def test_workspace_page_renders(tmp_path, monkeypatch):
     assert "local-media-player" in resp.text
     assert "initLocalMedia" in resp.text
     assert "media_url" in resp.text
-    assert "Export HTML" in resp.text
+    assert "导出 HTML" in resp.text
     assert "exportReviewHtml" in resp.text
     assert "/review-export" in resp.text
     assert "sentence-tag-panel" in resp.text
@@ -508,7 +507,6 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     assert '>⚙️ 设置</button>' in resp.text
     assert 'class="review-entry-grid"' in resp.text
     assert "词汇记忆工坊" in resp.text
-    assert "词汇本" not in resp.text
     assert "句子复习" in resp.text
     assert "今日任务" not in resp.text
     assert 'id="tab-sentences"' in resp.text
@@ -537,16 +535,3 @@ def test_index_keeps_vocab_review_and_adds_sentence_review_tab(tmp_path, monkeyp
     assert 'id="user-media-whisper-model"' in resp.text
     assert "waitForTranslationReadiness" in resp.text
     assert "translation_ready" in resp.text
-
-
-def test_legacy_vocab_page_redirects_to_memory_workshop(tmp_path, monkeypatch):
-    import db
-    from fastapi_server import create_app
-
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "vocab.db")
-    client = TestClient(create_app())
-
-    resp = client.get("/vocab", follow_redirects=False)
-
-    assert resp.status_code == 307
-    assert resp.headers["location"] == "/#vocab"

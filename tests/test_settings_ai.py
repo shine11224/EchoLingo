@@ -1,9 +1,7 @@
-"""设置页通用 AI / Groq / 混元配置端点的读写回环测试。"""
+"""设置页 AI API 配置（含混元翻译 / 千问转录）端点的读写回环测试。"""
 import os
 import sys
-from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
@@ -14,7 +12,11 @@ def _client(tmp_path, monkeypatch):
 
     # 把可变配置导向临时目录，绝不碰真实 .env
     monkeypatch.setenv("ELT_CONFIG_DIR", str(tmp_path))
-    for key in ("HY_TRANSLATE_API_KEY", "HY_TRANSLATE_MODEL", "DASHSCOPE_API_KEY"):
+    for key in (
+        "HY_TRANSLATE_API_KEY",
+        "HY_TRANSLATE_MODEL",
+        "DASHSCOPE_API_KEY",
+    ):
         monkeypatch.delenv(key, raising=False)
 
     from fastapi_server import create_app
@@ -22,213 +24,58 @@ def _client(tmp_path, monkeypatch):
     return TestClient(create_app()), ai_config
 
 
-def test_get_settings_includes_hy_but_not_removed_dashscope_field(tmp_path, monkeypatch):
+def test_get_settings_includes_hy_and_dashscope_fields(tmp_path, monkeypatch):
     client, _ = _client(tmp_path, monkeypatch)
-    monkeypatch.setenv("DASHSCOPE_API_KEY", "must-not-leak")
     data = client.get("/api/settings/ai").json()
     assert "hy_translate_api_key" in data
     assert "hy_translate_model" in data
-    assert "dashscope_api_key" not in data
-    # 未配置时模型名回退默认
+    assert "dashscope_api_key" in data
+    # 未配置时模型名回退默认，key 为空
     assert data["hy_translate_model"] == "hy-mt2-plus"
+    assert data["dashscope_api_key"] == ""
 
 
-def test_save_roundtrip_persists_hy_and_generic_provider(tmp_path, monkeypatch):
+def test_save_roundtrip_persists_hy_and_dashscope(tmp_path, monkeypatch):
     client, ai_config = _client(tmp_path, monkeypatch)
     payload = {
         "api_key": "",
-        "base_url": "https://api.kimi.com/coding/v1",
-        "model": "kimi-for-coding",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-chat",
         "groq_api_key": "",
         "hy_translate_api_key": "hy-test-key",
         "hy_translate_model": "hy-mt2-pro",
+        "dashscope_api_key": "sk-dashscope-test",
     }
     resp = client.post("/api/settings/ai", json=payload)
     assert resp.json()["ok"] is True
 
-    # 运行时环境立即生效
+    # 运行时环境立即生效（混元/千问在调用处实时读 os.environ）
     assert os.environ["HY_TRANSLATE_API_KEY"] == "hy-test-key"
     assert os.environ["HY_TRANSLATE_MODEL"] == "hy-mt2-pro"
+    assert os.environ["DASHSCOPE_API_KEY"] == "sk-dashscope-test"
 
     # .env 持久化，GET 同源读回
     env_text = (tmp_path / ".env").read_text(encoding="utf-8")
     assert "HY_TRANSLATE_API_KEY=hy-test-key" in env_text
-    assert "AI_BASE_URL=https://api.kimi.com/coding/v1" in env_text
-    assert "AI_MODEL=kimi-for-coding" in env_text
-    assert "DASHSCOPE_API_KEY" not in env_text
+    assert "DASHSCOPE_API_KEY=sk-dashscope-test" in env_text
     data = client.get("/api/settings/ai").json()
     assert data["hy_translate_api_key"] == "hy-test-key"
     assert data["hy_translate_model"] == "hy-mt2-pro"
-    assert data["base_url"] == "https://api.kimi.com/coding/v1"
-    assert data["model"] == "kimi-for-coding"
+    assert data["dashscope_api_key"] == "sk-dashscope-test"
 
 
-def test_delete_hy_field_and_reject_removed_dashscope_field(tmp_path, monkeypatch):
+def test_delete_hy_and_dashscope_fields(tmp_path, monkeypatch):
     client, _ = _client(tmp_path, monkeypatch)
     client.post("/api/settings/ai", json={
         "hy_translate_api_key": "hy-x",
+        "dashscope_api_key": "sk-x",
     })
-    resp = client.request("DELETE", "/api/settings/ai", json={"field": "hy_translate_api_key"})
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
+    for field in ("hy_translate_api_key", "dashscope_api_key"):
+        resp = client.request("DELETE", "/api/settings/ai", json={"field": field})
+        assert resp.status_code == 200, field
+        assert resp.json()["ok"] is True
     assert os.environ.get("HY_TRANSLATE_API_KEY", "") == ""
-
-    resp = client.request("DELETE", "/api/settings/ai", json={"field": "dashscope_api_key"})
-    assert resp.status_code == 400
+    assert os.environ.get("DASHSCOPE_API_KEY", "") == ""
 
     resp = client.request("DELETE", "/api/settings/ai", json={"field": "no_such"})
     assert resp.status_code == 400
-
-
-def test_delete_model_restores_flash_default(tmp_path, monkeypatch):
-    client, ai_config = _client(tmp_path, monkeypatch)
-    client.post("/api/settings/ai", json={"model": "custom-model"})
-    resp = client.request("DELETE", "/api/settings/ai", json={"field": "model"})
-    assert resp.status_code == 200
-    assert ai_config.AI_MODEL == "deepseek-v4-flash"
-
-
-def test_public_settings_ui_has_provider_and_baidu_presets_without_paraformer():
-    html = (Path(__file__).resolve().parents[1]
-            / "frontend" / "templates" / "index.html").read_text(encoding="utf-8")
-    assert 'value="deepseek">DeepSeek Flash' in html
-    assert 'value="qwen">千问 Flash（阿里云百炼）' in html
-    assert 'value="kimi-platform">Kimi 开放平台' in html
-    assert 'value="kimi-code">Kimi Code 会员 API' in html
-    assert "https://api.kimi.com/coding/v1" in html
-    assert "kimi-for-coding" in html
-    assert "https://dashscope.aliyuncs.com/compatible-mode/v1" in html
-    assert "qwen3.6-flash" in html
-    assert 'id="baidu-pan-settings-guide"' in html
-    assert 'id="baidu-pan-install-btn"' in html
-    assert 'id="baidu-pan-auth-code"' in html
-    assert "确认并安装 bdpan" in html
-    assert "--set-code <" not in html
-    assert "支持 B站 / YouTube / 文章链接、百度网盘分享链接" not in html
-    assert 'placeholder="粘贴 B站 / YouTube / 网盘链接' not in html
-    assert 'value="paraformer"' not in html
-    assert 'id="dashscope-api-key"' not in html
-    assert 'id="local-translation-settings-guide"' in html
-    assert 'id="local-translation-install-btn"' in html
-    assert "同意许可并一键安装" in html
-    assert "无需混元 API Key" in html
-    assert 'id="whisper-model-settings-guide"' in html
-    assert "downloadWhisperModel" in html
-
-
-def test_public_baidu_settings_exposes_installer_and_install_endpoint(tmp_path, monkeypatch):
-    client, _ = _client(tmp_path, monkeypatch)
-    from webapp.services import baidu_pan
-
-    monkeypatch.setattr(baidu_pan, "capability", lambda **kwargs: {
-        "enabled": False, "installed": False, "reason": "bdpan 未安装",
-    })
-    monkeypatch.setattr(baidu_pan, "installer_info", lambda: {
-        "supported": True, "version": "3.8.4", "installed": False,
-    })
-    data = client.get("/api/settings/baidu-pan?refresh=true").json()
-    assert data["can_manage_auth"] is True
-    assert data["installer"]["version"] == "3.8.4"
-
-    captured = {}
-    def fake_install(*, expected_version, confirmed):
-        captured.update(version=expected_version, confirmed=confirmed)
-        return {"ok": True, "installed_version": "3.8.4"}
-    monkeypatch.setattr(baidu_pan, "install_cli", fake_install)
-    resp = client.post("/api/settings/baidu-pan/install", json={
-        "version": "3.8.4", "confirmed": True,
-    })
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
-    assert captured == {"version": "3.8.4", "confirmed": True}
-
-
-def test_public_local_translation_settings_exposes_one_click_install(tmp_path, monkeypatch):
-    client, _ = _client(tmp_path, monkeypatch)
-    from webapp.services import local_translation_setup
-
-    monkeypatch.setattr(local_translation_setup, "installer_info", lambda: {
-        "installed": False,
-        "supported": True,
-        "version": "test-pack",
-        "platform": "Windows AMD64",
-    })
-    data = client.get("/api/settings/local-translation").json()
-    assert data["supported"] is True
-    assert data["version"] == "test-pack"
-
-    captured = {}
-
-    def fake_install(*, expected_version, accepted_license):
-        captured.update(version=expected_version, accepted=accepted_license)
-        return {"ok": True, "installed": True}
-
-    monkeypatch.setattr(local_translation_setup, "install", fake_install)
-    resp = client.post("/api/settings/local-translation/install", json={
-        "version": "test-pack", "accepted_license": True,
-    })
-    assert resp.status_code == 200
-    assert resp.json()["installed"] is True
-    assert captured == {"version": "test-pack", "accepted": True}
-
-
-def test_public_whisper_settings_detects_and_downloads_models(tmp_path, monkeypatch):
-    client, _ = _client(tmp_path, monkeypatch)
-    from webapp.services import whisper_setup
-
-    monkeypatch.setattr(whisper_setup, "status", lambda: {
-        "enabled": True,
-        "models": [{"name": "base", "installed": False}],
-    })
-    data = client.get("/api/settings/whisper-models").json()
-    assert data["enabled"] is True
-    assert data["models"][0]["name"] == "base"
-
-    monkeypatch.setattr(whisper_setup, "download_model", lambda name: {
-        "ok": True, "model": {"name": name, "installed": True},
-    })
-    response = client.post("/api/settings/whisper-models/base/download")
-    assert response.status_code == 200
-    assert response.json()["model"] == {"name": "base", "installed": True}
-
-
-def test_cloud_page_hides_local_whisper_models(tmp_path, monkeypatch):
-    client, _ = _client(tmp_path, monkeypatch)
-    monkeypatch.setenv("ELT_DEPLOYMENT", "cloud")
-    html = client.get("/").text
-    assert 'id="whisper-model-settings-guide"' not in html
-    assert "base（本地，最快）" not in html
-    assert "medium（本地，均衡）" not in html
-    assert "large-v3（本地，最准）" not in html
-
-
-def test_public_page_shows_local_whisper_models(tmp_path, monkeypatch):
-    client, _ = _client(tmp_path, monkeypatch)
-    monkeypatch.delenv("ELT_DEPLOYMENT", raising=False)
-    html = client.get("/").text
-    assert 'id="whisper-model-settings-guide"' in html
-    assert "base（本地，最快）" in html
-    assert "medium（本地，均衡）" in html
-    assert "large-v3（本地，最准）" in html
-
-
-def test_paraformer_is_rejected_before_transcription(tmp_path):
-    from sources.baidu import _transcribe_with_optional_whisper
-
-    try:
-        _transcribe_with_optional_whisper(tmp_path / "missing.mp3", "paraformer")
-    except ValueError as exc:
-        assert "不支持的转录模型" in str(exc)
-    else:  # pragma: no cover
-        raise AssertionError("removed Paraformer model was accepted")
-
-
-def test_cloud_rejects_local_whisper_without_cloud_key(tmp_path, monkeypatch):
-    from sources import baidu
-
-    monkeypatch.setenv("ELT_DEPLOYMENT", "cloud")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(baidu, "_extract_audio_for_whisper", lambda path: path)
-    monkeypatch.setattr(baidu, "load_transcript_cache", lambda *args: None)
-    with pytest.raises(RuntimeError, match="云端部署不支持"):
-        baidu._transcribe_with_optional_whisper(tmp_path / "audio.mp3", "base")

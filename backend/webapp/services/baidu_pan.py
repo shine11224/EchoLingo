@@ -12,16 +12,12 @@ import json
 import math
 import locale
 import os
-import platform
 import re
 import shutil
 import sqlite3
 import subprocess
-import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 import uuid
 from pathlib import Path, PurePosixPath
 from zoneinfo import ZoneInfo
@@ -48,22 +44,6 @@ _SUPPORTED_EXTS = _MEDIA_EXTS | _TEXT_EXTS
 _TERMINAL = {"ready", "failed", "cancelled"}
 _WAITING = {"queued", "waiting_password", "waiting_auth", "waiting_quota", "waiting_space"}
 _ACTIVE = _WAITING | {"transferring", "downloading", "processing"}
-
-_BDPAN_INSTALL_VERSION = "3.8.4"
-_BDPAN_SOURCE_REPO = "https://github.com/baidu-netdisk/bdpan-storage"
-_BDPAN_CDN_BASE = (
-    "https://issuecdn.baidupcs.com/issue/netdisk/ai-bdpan/installer/"
-    f"{_BDPAN_INSTALL_VERSION}"
-)
-_BDPAN_INSTALLERS = {
-    "darwin-amd64": "cc6b10d4afea9baad77c68dadea6b9e4ecd7f8815cf364ebe6be0e51648e4623",
-    "darwin-arm64": "a0c395a83f9abc8f1423c30b21dfae73819376f7b1822d3bd4d3de62392c4c0c",
-    "linux-amd64": "02050e9a5ed5c5ddc314bf920c103238a669366a130e3bd43a125d83fdd00548",
-    "linux-arm64": "abb39a1f7dc0bf44883bbb30b057e6e65c5db64ffdce7c2ae92dea60a136362a",
-    "windows-amd64": "194f5174bbb3d9260cc5b7d465c4f98d6b9279e028db136dc1e57cc3bc1f49a0",
-}
-_BDPAN_INSTALL_MAX_BYTES = 100 * 1024 * 1024
-_INSTALL_LOCK = threading.Lock()
 
 _ERRNO_MESSAGES = {
     "-9": "提取码错误，请核对后重试",
@@ -151,140 +131,7 @@ def _now() -> str:
 
 
 def _bin() -> str:
-    configured = os.environ.get("ELT_BAIDU_PAN_BIN", "").strip()
-    if configured:
-        return configured
-    discovered = shutil.which("bdpan")
-    if discovered:
-        return discovered
-    # 官方安装器会写入用户级目录；当前服务进程不会自动刷新 PATH，
-    # 因此直接探测常见安装位置，让网页一键安装后可以立即使用。
-    candidates: list[Path] = []
-    if os.name == "nt":
-        local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
-        if local_app_data:
-            candidates.append(Path(local_app_data) / "bdpan" / "bdpan.exe")
-        candidates.append(Path.home() / "AppData" / "Local" / "bdpan" / "bdpan.exe")
-    else:
-        candidates.extend((
-            Path.home() / ".local" / "bin" / "bdpan",
-            Path.home() / "bin" / "bdpan",
-            Path("/usr/local/bin/bdpan"),
-        ))
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-    return ""
-
-
-def _installer_platform_key() -> str:
-    system = platform.system().lower()
-    os_key = {"darwin": "darwin", "linux": "linux", "windows": "windows"}.get(system, "")
-    machine = platform.machine().lower()
-    arch_key = "arm64" if machine in {"arm64", "aarch64"} else (
-        "amd64" if machine in {"amd64", "x86_64", "x64"} else ""
-    )
-    return f"{os_key}-{arch_key}" if os_key and arch_key else ""
-
-
-def _installed_version() -> str:
-    binary = _bin()
-    if not binary:
-        return ""
-    for args in ([binary, "version"], [binary, "--version"]):
-        try:
-            proc = subprocess.run(args, capture_output=True, timeout=10)
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if proc.returncode == 0:
-            text = _decode_cli_output(proc.stdout or proc.stderr or b"").strip()
-            match = re.search(r"\d+\.\d+(?:\.\d+)?", text)
-            return match.group(0) if match else text.splitlines()[0][:80] if text else ""
-    return ""
-
-
-def installer_info() -> dict:
-    platform_key = _installer_platform_key()
-    checksum = _BDPAN_INSTALLERS.get(platform_key, "")
-    suffix = ".exe" if platform_key.startswith("windows-") else ""
-    filename = f"bdpan-installer-{platform_key}{suffix}" if platform_key else ""
-    return {
-        "supported": bool(checksum),
-        "platform": platform_key or "unsupported",
-        "version": _BDPAN_INSTALL_VERSION,
-        "source_name": "百度网盘官方 bdpan-storage",
-        "source_repo": _BDPAN_SOURCE_REPO,
-        "download_url": f"{_BDPAN_CDN_BASE}/{filename}" if filename else "",
-        "sha256": checksum,
-        "installed": bool(_bin()),
-        "installed_version": _installed_version(),
-        "install_location": _bin() or "官方安装器的用户级默认目录（安装后自动检测，无需配置 PATH）",
-    }
-
-
-def _download_installer(url: str, destination: Path, expected_sha256: str) -> None:
-    digest = hashlib.sha256()
-    size = 0
-    try:
-        with urllib.request.urlopen(url, timeout=45) as response, destination.open("wb") as output:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > _BDPAN_INSTALL_MAX_BYTES:
-                    raise BaiduPanError("官方安装器体积异常，已停止安装")
-                digest.update(chunk)
-                output.write(chunk)
-    except (OSError, urllib.error.URLError) as exc:
-        raise BaiduPanError(f"下载官方安装器失败：{exc}") from exc
-    if size == 0:
-        raise BaiduPanError("官方安装器下载结果为空")
-    actual = digest.hexdigest().lower()
-    if actual != expected_sha256.lower():
-        raise BaiduPanError("官方安装器 SHA-256 校验失败，已停止安装")
-
-
-def _execute_installer(path: Path) -> None:
-    if os.name != "nt":
-        path.chmod(path.stat().st_mode | 0o111)
-    try:
-        proc = subprocess.run([str(path), "--yes"], capture_output=True, timeout=300)
-    except subprocess.TimeoutExpired as exc:
-        raise BaiduPanError("bdpan 安装超时，请稍后重试") from exc
-    except OSError as exc:
-        raise BaiduPanError(f"无法运行 bdpan 官方安装器：{exc}") from exc
-    if proc.returncode != 0:
-        output = _decode_cli_output(proc.stderr or proc.stdout or b"").strip()
-        raise BaiduPanError(output[:500] or f"bdpan 安装器退出码 {proc.returncode}")
-
-
-def install_cli(*, expected_version: str, confirmed: bool) -> dict:
-    """下载并执行固定版本官方安装器。必须由网页上的显式确认触发。"""
-    if not confirmed:
-        raise ValueError("请先确认安装来源、版本和安全提示")
-    if str(expected_version or "").strip() != _BDPAN_INSTALL_VERSION:
-        raise ValueError("安装版本已变化，请刷新页面后重新确认")
-    info = installer_info()
-    if not info["supported"]:
-        raise BaiduPanError(f"当前平台暂不支持一键安装：{info['platform']}")
-    if not _INSTALL_LOCK.acquire(blocking=False):
-        raise BaiduPanBusyError("bdpan 正在安装，请稍候")
-    try:
-        suffix = ".exe" if info["platform"].startswith("windows-") else ""
-        with tempfile.TemporaryDirectory(prefix="echolingo-bdpan-") as temp_dir:
-            installer = Path(temp_dir) / f"bdpan-installer{suffix}"
-            _download_installer(info["download_url"], installer, info["sha256"])
-            _execute_installer(installer)
-        _CAPABILITY_CACHE.clear()
-        installed = _bin()
-        if not installed:
-            raise BaiduPanError("安装器已完成，但应用未找到 bdpan；请重启应用后重新检测")
-        result = installer_info()
-        result.update({"ok": True, "message": "bdpan 安装完成"})
-        return result
-    finally:
-        _INSTALL_LOCK.release()
+    return os.environ.get("ELT_BAIDU_PAN_BIN") or shutil.which("bdpan") or ""
 
 
 def _jobs_db_path() -> Path:
@@ -424,17 +271,12 @@ def _mask_username(name: str) -> str:
     return name[:1] + "*" * min(4, len(name) - 2) + name[-1:]
 
 
-def _run_cli(args: list[str], *, timeout: int, stdin_text: str | None = None) -> str:
+def _run_cli(args: list[str], *, timeout: int) -> str:
     binary = _bin()
     if not binary:
         raise BaiduPanError("bdpan 未安装")
     try:
-        proc = subprocess.run(
-            [binary, *args],
-            input=stdin_text.encode("utf-8") if stdin_text is not None else None,
-            capture_output=True,
-            timeout=timeout,
-        )
+        proc = subprocess.run([binary, *args], capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise BaiduPanError(f"网盘操作超时（{timeout}s）")
     stdout = _decode_cli_output(proc.stdout or b"")
@@ -669,15 +511,7 @@ def complete_web_auth(code: str) -> dict:
     clean = str(code or "").strip()
     if not _AUTH_CODE_RE.fullmatch(clean):
         raise ValueError("授权码应为 32 位十六进制字符串")
-    help_text = _run_cli(["login", "--help"], timeout=15)
-    if "set-code-stdin" not in help_text:
-        raise BaiduPanError("当前 bdpan 版本不支持安全提交授权码，请升级到 3.6.2 或更高版本")
-    # 授权码仅通过 stdin 传递，避免出现在进程参数和系统进程列表中。
-    _run_cli(
-        ["login", "--accept-disclaimer", "--set-code-stdin"],
-        timeout=30,
-        stdin_text=f"{clean}\n",
-    )
+    _run_cli(["login", "--accept-disclaimer", "--set-code", clean], timeout=30)
     _CAPABILITY_CACHE.clear()
     _QUEUE_WAKE.set()
     result = capability(refresh=True)

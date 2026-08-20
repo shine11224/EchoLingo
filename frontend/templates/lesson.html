@@ -1,6 +1,7 @@
 ﻿<!doctype html>
 <html lang="zh-CN">
 <head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ lesson_title }}</title>
@@ -1275,7 +1276,7 @@
       <nav class="tabs" aria-label="learning phase">
         <button class="tab active" data-phase-tab="phase-a">Phase A</button>
         <button class="tab" data-phase-tab="phase-b">Phase B</button>
-        <a href="/#vocab" class="tab" style="text-decoration:none;margin-left:auto">📖 词汇记忆工坊</a>
+        <a href="/vocab" class="tab" style="text-decoration:none;margin-left:auto">📖 词汇本</a>
       </nav>
     </header>
     <div class="vocab-controls">
@@ -2787,7 +2788,7 @@
         if (/^[A-Za-z'']+$/.test(token)) {
           const word = token.replace(/^['']+|['']+$/g, '').toLowerCase();
           if (!word) return escapeHtml(token);
-          const activeBadge = window.activeWords?.has(word) ? `<span class="active-badge" title="词汇记忆工坊中的词">★</span>` : '';
+          const activeBadge = window.activeWords?.has(word) ? `<span class="active-badge" title="词汇本中的词">★</span>` : '';
           const vocabInfo = wordlistsReady ? getWordInfo(word) : { show: false };
           const vocabStyle = vocabInfo.show ? ` style="${vocabInfo.style || ''}"` : '';
           return `<span class="inline-word" data-iword="${escapeHtml(word)}" data-isent="${idx}"${vocabStyle}>${escapeHtml(token)}</span>${activeBadge}`;
@@ -2974,7 +2975,7 @@
         if (vocabMap.size >= 8) break;
       }
 
-      // 1. 重点词汇：优先展示本 session 新加入词汇记忆工坊的词；否则回退到 AI 词汇
+      // 1. 重点词汇：优先展示本 session 新加入词汇本的词；否则回退到 AI 词汇
       const vocabList = document.getElementById('summary-vocab-list');
       if (vocabList) {
         if (_sessionNewWords.length > 0) {
@@ -2988,7 +2989,7 @@
         } else {
           // 回退：从 AI 词汇中取前 8（scored/vocabMap 已在函数顶部计算）
           if (vocabMap.size === 0) {
-            vocabList.innerHTML = '<span style="font-size:13px;color:var(--muted)">点击句子中的单词加入词汇记忆工坊</span>';
+            vocabList.innerHTML = '<span style="font-size:13px;color:var(--muted)">点击句子中的单词加入词汇本</span>';
           } else {
             vocabList.innerHTML = [...vocabMap.values()].map(v => `
               <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#fff;border:1px solid #d1fae5;border-radius:20px;font-size:13px;">
@@ -3650,7 +3651,7 @@
             const form = new FormData();
             form.append('audio', blob, 'recording.webm');
             try {
-              const resp = await fetch(apiUrl('/api/transcribe'), { method: 'POST', body: form });
+              const resp = await eltCredits.billableFetch('retell_transcribe', apiUrl('/api/transcribe'), { method: 'POST', body: form });
               const data = await resp.json();
               if (data.text) {
                 textarea.value += (textarea.value && !textarea.value.endsWith(' ') ? ' ' : '') + data.text;

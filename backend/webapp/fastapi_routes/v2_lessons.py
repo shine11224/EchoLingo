@@ -13,11 +13,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import db
-
-try:
-    from webapp.services import planning as planning_service
-except ImportError:  # pragma: no cover - 公开库不含规划模块
-    planning_service = None
 from prompts import LESSON_AI_RECOMMENDATION_PROMPT, PATTERN_EXTRACTION_PROMPT, PATTERN_SCENARIO_PROMPT
 from webapp.runtime import ai_config
 from webapp.runtime import credit_meter
@@ -708,14 +703,6 @@ def review_sentence(sentence_id: int, body: SentenceReviewBody):
     )
     if not sentence:
         raise HTTPException(status_code=404, detail="Saved sentence not found")
-    if planning_service is not None:
-        try:
-            planning_service.record_verified_event(
-                "review_sentences", "sentence", sentence_id,
-                evidence_ref=f"sentence-review:{sentence_id}:{datetime.date.today().isoformat()}",
-            )
-        except Exception:
-            pass
     return {"ok": True, "sentence": sentence}
 
 
@@ -730,14 +717,6 @@ def save_sentence_listening_result(sentence_id: int, body: SentenceListeningResu
     )
     if not sentence:
         raise HTTPException(status_code=404, detail="Saved sentence not found")
-    if planning_service is not None:
-        try:
-            planning_service.record_verified_event(
-                "review_sentences", "sentence", sentence_id,
-                evidence_ref=f"sentence-review:{sentence_id}:{datetime.date.today().isoformat()}",
-            )
-        except Exception:
-            pass
     return {"ok": True, "sentence": sentence}
 
 
@@ -1319,7 +1298,7 @@ def translate_selection(lesson_id: int, body: TranslateSelectionBody, request: R
 
 
 @router.post("/{lesson_id}/translate-sentences")
-def translate_sentences(lesson_id: int, body: TranslateSentencesBody):
+def translate_sentences(lesson_id: int, body: TranslateSentencesBody, request: Request):
     lesson = db.get_v2_lesson(lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
@@ -1334,11 +1313,28 @@ def translate_sentences(lesson_id: int, body: TranslateSentencesBody):
     pending = [t for t in texts if t not in results]
     if not pending:
         return {"translations": results}
-    for text in pending:
-        translation = _hy_mt_translate(text)
-        db.upsert_v2_sentence(text, translation=translation)
-        results[text] = translation
-    return {"translations": results, "engine": "hy-mt"}
+    # batch_translation 计费：只按未缓存句子的字符数报价；命中缓存部分免费
+    char_count = sum(len(t) for t in pending)
+    op, replay = _begin_billed(request, "batch_translation",
+                               char_count=char_count,
+                               reference_type="v2_lesson",
+                               reference_id=str(lesson_id))
+    if replay is not None:
+        return replay
+    try:
+        for text in pending:
+            translation = _hy_mt_translate(text)
+            db.upsert_v2_sentence(text, translation=translation)
+            results[text] = translation
+    except Exception as exc:
+        detail = getattr(exc, "detail", str(exc))
+        credit_meter.release_sync(op, reason=f"batch_translation failed: {detail}"[:500])
+        raise
+    payload = {"translations": results, "engine": "hy-mt"}
+    credit_meter.settle_sync(op, actual_usage={
+        "engine": "hy-mt", "characters": char_count, "lesson_id": lesson_id,
+        "sentences": len(pending)}, response=payload)
+    return payload
 
 
 @router.get("/{lesson_id}/sentence-translations")
@@ -1392,15 +1388,6 @@ def get_sentence_translations(lesson_id: int):
 @router.post("/{lesson_id}/progress")
 def save_progress(lesson_id: int, body: ProgressBody):
     db.upsert_v2_lesson_progress(lesson_id, body.last_position_seconds, body.last_segment_index)
-    if planning_service is not None:
-        try:
-            planning_service.record_verified_event(
-                "continue_lesson", "lesson", lesson_id,
-                evidence_ref=f"lesson-progress:{lesson_id}:{body.last_segment_index}",
-                observed_value=body.last_segment_index,
-            )
-        except Exception:
-            pass
     return {"ok": True}
 
 
@@ -1603,25 +1590,6 @@ def export_intensive(lesson_id: int):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (OSError, RuntimeError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@router.post("/{lesson_id}/outline-summary")
-def outline_summary(lesson_id: int, body: OutlineSummaryBody | None = None):
-    try:
-        result = start_document_outline_generation(
-            lesson_id,
-            force=bool(body and body.force),
-        )
-        if result.get("status") == "pending":
-            return JSONResponse(status_code=202, content=result)
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Outline generation failed: {exc}") from exc
-
 
 @router.get("/{lesson_id}/outline-summary")
 def outline_summary_status(lesson_id: int):

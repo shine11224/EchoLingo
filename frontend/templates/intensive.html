@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>逐句精读 - EchoLingo</title>
@@ -280,6 +281,32 @@
       -webkit-box-decoration-break: clone;
     }
     .sentence-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .sentence-zh {
+      display: block;
+      margin-top: 4px;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .block-group { margin-bottom: 10px; }
+    .block-group-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 14px;
+      border: 1px solid #dbe4dc;
+      border-radius: 10px;
+      background: #f2f6f1;
+      color: #40513f;
+      font: 600 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+      cursor: pointer;
+      text-align: left;
+    }
+    .block-group-head:hover { border-color: var(--brand); }
+    .block-group-head .block-group-toggle { margin-left: auto; color: var(--muted); font-size: 15px; }
+    .block-group-body { display: grid; gap: 10px; padding-top: 10px; }
     .alignment-badge {
       display: inline-flex;
       align-items: center;
@@ -290,6 +317,7 @@
       background: #edf8f1;
       font: 700 11px/1.3 Arial, sans-serif;
     }
+    .alignment-badge--warn { border-color: #e3b23c; color: #8a6414; background: #fdf6e3; }
     .tag-chip, .saved-chip {
       display: inline-flex;
       align-items: center;
@@ -554,7 +582,7 @@
   <header class="topbar">
     <a class="back-link" href="/workspace/{{ lesson_id }}">← 返回课程</a>
     <div class="title-block">
-      <div class="eyebrow">Phase B · Intensive study</div>
+      <div class="eyebrow">Phase B · 逐句精学</div>
       <h1 id="lesson-title">逐句精读</h1>
     </div>
     <div id="study-progress" class="study-progress">正在载入文档…</div>
@@ -588,7 +616,7 @@
     <section class="sentence-column" aria-label="逐句精学">
       <div class="column-intro">
         <div>
-          <h2>Sentence workshop</h2>
+          <h2>句子精学工坊</h2>
           <p>展开句子进入 v1 精学结构：音标、重点词汇、口语表达与情景造句。</p>
         </div>
         <div class="column-actions">
@@ -614,7 +642,7 @@
         <button class="card-nav-button" type="button" data-card-nav="1" aria-label="下一句">→</button>
       </nav>
       <div id="intensive-sentence-list" class="sentence-list">
-        <div class="empty-state">Loading intensive study…</div>
+        <div class="empty-state">正在加载精读内容…</div>
       </div>
     </section>
   </main>
@@ -636,6 +664,7 @@
     let searchQuery = '';
     const selectedTags = new Set();
     const openSentenceKeys = new Set();
+    const openGroupIndexes = new Set([0]);  // 分段折叠：默认只展开第一段
     const openTagEditorKeys = new Set();
     const pronunciationCache = new Map();
     const oralAnalysisCache = new Map();
@@ -644,6 +673,11 @@
     const sentenceSpeed = new Map();
     const knownWords = new Set();
     const savedLessonWords = new Set();
+    // 已收藏句子：规范化文本 -> sentence_id（用于例句收藏按钮双向开关）
+    const savedSentenceMap = new Map();
+    function normSentenceKey(text) {
+      return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
     const reviewBookWords = new Set();
     const aiRecommendedWords = new Set();
     const aiRecommendedSentences = new Set();
@@ -806,8 +840,10 @@
       const planningHtml = [
         planning.sentenceRecommended ? `<span class="tag-chip planning-chip" title="${escapeHtml(aiPattern ? `${aiPattern.phrase}${aiPattern.reason ? `：${aiPattern.reason}` : ''}` : '')}">AI 推荐句式</span>` : planning.wordRecommended ? '<span class="tag-chip planning-chip">含推荐词汇</span>' : '',
       ].join('');
-      const alignmentHtml = sentence.timing_source === 'mfa'
-        ? `<span class="alignment-badge" title="逐词覆盖率 ${Math.round(Number(sentence.alignment_coverage || 0) * 100)}%">原声对齐</span>`
+      const coverage = Number(sentence.alignment_coverage || 0);
+      // 对齐徽章只在覆盖率异常（<100%）时提示，正常情况不占用视觉
+      const alignmentHtml = sentence.timing_source === 'mfa' && coverage < 0.999
+        ? `<span class="alignment-badge alignment-badge--warn" title="逐词覆盖率 ${Math.round(coverage * 100)}%">对齐 ${Math.round(coverage * 100)}%</span>`
         : '';
       const open = openSentenceKeys.has(Number(sentence.key));
       const categories = tagCatalog.categories.map(category => (
@@ -825,15 +861,13 @@
           <button class="sentence-head" type="button" data-toggle-key="${sentence.key}">
             <span class="sentence-number">${documentIndex + 1}</span>
             <span class="sentence-copy">${renderSentenceSummary(sentence)}
+              ${sentence.translation ? `<span class="sentence-zh">${escapeHtml(sentence.translation)}</span>` : ''}
               <span class="sentence-meta">${planningHtml}${alignmentHtml}${tagHtml}</span>
             </span>
             <span class="expand-mark">${open ? '−' : '+'}</span>
           </button>
           <div class="sentence-quick-actions">
             <button class="sentence-header-play" type="button" data-play-sentence="${sentence.key}">${hasOriginalMedia() ? '▶ 原声整句' : '▶ 播放'}</button>
-            <select class="sentence-header-speed" data-sentence-speed-select="${sentence.key}" aria-label="句子播放速度">
-              ${[0.75, 1, 1.25, 2].map(value => `<option value="${value}"${speed === value ? ' selected' : ''}>${value}×</option>`).join('')}
-            </select>
             <button class="sentence-save-button${sentence.saved ? ' saved' : ''}" type="button" data-toggle-save="${sentence.key}">${sentence.saved ? '★ 已收藏' : '☆ 收藏'}</button>
             <button type="button" data-toggle-tag-editor="${sentence.key}">🏷 标签</button>
           </div>
@@ -859,7 +893,7 @@
             </div>
 
             <section class="v1-module" data-v1-module="pronunciation">
-              <div class="v1-module-head"><h3>① 音标行</h3><span class="v1-module-kicker">Pronunciation</span></div>
+              <div class="v1-module-head"><h3>① 音标行</h3><span class="v1-module-kicker">发音</span></div>
               <div class="v1-module-body">
                 <div class="pronunciation-controls">
                   <button class="sentence-play" type="button" data-play-sentence="${sentence.key}">${hasOriginalMedia() ? '▶ 播放原声' : '▶ 播放本句'}</button>
@@ -872,7 +906,7 @@
             </section>
 
             <section class="v1-module" data-v1-module="vocabulary">
-              <div class="v1-module-head"><h3>② 重点词汇</h3><span class="v1-module-kicker">Vocabulary</span></div>
+              <div class="v1-module-head"><h3>② 重点词汇</h3><span class="v1-module-kicker">词汇</span></div>
               <div class="v1-module-body">
                 <div class="focus-word-list">${renderFocusWordChips(sentence)}</div>
                 <div class="result-panel" data-word-result="${sentence.key}"></div>
@@ -880,7 +914,7 @@
             </section>
 
             <section class="v1-module" data-v1-module="oral-expression">
-              <div class="v1-module-head"><h3>③ 口语表达解析</h3><span class="v1-module-kicker">IELTS reuse</span></div>
+              <div class="v1-module-head"><h3>③ 口语表达解析</h3><span class="v1-module-kicker">雅思复用</span></div>
               <div class="v1-module-body">
                 <div class="module-actions"><button class="primary-action" type="button" data-generate-oral="${sentence.key}" data-force="${oral ? 'true' : 'false'}">${oral ? '重新解析' : 'AI 深度解析'}</button></div>
                 <div data-oral-result="${sentence.key}">${oral ? renderOralAnalysis(oral, sentence.key) : '<div class="filter-note">识别句式、表达功能、雅思复用场景和迁移模板。</div>'}</div>
@@ -888,7 +922,7 @@
             </section>
 
             <section class="v1-module" data-v1-module="practice">
-              <div class="v1-module-head"><h3>④ 情景造句</h3><span class="v1-module-kicker">Output practice</span></div>
+              <div class="v1-module-head"><h3>④ 情景造句</h3><span class="v1-module-kicker">输出练习</span></div>
               <div class="v1-module-body">
                 <div class="practice-hint${hint ? ' open' : ''}" data-practice-hint="${sentence.key}">${hint ? escapeHtml(hint) : ''}</div>
                 <div class="module-actions"><button type="button" data-generate-hint="${sentence.key}">💡 ${hint ? '换一换' : '生成中文提示'}</button></div>
@@ -920,6 +954,38 @@
       )).join('') || '<span class="filter-note">打标签后可在这里筛选。</span>';
     }
 
+    function formatClock(seconds) {
+      const total = Math.max(0, Math.round(Number(seconds) || 0));
+      const m = Math.floor(total / 60);
+      const s = total % 60;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    // 长课文在列表模式下按 2 分钟时间窗分组折叠，避免几百句一次铺开；
+    // 筛选/搜索结果保持平铺，方便扫读匹配项
+    function renderGroupedSentenceCards(rendered) {
+      const groups = [];
+      for (const sentence of rendered) {
+        const windowIndex = Math.floor((Number(sentence.start_seconds) || 0) / 120);
+        const last = groups[groups.length - 1];
+        if (last && last.windowIndex === windowIndex) last.items.push(sentence);
+        else groups.push({windowIndex, items: [sentence]});
+      }
+      return groups.map((group, index) => {
+        const groupOpen = openGroupIndexes.has(index) || group.items.some(sentence =>
+          openSentenceKeys.has(Number(sentence.key)) || Number(sentence.key) === targetSentenceKey);
+        const start = formatClock(group.items[0].start_seconds);
+        const end = formatClock(group.items[group.items.length - 1].end_seconds);
+        return `<section class="block-group" data-group-index="${index}">
+          <button class="block-group-head" type="button" data-toggle-group="${index}" aria-expanded="${groupOpen}">
+            <span>第 ${index + 1} 段 · ${start} – ${end} · ${group.items.length} 句</span>
+            <span class="block-group-toggle">${groupOpen ? '−' : '+'}</span>
+          </button>
+          <div class="block-group-body"${groupOpen ? '' : ' hidden'}>${group.items.map(sentence => renderSentenceCard(sentence, intensiveDocument.sentences.indexOf(sentence))).join('')}</div>
+        </section>`;
+      }).join('');
+    }
+
     function renderSentenceList() {
       const visible = visibleSentences();
       const root = document.getElementById('intensive-sentence-list');
@@ -932,8 +998,13 @@
         rendered = visible.filter(sentence => Number(sentence.key) === Number(cardSentenceKey));
       }
       root.classList.toggle('card-mode', intensiveViewMode === 'card');
+      const useGrouping = intensiveViewMode !== 'card'
+        && rendered.length === intensiveDocument.sentences.length
+        && rendered.length > 40;
       root.innerHTML = rendered.length
-        ? rendered.map(sentence => renderSentenceCard(sentence, intensiveDocument.sentences.indexOf(sentence))).join('')
+        ? (useGrouping
+          ? renderGroupedSentenceCards(rendered)
+          : rendered.map(sentence => renderSentenceCard(sentence, intensiveDocument.sentences.indexOf(sentence))).join(''))
         : '<div class="empty-state">当前筛选没有匹配句子。</div>';
       const cardPosition = Math.max(0, visible.findIndex(sentence => Number(sentence.key) === Number(cardSentenceKey)));
       const navigator = document.getElementById('card-navigator');
@@ -1485,8 +1556,6 @@
       card?.querySelectorAll('[data-sentence-speed]').forEach(button => {
         button.classList.toggle('active', Number(button.dataset.sentenceSpeed) === Number(speed));
       });
-      const select = card?.querySelector('[data-sentence-speed-select]');
-      if (select) select.value = String(Number(speed));
     }
 
     function renderOralAnalysis(data = {}, key = 0) {
@@ -1742,7 +1811,7 @@
           const form = new FormData();
           form.append('audio', new Blob(chunks, {type: recorder.mimeType || 'audio/webm'}), 'recording.webm');
           try {
-            const response = await fetch('/api/transcribe', {method: 'POST', body: form});
+            const response = await eltCredits.billableFetch('retell_transcribe', '/api/transcribe', {method: 'POST', body: form});
             const data = await response.json();
             if (!response.ok || !data.text) throw new Error(data.error || '识别失败，请重试');
             input.value += `${input.value && !input.value.endsWith(' ') ? ' ' : ''}${data.text}`;
@@ -1791,9 +1860,14 @@
         const text = normalizeListItem(item);
         if (!withExampleActions) return `<li>${linkifyEnglish(text, key)}</li>`;
         const encoded = encodeURIComponent(text);
+        const savedId = savedSentenceMap.get(normSentenceKey(text));
+        const saveAttrs = savedId
+          ? `data-sentence-id="${savedId}" class="sentence-saved"`
+          : '';
+        const saveLabel = savedId ? '✓ 已收藏' : '☆ 收藏';
         return `<li class="word-example-item"><span>${linkifyEnglish(text, key)}</span><span class="word-example-actions">
           <button type="button" data-speak-example="${escapeHtml(encoded)}">🔊 朗读</button>
-          <button type="button" data-save-example="${escapeHtml(encoded)}">☆ 收藏</button>
+          <button type="button" data-save-example="${escapeHtml(encoded)}"${saveAttrs}>${saveLabel}</button>
         </span></li>`;
       }).join('');
     }
@@ -1946,18 +2020,41 @@
       const text = decodeURIComponent(encodedText || '');
       if (!text || !button) return;
       button.disabled = true;
+      const sentenceId = Number(button.dataset.sentenceId || 0);
       try {
-        const response = await fetch('/api/v2/lessons/sentence-review/manual', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text}),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
-        button.textContent = '✓ 已收藏';
+        if (sentenceId) {
+          // 已收藏 → 取消收藏（归档）
+          const response = await fetch(`/api/v2/lessons/sentence-review/${sentenceId}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({archived: true}),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || data.error || '取消收藏失败');
+          savedSentenceMap.delete(normSentenceKey(text));
+          delete button.dataset.sentenceId;
+          button.classList.remove('sentence-saved');
+          button.textContent = '☆ 收藏';
+        } else {
+          const response = await fetch('/api/v2/lessons/sentence-review/manual', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text}),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+          const newId = data.sentence?.id;
+          if (newId) {
+            savedSentenceMap.set(normSentenceKey(text), newId);
+            button.dataset.sentenceId = newId;
+          }
+          button.classList.add('sentence-saved');
+          button.textContent = '✓ 已收藏';
+        }
       } catch (error) {
+        window.alert(`操作失败：${error.message}`);
+      } finally {
         button.disabled = false;
-        window.alert(`收藏失败：${error.message}`);
       }
     }
 
@@ -2258,14 +2355,22 @@
 
     async function loadIntensiveStudy() {
       await syncIntensiveHighlightedWords();
-      const [documentResponse, tagResponse, knownResponse, vocabResponse, recommendationResponse] = await Promise.all([
+      const [documentResponse, tagResponse, knownResponse, vocabResponse, recommendationResponse, savedSentencesResponse] = await Promise.all([
         fetch(`/api/v2/lessons/${LESSON_ID}/intensive${_wordlistsQuery()}`),
         fetch('/api/v2/lessons/sentence-tags'),
         fetch('/api/known-words'),
         fetch('/vocab-log'),
         fetch(`/api/v2/lessons/${LESSON_ID}/ai-recommendations`, {cache: 'no-store'}),
+        fetch('/api/v2/lessons/sentence-review'),
       ]);
       if (!documentResponse.ok) throw new Error('无法加载整篇精读数据');
+      if (savedSentencesResponse.ok) {
+        const savedData = await savedSentencesResponse.json().catch(() => ({}));
+        savedSentenceMap.clear();
+        for (const item of savedData.sentences || []) {
+          if (!item.archived) savedSentenceMap.set(normSentenceKey(item.text), item.id);
+        }
+      }
       intensiveDocument = await documentResponse.json();
       savedLessonWords.clear();
       for (const word of intensiveDocument.lesson_words || []) savedLessonWords.add(String(word).toLowerCase());
@@ -2367,6 +2472,13 @@
         renderAll();
         return;
       }
+      const groupToggle = event.target.closest('[data-toggle-group]');
+      if (groupToggle) {
+        const index = Number(groupToggle.dataset.toggleGroup);
+        if (openGroupIndexes.has(index)) openGroupIndexes.delete(index); else openGroupIndexes.add(index);
+        renderSentenceList();
+        return;
+      }
       const toggle = event.target.closest('[data-toggle-key]');
       if (toggle) {
         const key = Number(toggle.dataset.toggleKey);
@@ -2407,11 +2519,6 @@
     });
 
     document.addEventListener('change', event => {
-      const headerSpeed = event.target.closest('[data-sentence-speed-select]');
-      if (headerSpeed) {
-        setSentencePlaybackSpeed(Number(headerSpeed.dataset.sentenceSpeedSelect), Number(headerSpeed.value));
-        return;
-      }
       const category = event.target.closest('[data-tag-category]');
       if (category) {
         updateTagNameOptions(Number(category.dataset.tagCategory), category.value);

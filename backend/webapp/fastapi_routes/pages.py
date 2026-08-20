@@ -1,10 +1,7 @@
 """Phase 7B native FastAPI page routes migrated from Flask templates."""
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from webapp.runtime import ai_config
 
@@ -14,20 +11,12 @@ templates = Jinja2Templates(directory=str(ai_config.BASE_DIR / "frontend" / "tem
 
 @router.get("/")
 def index(request: Request):
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "local_runtime_enabled":
-                os.environ.get("ELT_DEPLOYMENT", "").strip().casefold() != "cloud"
-        },
-    )
+    return templates.TemplateResponse(request, "index.html")
 
 
 @router.get("/vocab")
-def vocab_page():
-    """Keep old bookmarks working while exposing one canonical vocab UI."""
-    return RedirectResponse(url="/#vocab", status_code=307)
+def vocab_page(request: Request):
+    return templates.TemplateResponse(request, "vocab.html")
 
 
 @router.get("/workspace/{lesson_id}")
@@ -58,6 +47,10 @@ if (ai_config.BASE_DIR / "frontend" / "templates" / "login.html").exists():
     @router.get("/register")
     def register_page(request: Request):
         return templates.TemplateResponse(request, "register.html")
+
+    @router.get("/survey")
+    def survey_page(request: Request):
+        return templates.TemplateResponse(request, "survey.html")
 
     @router.get("/account")
     def account_page(request: Request):

@@ -119,7 +119,7 @@ def _save_trace(trace_dir: "Path | None", filename: str, data: object) -> None:
 class SentenceAnalyzer:
     def __init__(self, mode: str = "auto", model: str | None = None) -> None:
         self.mode = mode
-        self.model = model or _first_env("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-v4-flash")
+        self.model = model or _first_env("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-chat")
         api_key = _first_env("AI_API_KEY", "DEEPSEEK_API_KEY", "deepseek", "DEEPSEEK")
         base_url = _first_env("AI_BASE_URL", "base_url_deepseek", default="https://api.deepseek.com")
         self._has_key = bool(api_key)
@@ -251,6 +251,46 @@ class SentenceAnalyzer:
         if tail:
             result.append(tail)
         return result
+
+    @classmethod
+    def extract_word_context(cls, word: str, text: str, max_len: int = 200) -> str:
+        """存词语境清洗：过长时断句提取含词单句；无标点 blob 退化为 ±12 词窗口。
+
+        2026-08-17 修复：save_v2_lesson_word / add_context 曾原样存入整段转录
+        （turbo 退化段最长 5549 字符），导致复习卡显示整段原文。
+        """
+        text = (text or "").strip()
+        word = (word or "").strip()
+        if len(text) <= max_len or not word:
+            return text
+        pat = re.compile(r"\b" + re.escape(word) + r"\w*\b", re.IGNORECASE)
+        pieces = cls._split_text_sentences(text)
+        if len(pieces) > 1:
+            hits = [p for p in pieces if pat.search(p)]
+            if hits:
+                best = min(hits, key=len)
+                if 10 <= len(best) <= max_len:
+                    return best
+        # 兜底：无标点断不开时按词位取窗口
+        words = text.split()
+        m = pat.search(text)
+        if not m or len(words) <= 30:
+            return text
+        char_pos = 0
+        word_idx = 0
+        for i, w in enumerate(words):
+            char_pos = text.find(w, char_pos)
+            if char_pos >= m.start():
+                word_idx = i
+                break
+            char_pos += len(w)
+        lo, hi = max(0, word_idx - 12), min(len(words), word_idx + 13)
+        window = " ".join(words[lo:hi])
+        if lo > 0:
+            window = "… " + window
+        if hi < len(words):
+            window += " …"
+        return window if len(window) < len(text) else text
 
     @classmethod
     def _split_text_sentences(cls, text: str) -> list[str]:

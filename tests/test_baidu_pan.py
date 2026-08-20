@@ -4,8 +4,6 @@ import sys
 import threading
 import sqlite3
 import json
-import hashlib
-from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -110,68 +108,6 @@ class TestRunCli:
         monkeypatch.setattr(baidu_pan.subprocess, "run", lambda *a, **k: proc)
         monkeypatch.setattr(baidu_pan, "_bin", lambda: "bdpan.exe")
         assert "雅思" in baidu_pan._run_cli(["ls", "--json"], timeout=5)
-
-    def test_stdin_is_forwarded_as_bytes(self, monkeypatch):
-        captured = {}
-        def fake_run(*args, **kwargs):
-            captured.update(kwargs)
-            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
-        monkeypatch.setattr(baidu_pan.subprocess, "run", fake_run)
-        monkeypatch.setattr(baidu_pan, "_bin", lambda: "bdpan.exe")
-        baidu_pan._run_cli(["login", "--set-code-stdin"], timeout=5, stdin_text="secret\n")
-        assert captured["input"] == b"secret\n"
-
-
-class TestInstaller:
-    def test_official_windows_manifest(self, monkeypatch):
-        monkeypatch.setattr(baidu_pan.platform, "system", lambda: "Windows")
-        monkeypatch.setattr(baidu_pan.platform, "machine", lambda: "AMD64")
-        monkeypatch.setattr(baidu_pan, "_bin", lambda: "")
-        info = baidu_pan.installer_info()
-        assert info["supported"] is True
-        assert info["version"] == "3.8.4"
-        assert info["download_url"].startswith("https://issuecdn.baidupcs.com/")
-        assert info["download_url"].endswith("bdpan-installer-windows-amd64.exe")
-        assert info["sha256"] == "194f5174bbb3d9260cc5b7d465c4f98d6b9279e028db136dc1e57cc3bc1f49a0"
-
-    def test_download_enforces_sha256(self, monkeypatch, tmp_path):
-        payload = b"official-installer"
-        class Response(BytesIO):
-            def __enter__(self): return self
-            def __exit__(self, *args): self.close()
-        monkeypatch.setattr(
-            baidu_pan.urllib.request, "urlopen",
-            lambda *a, **k: Response(payload),
-        )
-        target = tmp_path / "installer"
-        baidu_pan._download_installer(
-            "https://issuecdn.baidupcs.com/fixed", target, hashlib.sha256(payload).hexdigest())
-        assert target.read_bytes() == payload
-        with pytest.raises(baidu_pan.BaiduPanError, match="SHA-256"):
-            baidu_pan._download_installer(
-                "https://issuecdn.baidupcs.com/fixed", target, "0" * 64)
-
-    def test_install_requires_explicit_confirmation_and_exact_version(self):
-        with pytest.raises(ValueError, match="确认"):
-            baidu_pan.install_cli(expected_version="3.8.4", confirmed=False)
-        with pytest.raises(ValueError, match="版本已变化"):
-            baidu_pan.install_cli(expected_version="3.8.3", confirmed=True)
-
-
-class TestWebAuthorization:
-    def test_authorization_code_only_uses_stdin(self, monkeypatch):
-        calls = []
-        code = "a" * 32
-        def fake_run(args, *, timeout, stdin_text=None):
-            calls.append((args, stdin_text))
-            return "--set-code-stdin" if "--help" in args else "ok"
-        monkeypatch.setattr(baidu_pan, "_run_cli", fake_run)
-        monkeypatch.setattr(baidu_pan, "capability", lambda **kwargs: {"enabled": True})
-        result = baidu_pan.complete_web_auth(code)
-        assert result["enabled"] is True
-        assert calls[1][0] == ["login", "--accept-disclaimer", "--set-code-stdin"]
-        assert calls[1][1] == code + "\n"
-        assert all(code not in arg for args, _ in calls for arg in args)
 
 
 class TestCliOperations:

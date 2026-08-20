@@ -411,6 +411,7 @@ def init_db(path: Path | None = None):
                     interests       TEXT NOT NULL DEFAULT '[]',
                     dislikes        TEXT NOT NULL DEFAULT '[]',
                     reported_level  TEXT NOT NULL DEFAULT '',
+                    session_minutes INTEGER NOT NULL DEFAULT 30,
                     created_at      TEXT NOT NULL DEFAULT '',
                     updated_at      TEXT NOT NULL DEFAULT ''
                 );
@@ -697,6 +698,7 @@ def init_db(path: Path | None = None):
                 "ALTER TABLE v2_sentences ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE v2_sentences ADD COLUMN saved_manually INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE v2_learner_profile ADD COLUMN available_time_slots TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE v2_learner_profile ADD COLUMN session_minutes INTEGER NOT NULL DEFAULT 30",
                 "ALTER TABLE v2_plan_tasks ADD COLUMN scheduled_start TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE v2_plan_tasks ADD COLUMN scheduled_end TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE word_review_items ADD COLUMN target_type TEXT NOT NULL DEFAULT 'word'",
@@ -1301,8 +1303,17 @@ def find_v2_sentence_containing(word: str) -> str | None:
     return None
 
 
+def _clean_word_context(word: str, sentence: str) -> str:
+    """存词前清洗语境：超长时提取含词单句（见 SentenceAnalyzer.extract_word_context）。"""
+    if not sentence or len(sentence) <= 200:
+        return sentence
+    from analyzer import SentenceAnalyzer
+    return SentenceAnalyzer.extract_word_context(word, sentence)
+
+
 def add_context(word: str, lesson: str, sentence: str):
     """Add context, deduplicate; keep last 5 per word."""
+    sentence = _clean_word_context(word, sentence)
     with _db() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO contexts (word, lesson, sentence) VALUES (?, ?, ?)",
@@ -1358,6 +1369,7 @@ def save_v2_lesson_word(lesson_id: int, word: str, sentence: str = "") -> dict:
     normalized = word.strip().lower()
     if not normalized:
         raise ValueError("word required")
+    sentence = _clean_word_context(normalized, sentence)
     now = _now_iso()
     with _db() as conn:
         conn.execute(
@@ -3095,6 +3107,7 @@ _PLANNING_PROFILE_DEFAULTS = {
     "interests": [],
     "dislikes": [],
     "reported_level": "",
+    "session_minutes": 30,
 }
 _PLANNING_PREFERENCE_DEFAULTS = {
     "timezone": "Asia/Shanghai",
@@ -3140,8 +3153,8 @@ def update_learner_profile(profile: dict) -> dict:
             """
             INSERT INTO v2_learner_profile
                 (id, weekly_minutes, available_days, available_time_slots,
-                 priority_skills, interests, dislikes, reported_level, created_at, updated_at)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 priority_skills, interests, dislikes, reported_level, session_minutes, created_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 weekly_minutes=excluded.weekly_minutes,
                 available_days=excluded.available_days,
@@ -3150,6 +3163,7 @@ def update_learner_profile(profile: dict) -> dict:
                 interests=excluded.interests,
                 dislikes=excluded.dislikes,
                 reported_level=excluded.reported_level,
+                session_minutes=excluded.session_minutes,
                 updated_at=excluded.updated_at
             """,
             (
@@ -3160,6 +3174,7 @@ def update_learner_profile(profile: dict) -> dict:
                 json.dumps(current["interests"], ensure_ascii=False),
                 json.dumps(current["dislikes"], ensure_ascii=False),
                 str(current["reported_level"]),
+                int(current.get("session_minutes") or 30),
                 now,
                 now,
             ),

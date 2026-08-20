@@ -79,7 +79,7 @@ def test_all_tts_surfaces_use_unified_natural_voice_layer():
     natural_js = (root / "frontend" / "static" / "natural-tts.js").read_text(encoding="utf-8")
     templates = [
         root / "frontend" / "templates" / name
-        for name in ("index.html", "intensive.html", "lesson.html", "workspace.html")
+        for name in ("index.html", "intensive.html", "vocab.html", "lesson.html", "workspace.html")
     ]
     for template in templates:
         html = template.read_text(encoding="utf-8")

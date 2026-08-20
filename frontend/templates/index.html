@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎧</text></svg>">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EchoLingo · 英语精学工作台</title>
@@ -892,6 +893,8 @@
     }
     .sentence-rate-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
     .sentence-review-list { display: grid; }
+    .sentence-library-shell.is-empty .sentence-library-head select,
+    .sentence-library-shell.is-empty .sentence-library-head input[type="search"] { display: none; }
     .sentence-library-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -965,7 +968,7 @@
     }
 
     /* ────────────────────────────────────────────────
-       VOCABULARY WORKSHOP
+       VOCAB TAB  (from vocab.html, unified palette)
     ──────────────────────────────────────────────── */
     .today-panel {
       background: var(--surface); border-radius: var(--radius); padding: 20px 24px;
@@ -1547,6 +1550,7 @@
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-btn-lessons" onclick="switchTab('lessons')">📺 课程</button>
+    <a class="tab-btn" href="/planning" style="display:flex;align-items:center;text-decoration:none;">👤 个人档案</a>
     <button class="tab-btn" id="tab-btn-resources" onclick="switchTab('resources')">⚙️ 设置</button>
   </div>
 </div>
@@ -1572,7 +1576,7 @@
       <div class="path-step">
         <div class="path-num">1</div>
         <div class="path-title">输入素材</div>
-        <div class="path-desc">上传本地音视频文件，或上传、粘贴文本。</div>
+        <div class="path-desc">粘贴 B站/YouTube/网盘链接，或选择本地音视频、上传文本。</div>
       </div>
       <div class="path-step">
         <div class="path-num">2</div>
@@ -1651,17 +1655,17 @@
                 <span>Whisper</span>
                 <select id="link-whisper-model" onchange="onLinkWhisperModelChange(this.value)">
                   <option value="groq">large-v3（Groq，最快）</option>
-                  {% if local_runtime_enabled %}
                   <option value="large-v3">large-v3（本地，最准）</option>
                   <option value="medium">medium（本地，均衡）</option>
                   <option value="base">base（本地，最快）</option>
-                  {% endif %}
+                  <option value="paraformer">Paraformer（云端，阿里云百炼）</option>
                 </select>
                 <span class="groq-net-hint" id="link-groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
                   <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
                 </span>
               </div>
               <div id="link-groq-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置 Groq Key — 请先在设置 → API 设置填写</div>
+              <div id="link-dashscope-key-warn" style="display:none;font-size:12px;color:#a33b2f;padding:2px 0 0;">⚠️ 未配置千问 Key — 请先在设置 → API 设置填写（阿里云百炼 API-KEY）</div>
             </div>
           </div>
         </section>
@@ -1707,7 +1711,7 @@
             </div>
           </div>
           <div id="pan-unconfigured" style="display:none;margin-top:8px;padding:10px;border:1px solid #eadfbd;background:#fbf7e9;border-radius:8px;font-size:12px;line-height:1.7;color:#75673d">
-            百度网盘尚未配置。请前往“学习资源 → 百度网盘配置”，一键安装官方工具并完成授权，无需运行命令或配置 PATH。<button type="button" class="ghost" onclick="initBaiduPanCard(true)" style="margin-left:8px">重新检测</button>
+            百度网盘尚未配置。公开版本机请先运行 <code>bdpan login --accept-disclaimer --get-auth-url</code>，浏览器授权后再运行 <code>bdpan login --accept-disclaimer --set-code &lt;32位授权码&gt;</code>；云端请联系管理员。<button type="button" class="ghost" onclick="initBaiduPanCard(true)" style="margin-left:8px">重新检测</button>
           </div>
           <div class="pan-task" id="pan-task" style="display:none"></div>
         </section>
@@ -1723,7 +1727,7 @@
             <span class="source-badge" id="user-media-badge">未选择</span>
           </div>
           <div class="reading-upload-row">
-            <input id="user-media-file-input" class="reading-file-input" type="file"
+            <input id="user-media-file-input" class="reading-file-input" type="file" hidden
                    accept=".mp3,.mp4,.m4a,.wav,.mov"
                    onchange="onUserMediaSelected()">
             <button class="reading-upload-btn" type="button"
@@ -1750,11 +1754,6 @@
                 <span>Whisper</span>
                 <select id="user-media-whisper-model" onchange="onWhisperModelChange(this.value)">
                   <option value="groq">large-v3（Groq）</option>
-                  {% if local_runtime_enabled %}
-                  <option value="large-v3">large-v3（本地，最准）</option>
-                  <option value="medium">medium（本地，均衡）</option>
-                  <option value="base">base（本地，最快）</option>
-                  {% endif %}
                 </select>
                 <span class="groq-net-hint" id="groq-net-hint" tabindex="0" role="button" aria-label="Groq 网络要求">ⓘ
                   <span class="groq-net-pop">large-v3 默认通过 Groq 转录，需要能访问 api.groq.com（海外网络或代理）；网络不可用时可能出现 403 或连接错误。</span>
@@ -1777,7 +1776,7 @@
                     placeholder="粘贴 Reading passage，生成高亮学习页…"
                     oninput="detectReadingText(this.value);refreshTtsEta()"></textarea>
           <div class="reading-upload-row">
-            <input id="reading-file-input" class="reading-file-input" type="file"
+            <input id="reading-file-input" class="reading-file-input" type="file" hidden
                    accept=".txt,.md,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                    onchange="onReadingFileSelected()">
             <button class="reading-upload-btn" type="button"
@@ -1851,7 +1850,7 @@
     <div class="course-library-head">
       <div>
         <h2 id="course-library-title">全部课程</h2>
-        <p>每门课程只保留一条记录，精听、阅读与精读从同一处进入。</p>
+        <p>默认收起上方"最近学习"中的课程，搜索或筛选时显示全部。</p>
       </div>
       <div class="course-library-toolbar">
         <input id="course-search" type="search" placeholder="搜索课程名称…" aria-label="搜索课程名称">
@@ -1973,7 +1972,7 @@
   <section id="vocab-story-view" class="workshop-view" hidden>
     <div class="today-panel" id="today-panel">
       <h2>记忆故事</h2>
-      <p class="subtle-copy">从词汇记忆工坊指定最多 20 个词，生成一段可回读、可继续造句的记忆故事。</p>
+      <p class="subtle-copy">从词汇本指定最多 20 个词，生成一段可回读、可继续造句的记忆故事。</p>
       <div class="gen-settings-card">
         <div class="gen-settings-title">生成设置</div>
         <div class="gen-settings-row">
@@ -2067,7 +2066,7 @@
 <div class="container">
   <header class="sentence-library-masthead">
     <div>
-      <span class="eyebrow">Sentence listening room</span>
+      <span class="eyebrow">句子精听</span>
       <h2>句子库</h2>
       <p>在收藏句中直接播放、隐藏原文并记录是否听懂。</p>
     </div>
@@ -2140,7 +2139,7 @@
   <div class="container">
     <div class="gen-panel">
       <h3>🛠️ 资源上传与管理</h3>
-      <p>自行上传词表，定制你的个性化学习体验。</p>
+      <p>自行上传词表和重点句式，定制你的个性化学习体验。</p>
       
       <div class="resource-section" style="margin-top: 24px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>📚 上传自定义词表</h4>
@@ -2153,7 +2152,7 @@
                  maxlength="10" style="max-width:220px;">
           <input type="file" id="wordlist-upload-input" accept=".txt,.csv" style="flex: 1;" onchange="resetExpandedWordlist()">
           <button type="button" id="wordlist-expand-button" onclick="expandSelectedWordlist()">扩展词形</button>
-          <button class="btn btn-primary" onclick="uploadWordlistResource()">上传并编译</button>
+          <button class="btn btn-primary" onclick="uploadResource('wordlist')">上传并编译</button>
         </div>
         <div id="wordlist-expand-preview" style="display:none;margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper);font-size:13px;line-height:1.7;"></div>
       </div>
@@ -2169,6 +2168,20 @@
         <div id="wordlist-priority-row" style="margin-top:10px;"></div>
       </div>
 
+      <div class="resource-section" hidden aria-hidden="true" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
+        <h4>🔑 上传重点句式表</h4>
+        <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
+          推荐上传 <code>.csv</code> 或 <code>.xlsx</code> 表格，也兼容 <code>.json</code>。
+          表头需要包含
+          <code>id</code>、<code>name</code>、<code>template</code>、<code>triggers</code>、<code>explanation_cn</code>、<code>example</code>、<code>ielts_tip</code>。
+          <code>triggers</code> 是用于匹配原句的触发短语；多个触发短语用 <code>|</code> 或分号分隔。
+        </p>
+        <div class="url-row">
+          <input type="file" id="pattern-upload-input" accept=".csv,.xlsx,.json" style="flex: 1;">
+          <button class="btn btn-primary" onclick="uploadResource('pattern')">上传</button>
+        </div>
+      </div>
+
       <div class="resource-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
           <h4 style="margin:0;">已上传资源</h4>
@@ -2181,110 +2194,12 @@
 
       <div id="resource-status" style="margin-top: 20px; font-weight: 600; color: var(--brand);"></div>
 
-      <div class="resource-section" id="baidu-pan-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
-        <h4>☁️ 百度网盘配置</h4>
-        <p style="font-size:14px;color:var(--muted);margin-bottom:10px;">
-          网盘授权只保存在当前电脑，不随公开库同步。首次使用按下面提示一键安装并授权；完成后即可导入分享链接，并在“我的网盘”中选择文件。
-        </p>
-        <div id="baidu-pan-install-card" style="padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.8;">
-          <div><strong>安装来源：</strong><a id="baidu-pan-installer-source" href="https://github.com/baidu-netdisk/bdpan-storage" target="_blank" rel="noopener">百度网盘官方 bdpan-storage</a></div>
-          <div><strong>固定版本：</strong><code id="baidu-pan-installer-version">正在检测…</code></div>
-          <div><strong>适用平台：</strong><span id="baidu-pan-installer-platform">正在检测…</span></div>
-          <div><strong>安装位置：</strong><span id="baidu-pan-installer-location">官方用户级默认目录，应用自动检测</span></div>
-          <details style="margin-top:4px;color:var(--muted);">
-            <summary style="cursor:pointer;">查看下载地址与 SHA-256</summary>
-            <div style="word-break:break-all;margin-top:4px;">下载：<span id="baidu-pan-installer-url">—</span></div>
-            <div style="word-break:break-all;">SHA-256：<code id="baidu-pan-installer-sha">—</code></div>
-          </details>
-          <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;">
-            安全提示：安装会下载并运行上述百度官方安装器。应用会强制校验 SHA-256；只允许本机用户主动触发，失败时不会继续执行。网盘操作范围限制在应用数据目录 <code>/apps/bdpan/</code>。
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <button type="button" class="btn btn-primary btn-sm" id="baidu-pan-install-btn" onclick="installBaiduPanAndAuthorize()" disabled>确认并安装</button>
-            <button type="button" class="btn btn-primary btn-sm" id="baidu-pan-auth-btn" onclick="startBaiduPanAuthorization()" style="display:none">开始授权</button>
-            <button type="button" class="btn btn-sm" onclick="refreshBaiduPanSettingsGuide()">重新检测</button>
-            <button type="button" class="btn btn-sm btn-danger" id="baidu-pan-logout-btn" onclick="logoutBaiduPanAuthorization()" style="display:none">解除授权</button>
-            <span id="baidu-pan-settings-status" style="font-size:13px;color:var(--muted);">正在检测…</span>
-          </div>
-          <div id="baidu-pan-auth-code-card" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-            <div style="margin-bottom:8px;">已打开百度授权页。完成授权后，复制页面返回的 32 位授权码粘贴到下方：</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input type="text" id="baidu-pan-auth-code" maxlength="32" autocomplete="off" spellcheck="false" placeholder="粘贴 32 位授权码" style="flex:1;min-width:260px;">
-              <button type="button" class="btn btn-primary btn-sm" id="baidu-pan-complete-btn" onclick="completeBaiduPanAuthorization()">完成授权</button>
-            </div>
-            <a id="baidu-pan-auth-link" href="#" target="_blank" rel="noopener" style="display:none;font-size:12px;margin-top:8px;">授权页没有打开？点此重新打开</a>
-          </div>
-        </div>
-      </div>
-
-      {% if local_runtime_enabled %}
-      <div class="resource-section" id="whisper-model-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
-        <h4>🎙️ 本地 Whisper 模型</h4>
-        <p style="font-size:14px;color:var(--muted);margin-bottom:12px;line-height:1.7;">
-          自动检测当前电脑和 EchoLingo 目录中的 faster-whisper 模型。未安装时可按需一键下载；公开单机版支持 base、medium、large-v3，云端部署不显示也不下载这些模型。
-        </p>
-        <div style="padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.7;">
-          <div><strong>模型来源：</strong><a href="https://huggingface.co/Systran" target="_blank" rel="noopener">Systran 官方 Hugging Face</a></div>
-          <div><strong>新模型保存位置：</strong><code id="whisper-download-root">正在检测…</code></div>
-          <div id="whisper-model-list" style="display:grid;gap:8px;margin-top:12px;">
-            <div style="color:var(--muted);">正在检测 base / medium / large-v3…</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <button type="button" class="btn btn-sm" onclick="refreshWhisperModelSettings()">重新检测</button>
-            <span id="whisper-model-settings-status" style="font-size:13px;color:var(--muted);"></span>
-          </div>
-        </div>
-      </div>
-      {% endif %}
-
-      <div class="resource-section" id="local-translation-settings-guide" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
-        <h4>🌐 本地中文字幕翻译</h4>
-        <p style="font-size:14px;color:var(--muted);margin-bottom:12px;line-height:1.7;">
-          一键安装腾讯 HY-MT1.5 本地模型和 llama.cpp 后，生成中文字幕不需要混元 API Key；翻译内容只在本机处理。首次安装约下载 1.08 GB。
-        </p>
-        <div style="padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.8;">
-          <div><strong>模型来源：</strong><a id="local-translation-model-source" href="https://huggingface.co/tencent/HY-MT1.5-1.8B-GGUF" target="_blank" rel="noopener">腾讯官方 Hugging Face</a></div>
-          <div><strong>推理运行时：</strong><a id="local-translation-llama-source" href="https://github.com/ggml-org/llama.cpp/releases/tag/b10068" target="_blank" rel="noopener">llama.cpp 官方发布</a></div>
-          <div><strong>固定版本：</strong><code id="local-translation-version">正在检测…</code></div>
-          <div><strong>适用平台：</strong><span id="local-translation-platform">正在检测…</span></div>
-          <div><strong>安装位置：</strong><span id="local-translation-location">当前 EchoLingo 目录</span></div>
-          <details style="margin-top:4px;color:var(--muted);">
-            <summary style="cursor:pointer;">查看下载地址与 SHA-256</summary>
-            <div style="word-break:break-all;margin-top:4px;">模型：<span id="local-translation-model-url">—</span></div>
-            <div style="word-break:break-all;">模型 SHA-256：<code id="local-translation-model-sha">—</code></div>
-            <div style="word-break:break-all;margin-top:4px;">llama.cpp：<span id="local-translation-llama-url">—</span></div>
-            <div style="word-break:break-all;">llama.cpp SHA-256：<code id="local-translation-llama-sha">—</code></div>
-          </details>
-          <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;">
-            点击安装即表示你接受 <a id="local-translation-license" href="https://github.com/Tencent-Hunyuan/HY-MT/blob/main/License.txt" target="_blank" rel="noopener">Tencent HY Community License</a>。该许可不适用于欧盟、英国和韩国；安装器只从官方来源下载并强制校验 SHA-256。
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <button type="button" class="btn btn-primary btn-sm" id="local-translation-install-btn" onclick="installLocalTranslation()" disabled>同意许可并一键安装</button>
-            <button type="button" class="btn btn-sm" onclick="refreshLocalTranslationSettings()">重新检测</button>
-            <span id="local-translation-status" style="font-size:13px;color:var(--muted);">正在检测…</span>
-          </div>
-        </div>
-      </div>
-
       <div class="resource-section" id="ai-settings-section" style="margin-top: 32px; border-top: 1px solid var(--line); padding-top: 20px;">
         <h4>🤖 第三方 AI API 设置</h4>
         <p style="font-size: 14px; color: var(--muted); margin-bottom: 12px;">
-          配置兼容 OpenAI Chat Completions 协议的 API（DeepSeek、千问、Kimi、Kimi Code、OpenAI 或本地 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
+          配置支持 OpenAI 协议的 API（如 DeepSeek, OpenAI, Groq 或本地的 Ollama / vLLM）。配置将保存到本地 <code>.env</code> 文件。
         </p>
         <div class="control-stack" style="max-width: 650px;">
-          <div class="input-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <span style="width:80px;font-weight:500;">服务商</span>
-            <select id="ai-provider-preset" onchange="applyAiProviderPreset(this.value)" style="flex:1;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);">
-              <option value="custom">自定义 OpenAI 兼容 API</option>
-              <option value="deepseek">DeepSeek Flash</option>
-              <option value="qwen">千问 Flash（阿里云百炼）</option>
-              <option value="kimi-platform">Kimi 开放平台</option>
-              <option value="kimi-code">Kimi Code 会员 API</option>
-            </select>
-          </div>
-          <div id="ai-provider-note" style="font-size:12px;color:var(--muted);margin:-2px 0 10px 88px;line-height:1.6;">
-            选择预设只填写 Base URL 和推荐模型，不会读取或改动 API Key。
-          </div>
           <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 80px; font-weight: 500;">Base URL</span>
             <input type="text" id="ai-base-url" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="https://api.deepseek.com">
@@ -2301,7 +2216,7 @@
           </div>
           <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 80px; font-weight: 500;">Model</span>
-            <input type="text" id="ai-model" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="deepseek-v4-flash">
+            <input type="text" id="ai-model" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="deepseek-chat">
             <button class="btn btn-sm" onclick="editAiField('ai-model')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('model')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-model" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
@@ -2320,7 +2235,7 @@
             <button class="btn btn-sm" onclick="editAiField('hy-translate-api-key')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('hy_translate_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-hy-translate-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
-            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">可选；本地模型已安装时无需填写</span>
+            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">中文字幕翻译专用</span>
           </div>
           <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
             <span style="width: 80px; font-weight: 500;">混元 Model</span>
@@ -2328,6 +2243,14 @@
             <button class="btn btn-sm" onclick="editAiField('hy-translate-model')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('hy_translate_model')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
             <span class="ai-configured-badge" id="badge-hy-translate-model" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
+          </div>
+          <div class="input-row" style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 80px; font-weight: 500;">千问 Key</span>
+            <input type="password" id="dashscope-api-key" class="url-input" style="flex: 1; margin: 0; min-height: 36px; padding: 6px 12px;" placeholder="sk-...（阿里云百炼，可选）">
+            <button class="btn btn-sm" onclick="editAiField('dashscope-api-key')" title="编辑" style="padding:2px 8px; font-size:14px;">&#9998;</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteAiSetting('dashscope_api_key')" title="删除" style="padding:2px 8px; font-size:14px;">&#128465;</button>
+            <span class="ai-configured-badge" id="badge-dashscope-api-key" style="display:none; color: #22c55e; font-size: 12px; white-space: nowrap;">&#10003; 已配置</span>
+            <span style="font-size: 12px; color: var(--muted); white-space: nowrap;">Paraformer 转录专用</span>
           </div>
           <div style="margin-top: 8px;">
             <button class="btn btn-primary" onclick="saveAiSettings()">保存配置</button>
@@ -2362,66 +2285,48 @@ let _sentencePage = 1;
 let _vocabPracticeFilter = 'all';
 let _vocabFrqFilter = 'all';
 let _vocabExamFilter = 'all';
-let _sentenceTodayPlanOnly = false;
-let _sentenceAIRecommendedOnly = false;
-let _todayPlanTargetPromise = null;
-const _todayPlanTargets = {words: new Set(), sentences: new Set()};
-let _planningRecommendationPromise = null;
-let _planningRecommendationPool = null;
-const _aiRecommendedTargets = {words: new Set(), sentences: new Set()};
 const SENTENCE_PAGE_SIZE = 30;
 
-function normalizePlanWord(value) {
-  return String(value || '').trim().toLowerCase();
+// ── 句子收藏双向开关：规范化文本 -> sentence_id ──
+const _savedSentenceMap = new Map();
+function normSentenceKey(text) {
+  return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
-
-async function loadTodayPlanTargets(refresh=false) {
-  if (_todayPlanTargetPromise && !refresh) return _todayPlanTargetPromise;
-  _todayPlanTargetPromise = fetch('/api/planning/today', {cache:'no-store'})
-    .then(async response => {
-      if (!response.ok) return {words: _todayPlanTargets.words, sentences: _todayPlanTargets.sentences};
-      const today = await response.json();
-      _todayPlanTargets.words.clear();
-      _todayPlanTargets.sentences.clear();
-      (today.tasks || []).forEach(task => {
-        (task.targets || []).forEach(target => {
-          if (target.target_type === 'word' || target.target_type === 'phrase') {
-            _todayPlanTargets.words.add(normalizePlanWord(target.target_ref));
-          } else if (target.target_type === 'sentence') {
-            _todayPlanTargets.sentences.add(Number(target.target_ref));
-          }
-        });
-        (task.speaking_brief?.target_words || []).forEach(word => {
-          _todayPlanTargets.words.add(normalizePlanWord(word));
-        });
-        (task.speaking_brief?.target_sentence_ids || []).forEach(id => {
-          _todayPlanTargets.sentences.add(Number(id));
-        });
-      });
-      return _todayPlanTargets;
-    })
-    .catch(() => _todayPlanTargets);
-  return _todayPlanTargetPromise;
+function _indexSavedSentences(list) {
+  (list || []).forEach(item => {
+    const key = normSentenceKey(item.text);
+    if (!key) return;
+    if (item.archived) _savedSentenceMap.delete(key);
+    else _savedSentenceMap.set(key, item.id);
+  });
 }
-
-async function loadPlanningRecommendations(refresh=false) {
-  if (_planningRecommendationPromise && !refresh) return _planningRecommendationPromise;
-  _planningRecommendationPromise = fetch('/api/planning/recommendations/current', {cache:'no-store'})
-    .then(async response => {
-      if (!response.ok) return _planningRecommendationPool;
-      const data = await response.json();
-      _planningRecommendationPool = data.pool || null;
-      _aiRecommendedTargets.words.clear();
-      _aiRecommendedTargets.sentences.clear();
-      (_planningRecommendationPool?.candidates || []).forEach(candidate => {
-        if (!['pending','accepted'].includes(candidate.status)) return;
-        if (candidate.target_type === 'word') _aiRecommendedTargets.words.add(normalizePlanWord(candidate.target_ref));
-        if (candidate.target_type === 'sentence') _aiRecommendedTargets.sentences.add(Number(candidate.target_ref));
-      });
-      return _planningRecommendationPool;
-    })
-    .catch(() => _planningRecommendationPool);
-  return _planningRecommendationPromise;
+async function toggleManualSavedSentence(button, text, {label = '☆ 收藏', translation = ''} = {}) {
+  const key = normSentenceKey(text);
+  const existingId = Number(button.dataset.sentenceId || _savedSentenceMap.get(key) || 0);
+  if (existingId) {
+    const response = await fetch(`/api/v2/lessons/sentence-review/${existingId}`, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({archived: true}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.error || '取消收藏失败');
+    _savedSentenceMap.delete(key);
+    delete button.dataset.sentenceId;
+    button.textContent = label;
+  } else {
+    const response = await fetch('/api/v2/lessons/sentence-review/manual', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, translation}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+    const newId = data.sentence?.id;
+    if (newId) {
+      _savedSentenceMap.set(key, newId);
+      button.dataset.sentenceId = newId;
+    }
+    button.textContent = '✓ 已收藏';
+  }
 }
 
 function switchTab(name) {
@@ -2608,26 +2513,37 @@ function renderWordlistConfigUI() {
   priorityEl.appendChild(row);
 }
 
-function renderResourceItems(title, items) {
+function renderResourceItems(title, items, type) {
   const selected = new Set(selectedResourceWordlistKeys());
   const rows = (items || []).map(item => {
-    const key = resourceWordlistKey(item);
-    const active = selected.has(key);
-    const color = wlHashColor(key);
-    return `
+    if (type === 'wordlist') {
+      const key = resourceWordlistKey(item);
+      const active = selected.has(key);
+      const color = wlHashColor(key);
+      return `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);">
       <button type="button" aria-pressed="${active}" onclick="toggleResourceWordlist('${esc(key)}')"
         style="padding:4px 12px;border-radius:14px;border:1.5px solid ${color};font-size:13px;cursor:pointer;${active ? `background:${color};color:#fff;` : `background:#fff;color:${color};`}">${esc(item.name || item.filename)}（${item.count || 0}）</button>
       <span style="font-size:12px;color:var(--muted);flex:1;min-width:0;">${Math.ceil((item.size || 0) / 1024)} KB${item.tag ? ` · 标签：${esc(item.tag)}` : ''}</span>
       <button type="button" class="text-link-btn" onclick="editWordlistResource('${esc(item.filename)}')">编辑</button>
-      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteWordlistResource('${esc(item.filename)}')">删除</button>
+      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteResource('wordlist', '${esc(item.filename)}')">删除</button>
+    </div>`;
+    }
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);">
+      <div style="flex:1;min-width:0;">
+        <span style="font-weight:600;font-size:14px;">${esc(item.name || item.filename)}</span>
+        <span style="font-size:12px;color:var(--muted);">　${item.count || 0} 条 · ${Math.ceil((item.size || 0) / 1024)} KB</span>
+      </div>
+      <button type="button" class="text-link-btn" onclick="editPatternResource('${esc(item.filename)}')">编辑</button>
+      <button type="button" class="text-link-btn" style="color:var(--danger);" onclick="deleteResource('pattern', '${esc(item.filename)}')">删除</button>
     </div>`;
   }).join('');
   return `
     <section>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
         <h5 style="margin:0;font-size:13px;color:var(--muted);">${title}</h5>
-        ${items?.length ? '<div style="display:flex;gap:10px;"><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(true)">全部启用</button><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(false)">全部停用</button></div>' : ''}
+        ${type === 'wordlist' && items?.length ? '<div style="display:flex;gap:10px;"><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(true)">全部启用</button><button type="button" class="text-link-btn" onclick="setAllResourceWordlists(false)">全部停用</button></div>' : ''}
       </div>
       ${rows || '<div style="font-size:13px;color:var(--muted);padding:10px 0;">暂无上传内容</div>'}
     </section>
@@ -2641,8 +2557,12 @@ async function loadResources() {
   try {
     const data = await fetch('/api/resources').then(r => r.json());
     window._uploadedWordlists = data.wordlists || [];
+    window._uploadedPatterns = data.patterns || [];
     syncResourceWordlistSelection(window._uploadedWordlists);
-    list.innerHTML = renderResourceItems('词表', data.wordlists || []);
+    list.innerHTML = [
+      renderResourceItems('词表', data.wordlists || [], 'wordlist'),
+      renderResourceItems('句式表', data.patterns || [], 'pattern')
+    ].join('');
     loadWordlistConfigUI();
   } catch (e) {
     list.innerHTML = `<div style="font-size:13px;color:var(--danger);">读取失败：${esc(e.message)}</div>`;
@@ -2681,10 +2601,42 @@ async function editWordlistResource(filename) {
   }
 }
 
-async function deleteWordlistResource(filename) {
-  if (!confirm(`确定删除词表「${filename}」吗？\n\n删除后学习页刷新才会使用最新资源。`)) return;
+async function editPatternResource(filename) {
+  const item = (window._uploadedPatterns || []).find(x => x.filename === filename) || {};
+  const currentName = item.name || filename;
+  const name = await appPrompt('句式表名称', currentName || filename);
+  if (name === null) return;
+
   const status = document.getElementById('resource-status');
-  const endpoint = `/api/wordlists/upload/${encodeURIComponent(filename)}`;
+  if (status) {
+    status.style.color = 'var(--brand)';
+    status.textContent = '正在保存句式表信息...';
+  }
+  try {
+    const resp = await fetch(`/api/patterns/upload/${encodeURIComponent(filename)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.error || '保存失败');
+    if (status) status.textContent = `已更新：${data.name}`;
+    await loadResources();
+  } catch (e) {
+    if (status) {
+      status.style.color = 'var(--danger)';
+      status.textContent = `保存失败：${e.message}`;
+    }
+  }
+}
+
+async function deleteResource(type, filename) {
+  const label = type === 'wordlist' ? '词表' : '句式表';
+  if (!confirm(`确定删除${label}「${filename}」吗？\n\n删除后学习页刷新才会使用最新资源。`)) return;
+  const status = document.getElementById('resource-status');
+  const endpoint = type === 'wordlist'
+    ? `/api/wordlists/upload/${encodeURIComponent(filename)}`
+    : `/api/patterns/upload/${encodeURIComponent(filename)}`;
   if (status) {
     status.style.color = 'var(--brand)';
     status.textContent = '正在删除...';
@@ -2765,8 +2717,8 @@ async function expandSelectedWordlist() {
   }
 }
 
-async function uploadWordlistResource() {
-  const input = document.getElementById('wordlist-upload-input');
+async function uploadResource(type) {
+  const input = document.getElementById(type + '-upload-input');
   const status = document.getElementById('resource-status');
   if (!input || !input.files.length) {
     status.textContent = '请先选择文件';
@@ -2774,20 +2726,22 @@ async function uploadWordlistResource() {
   }
 
   const selectedFile = input.files[0];
-  const file = expandedWordlistSelection?.sourceName === selectedFile.name
+  const file = type === 'wordlist' && expandedWordlistSelection?.sourceName === selectedFile.name
     ? expandedWordlistSelection.file
     : selectedFile;
   const formData = new FormData();
   formData.append('file', file);
-  const tagInput = document.getElementById('wordlist-tag-input');
-  const tag = tagInput?.value.trim() || '';
-  if (tag) {
-    formData.append('name', tag);
-    formData.append('tag', tag);
+  if (type === 'wordlist') {
+    const tagInput = document.getElementById('wordlist-tag-input');
+    const tag = tagInput?.value.trim() || '';
+    if (tag) {
+      formData.append('name', tag);
+      formData.append('tag', tag);
+    }
   }
 
   status.textContent = '正在上传...';
-  const endpoint = '/api/wordlists/upload';
+  const endpoint = type === 'wordlist' ? '/api/wordlists/upload' : '/api/patterns/upload';
 
   try {
     const resp = await fetch(endpoint, {
@@ -2802,15 +2756,17 @@ async function uploadWordlistResource() {
         : '';
       status.textContent = `✅ ${file.name} 上传成功${countText}${invalidText}。刷新学习页后生效。`;
       input.value = '';
-      if (result.key) {
-        const selected = selectedResourceWordlistKeys();
-        if (!selected.includes(result.key)) {
-          localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify([...selected, result.key]));
+      if (type === 'wordlist') {
+        if (result.key) {
+          const selected = selectedResourceWordlistKeys();
+          if (!selected.includes(result.key)) {
+            localStorage.setItem(USER_WORDLIST_SELECTION_KEY, JSON.stringify([...selected, result.key]));
+          }
         }
+        resetExpandedWordlist();
+        const tagInput = document.getElementById('wordlist-tag-input');
+        if (tagInput) tagInput.value = '';
       }
-      resetExpandedWordlist();
-      const tagInput = document.getElementById('wordlist-tag-input');
-      if (tagInput) tagInput.value = '';
       loadResources();
     } else {
       status.textContent = `❌ 失败: ${result.error || '未知错误'}`;
@@ -2853,6 +2809,8 @@ function onLinkWhisperModelChange(val) {
   if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
   const hint = document.getElementById('link-groq-net-hint');
   if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
+  const dashWarn = document.getElementById('link-dashscope-key-warn');
+  if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
 }
 
 async function browseLocalFile() {
@@ -3869,7 +3827,13 @@ function filteredCourses() {
   const mode = document.getElementById('course-mode-filter')?.value || 'all';
   const status = document.getElementById('course-status-filter')?.value || 'active';
   const tag = document.getElementById('course-tag-filter')?.value || 'all';
+  // 默认视图（无搜索/筛选）下去重"最近学习"已展示的 4 门，避免首屏重复
+  const isDefaultView = !query && mode === 'all' && status === 'active' && tag === 'all';
+  const recentKeys = new Set(
+    isDefaultView ? _courseLibrary.filter(c => !c.archived).slice(0, 4).map(c => c.key) : []
+  );
   return _courseLibrary.filter(course => {
+    if (recentKeys.has(course.key)) return false;
     const tags = courseTags(course);
     const matchesQuery = !query || `${course.title || ''} ${course.source_type || ''} ${tags.join(' ')}`.toLowerCase().includes(query);
     const matchesStatus = status === 'all'
@@ -4224,9 +4188,6 @@ function filteredSentenceReviewData() {
     return isNaN(parsed) ? String(raw).slice(0, 10) : toKey(parsed);
   };
   return _sentenceReviewData.filter(sentence => {
-    if (_sentenceAIRecommendedOnly
-        && !_aiRecommendedTargets.sentences.has(Number(sentence.id))) return false;
-    if (_sentenceTodayPlanOnly && !_todayPlanTargets.sentences.has(Number(sentence.id))) return false;
     const favorited = favoritedKey(sentence);
     const matchesTime = time === 'all'
       || (time === 'today' && favorited === today)
@@ -4261,17 +4222,7 @@ function renderSentenceReviewFilters() {
   const courseMount = document.getElementById('sentence-course-filter');
   const tagMount = document.getElementById('sentence-tag-filter');
   const clearBtn = document.getElementById('sentence-filter-clear');
-  const todayBtn = document.getElementById('sentence-today-plan-filter');
-  const aiBtn = document.getElementById('sentence-ai-recommended-filter');
   if (!bar || !courseMount || !tagMount || !clearBtn) return;
-  if (todayBtn) {
-    todayBtn.classList.toggle('active', _sentenceTodayPlanOnly);
-    todayBtn.setAttribute('aria-pressed', String(_sentenceTodayPlanOnly));
-  }
-  if (aiBtn) {
-    aiBtn.classList.toggle('active', _sentenceAIRecommendedOnly);
-    aiBtn.setAttribute('aria-pressed', String(_sentenceAIRecommendedOnly));
-  }
   const courses = new Map();
   const tags = new Map();
   _sentenceReviewData.forEach(sentence => {
@@ -4320,24 +4271,8 @@ function renderSentenceReviewFilters() {
         `<button type="button" class="filter-btn${_sentenceTagFilter.has(Number(tag.id)) ? ' active' : ''}" onclick="toggleSentenceTagFilter(${Number(tag.id)})">${esc(SENTENCE_TAG_CATEGORY_LABELS[tag.category] || tag.category)} · ${esc(tag.name)}</button>`
       ).join('')
     : '';
-  clearBtn.hidden = !(_sentenceCourseFilter.size || _sentenceTagFilter.size || _sentenceTodayPlanOnly || _sentenceAIRecommendedOnly);
+  clearBtn.hidden = !(_sentenceCourseFilter.size || _sentenceTagFilter.size);
   bar.hidden = !courseMount.innerHTML && !tagMount.innerHTML;
-}
-
-function toggleSentenceTodayPlanFilter() {
-  stopSentenceAutoPlay();
-  _sentenceTodayPlanOnly = !_sentenceTodayPlanOnly;
-  if (_sentenceTodayPlanOnly) _sentenceAIRecommendedOnly = false;
-  _sentencePage = 1;
-  renderSentenceReview();
-}
-
-function toggleSentenceAIRecommendedFilter() {
-  stopSentenceAutoPlay();
-  _sentenceAIRecommendedOnly = !_sentenceAIRecommendedOnly;
-  if (_sentenceAIRecommendedOnly) _sentenceTodayPlanOnly = false;
-  _sentencePage = 1;
-  renderSentenceReview();
 }
 
 function toggleSentenceCourseFilter(lessonId) {
@@ -4355,8 +4290,6 @@ function toggleSentenceTagFilter(tagId) {
 function clearSentenceFilters() {
   _sentenceCourseFilter.clear();
   _sentenceTagFilter.clear();
-  _sentenceTodayPlanOnly = false;
-  _sentenceAIRecommendedOnly = false;
   const timeSelect = document.getElementById('sentence-review-time-filter');
   if (timeSelect) timeSelect.value = 'all';
   const listeningSelect = document.getElementById('sentence-listening-result-filter');
@@ -4486,7 +4419,7 @@ function renderSentenceReviewList() {
             ? '<div class="sentence-library-hidden-copy">原文已隐藏，请先听声音再显示核对。</div>'
             : `<div class="sentence-library-text">${esc(sentence.text)}</div>`}
           <div class="sentence-library-meta">${esc(source)}</div>
-          <div class="sentence-library-tags">${_todayPlanTargets.sentences.has(Number(sentence.id)) ? '<span class="sentence-library-tag-chip">今日练习</span>' : ''}${_aiRecommendedTargets.sentences.has(Number(sentence.id)) ? '<span class="sentence-library-tag-chip">AI 推荐</span>' : ''}${tagChips || '<span class="sentence-library-tag-empty">未打标签</span>'}</div>
+          <div class="sentence-library-tags">${tagChips || '<span class="sentence-library-tag-empty">未打标签</span>'}</div>
         </div>
         <div class="sentence-library-actions">
           <span class="sentence-library-listen-actions">
@@ -4533,7 +4466,9 @@ function renderSentenceReviewList() {
           </div>
         </div>
       </article>`;
-  }).join('') : `<div class="empty-state"><p>${_sentenceTodayPlanOnly ? '今日练习里没有句子任务。' : '没有符合条件的收藏句。'}</p></div>`;
+  }).join('') : (_sentenceReviewData.length === 0
+    ? `<div class="empty-state"><p><strong>还没有收藏句。</strong></p><p>在课程的「精读」页点句子的 ☆ 收藏，或在精听时点星标，句子就会汇聚到这里；之后可以播放原音、隐藏原文自测是否听懂。</p></div>`
+    : `<div class="empty-state"><p>没有符合条件的收藏句。</p></div>`);
   mount.innerHTML = savedRowsHtml;
   const hideAllBtn = document.getElementById('sentence-hide-all-btn');
   if (hideAllBtn) {
@@ -4551,6 +4486,8 @@ function renderSentenceReview() {
   const activeCount = _sentenceReviewData.filter(sentence => !sentence.archived).length;
   _sentenceReviewSummary = {total: activeCount, due: 0};
   document.getElementById('sentence-review-total-count').textContent = activeCount;
+  const shell = document.getElementById('sentence-library-shell');
+  if (shell) shell.classList.toggle('is-empty', _sentenceReviewData.length === 0);
   renderSentenceReviewFilters();
   renderSentenceReviewList();
   updateHeaderStat('sentences');
@@ -4573,8 +4510,6 @@ async function loadSentenceReview() {
     fetch('/api/v2/lessons/sentence-review?include_archived=1'),
     fetch('/api/v2/lessons/sentence-tags'),
     ensureAiAvailability(),
-    loadTodayPlanTargets(),
-    loadPlanningRecommendations(),
   ]);
   const data = await response.json();
   const catalog = await catalogResponse.json().catch(() => ({}));
@@ -4590,6 +4525,7 @@ async function loadSentenceReview() {
     };
   }
   _sentenceReviewData = (data.sentences || []).map(sentence => applySentencePatternPayload(sentence, sentence));
+  _indexSavedSentences(data.sentences);
   _sentenceReviewSummary = {total: Number(data.total || 0), due: Number(data.due_count || 0)};
   renderSentenceReview();
 }
@@ -4730,7 +4666,7 @@ async function toggleSentenceRetellRecording(sentenceId) {
       const form = new FormData();
       form.append('audio', new Blob(chunks, {type:recorder.mimeType || 'audio/webm'}), 'retelling.webm');
       try {
-        const response = await fetch('/api/transcribe', {method:'POST', body:form});
+        const response = await eltCredits.billableFetch('retell_transcribe', '/api/transcribe', {method:'POST', body:form});
         const data = await response.json();
         if (!response.ok || !data.text) throw new Error(data.error || '识别失败，请重试');
         if (Number(_sentenceRetellOpenId) !== Number(sentenceId)) return;
@@ -5255,8 +5191,12 @@ function todayKey() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+function normalizeVocabWord(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function vocabMatchesWordlist(word, key) {
-  return (_vocabWordlistMembership[normalizePlanWord(word)] || []).includes(key);
+  return (_vocabWordlistMembership[normalizeVocabWord(word)] || []).includes(key);
 }
 
 function isVocabWordlistFilter(key) {
@@ -5391,8 +5331,6 @@ async function initVocab() {
     fetch('/vocab-log?include_archived=1&include_mastered=1', {cache:'no-store'}),
     fetch('/health').then(r => r.json()).catch(() => ({})),
     fetch('/api/wordlists/config').then(r => r.json()).catch(() => []),
-    loadTodayPlanTargets(),
-    loadPlanningRecommendations(),
   ]);
   vocabData  = await vocabRes.json();
   _vocabWordlists = Array.isArray(wordlists) ? wordlists : [];
@@ -5421,6 +5359,7 @@ async function loadHomeReviewNote() {
     ]);
     const data = await vocabResponse.json();
     const sentenceData = sentenceResponse.ok ? await sentenceResponse.json() : {total: 0, due_count: 0};
+    _indexSavedSentences(sentenceData.sentences);
     _sentenceReviewSummary = {
       total: Number(sentenceData.total || 0),
       due: Number(sentenceData.due_count || 0),
@@ -5444,14 +5383,12 @@ function getFilteredVocabEntries() {
   if (currentFilters.size > 0) {
     entries = entries.filter(([word,e]) => {
       for (const f of currentFilters) {
-        if (f === 'today-plan' && _todayPlanTargets.words.has(normalizePlanWord(word))) return true;
-        if (f === 'ai-recommended' && _aiRecommendedTargets.words.has(normalizePlanWord(word))) return true;
         if (f === 'mastered' && e.mastered) return true;
         if (f === 'archived' && e.archived && !e.mastered) return true;
         if (['unknown','fuzzy','known'].includes(f) && e.familiarity === f && !e.archived && !e.mastered) return true;
         if (f.startsWith('tag:') && (e.tags || []).some(tag => `tag:${String(tag).toLowerCase()}` === f)) return true;
         if (isVocabWordlistFilter(f) && vocabMatchesWordlist(word, f)) return true;
-        if (!isVocabWordlistFilter(f) && !['today-plan','ai-recommended','mastered','archived','unknown','fuzzy','known'].includes(f) && (e.level||'').toLowerCase() === f) return true;
+        if (!isVocabWordlistFilter(f) && !['mastered','archived','unknown','fuzzy','known'].includes(f) && (e.level||'').toLowerCase() === f) return true;
       }
       return false;
     });
@@ -5736,13 +5673,15 @@ function buildVocabCard(word, entry) {
     text: contextSentence,
     translation: contextTranslation,
   })).replace(/'/g, '%27');
+  const contextSavedId = _savedSentenceMap.get(normSentenceKey(contextSentence));
+  const contextHasLessonLink = Boolean(context.lesson_id) && (context.segment_index === 0 || Boolean(context.segment_index));
   const targetType = entry.target_type === 'phrase' || word.includes(' ') ? '短语' : '单词';
   const userTags = (entry.tags || []).slice(0, 3);
   const hiddenTagCount = Math.max(0, (entry.tags || []).length - userTags.length);
 
   const collocations = (an.collocations||[]).map(c=>`<span class="colloc-chip">${renderVocabReadingText(c)}</span>`).join('');
   const synonyms = (an.synonyms||[]).map(s=>`<div class="synonym-row"><span class="synonym-word">${renderVocabReadingText(s.word)}</span><span class="synonym-diff">${renderVocabReadingText(s.difference||'')}</span></div>`).join('');
-  const examples = (an.examples||[]).map(e=>{const enc=encodeURIComponent(String(e||'')).replace(/'/g,'%27');return `<div class="example-item">· ${renderVocabReadingText(e)}<button type="button" class="example-speak-btn" aria-label="朗读例句" onclick="speakVocabExample(event,'${enc}')">🔊</button><button type="button" class="example-speak-btn" onclick="saveVocabExampleSentence(event,'${enc}')">☆ 收藏</button></div>`;}).join('');
+  const examples = (an.examples||[]).map(e=>{const enc=encodeURIComponent(String(e||'')).replace(/'/g,'%27');const sid=_savedSentenceMap.get(normSentenceKey(e));return `<div class="example-item">· ${renderVocabReadingText(e)}<button type="button" class="example-speak-btn" aria-label="朗读例句" onclick="speakVocabExample(event,'${enc}')">🔊</button><button type="button" class="example-speak-btn" onclick="saveVocabExampleSentence(event,'${enc}')"${sid?` data-sentence-id="${sid}"`:''}>${sid?'✓ 已收藏':'☆ 收藏'}</button></div>`;}).join('');
   const hasDeepAnalysis = Boolean(
     an.en_definition || (an.collocations||[]).length || (an.synonyms||[]).length
     || (an.examples||[]).length || an.usage || an.ielts_note
@@ -5769,8 +5708,6 @@ function buildVocabCard(word, entry) {
       <span class="word-meaning meaning-hidden">${esc(an.basic_meaning||'')}</span>
       <span class="meaning-prompt" aria-live="polite">自评后显示释义</span>
       <div class="word-meta">
-        ${_todayPlanTargets.words.has(normalizePlanWord(word)) ? '<span class="tag">今日练习</span>' : ''}
-        ${_aiRecommendedTargets.words.has(normalizePlanWord(word)) ? '<span class="tag">AI 推荐</span>' : ''}
         ${level?`<span class="tag">${esc(level)}</span>`:''}
         ${examTags.map(tag => `<span class="tag exam">${esc(tag)}</span>`).join('')}
         ${frqLabel?`<span class="tag frq">${esc(frqLabel)}</span>`:''}
@@ -5789,7 +5726,7 @@ function buildVocabCard(word, entry) {
     <div class="vocab-context-shell">
       <p class="vocab-context">${highlightVocabTarget(contextSentence,word)}</p>
       ${contextTranslation?`<div class="vocab-context-translation" data-context-translation ${assessed==='true'?'':'hidden'}>${esc(contextTranslation)}</div>`:''}
-      <div class="vocab-context-meta"><span>${esc(context.lesson || context.source_title || '最近收藏语境')}</span><span>${contextIndex + 1} / ${Math.max(1, contexts.length)}</span><button type="button" class="context-audio-btn" onclick="speakVocabSentence(event,'${encodeURIComponent(contextSentence).replace(/'/g,'%27')}','${contextAudio}')">🔊 播放整句</button><button type="button" class="context-audio-btn" onclick="saveVocabContextSentence(event,'${contextSavePayload}')">☆ 收藏句子</button></div>
+      <div class="vocab-context-meta"><span>${esc(context.lesson || context.source_title || '最近收藏语境')}</span><span>${contextIndex + 1} / ${Math.max(1, contexts.length)}</span><button type="button" class="context-audio-btn" onclick="speakVocabSentence(event,'${encodeURIComponent(contextSentence).replace(/'/g,'%27')}','${contextAudio}')">🔊 播放整句</button><button type="button" class="context-audio-btn" onclick="saveVocabContextSentence(event,'${contextSavePayload}')"${contextSavedId ? (contextHasLessonLink ? ' data-phaseb-saved="1"' : ` data-sentence-id="${contextSavedId}"`) : ''}>${contextSavedId ? '✓ 已收藏' : '☆ 收藏句子'}</button></div>
       <div class="vocab-card-actions">
         <button type="button" data-toggle-vocab-card>展开词卡</button>
         <button type="button" onclick="startVocabSentenceMaking(event,decodeURIComponent('${encodedWord}'))">情景造句练习</button>
@@ -6000,7 +5937,7 @@ async function generateVocabAnalysis(event, word) {
 
 async function deleteVocabWord(event, word) {
   event.stopPropagation();
-  if (!confirm(`从词汇记忆工坊彻底删除「${word}」？`)) return;
+  if (!confirm(`从词汇本彻底删除「${word}」？`)) return;
   const resp = await fetch(`/api/vocab-words/${encodeURIComponent(word)}`, { method: 'DELETE' });
   if (!resp.ok) { alert('删除失败，请重试'); return; }
   delete vocabData[word];
@@ -6449,7 +6386,7 @@ function removeStoryWord(word) {
 function addStoryWord(word) {
   const normalized = String(word || '').trim().toLowerCase();
   if (!normalized || !vocabData[normalized]) {
-    alert('请从当前词汇记忆工坊中选择单词。');
+    alert('请从当前词汇本中选择单词。');
     return false;
   }
   if (!_storyWordSet.has(normalized) && _storyWordSet.size >= STORY_WORD_LIMIT) {
@@ -6928,16 +6865,11 @@ async function saveVocabExampleSentence(event, encodedText) {
   if (!text || !button) return;
   button.disabled = true;
   try {
-    const response = await fetch('/api/v2/lessons/sentence-review/manual', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text, translation: ''}),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
-    button.textContent = '✓ 已收藏';
+    await toggleManualSavedSentence(button, text, {label: '☆ 收藏'});
   } catch (error) {
+    window.alert(error.message || '操作失败，请稍后重试');
+  } finally {
     button.disabled = false;
-    window.alert(error.message || '收藏失败，请稍后重试');
   }
 }
 
@@ -6953,21 +6885,34 @@ async function saveVocabContextSentence(event, encodedPayload) {
     // 课程原句且定位到课内句子 → phase-b 收藏（保留课程与时间轴）；
     // 否则（无来源/旧版课程）走手动收藏，直接进句子库。
     const hasLessonLink = payload.lesson_id && payload.segment_index !== null && payload.segment_index !== undefined;
-    const response = await fetch(
-      hasLessonLink ? `/api/v2/lessons/${payload.lesson_id}/phase-b` : '/api/v2/lessons/sentence-review/manual',
-      {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(hasLessonLink
-          ? {segment_index: Number(payload.segment_index), start_seconds: Number(payload.start) || 0, end_seconds: Number(payload.end) || 0, text}
-          : {text, translation: String(payload.translation || '')}),
-      });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
-    button.textContent = '✓ 已收藏';
+    if (hasLessonLink) {
+      const segIdx = Number(payload.segment_index);
+      if (button.dataset.phasebSaved === '1') {
+        const response = await fetch(`/api/v2/lessons/${payload.lesson_id}/phase-b/${segIdx}`, {method: 'DELETE'});
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || data.error || '取消收藏失败');
+        button.dataset.phasebSaved = '0';
+        _savedSentenceMap.delete(normSentenceKey(text));
+        button.textContent = '☆ 收藏句子';
+      } else {
+        const response = await fetch(`/api/v2/lessons/${payload.lesson_id}/phase-b`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({segment_index: segIdx, start_seconds: Number(payload.start) || 0, end_seconds: Number(payload.end) || 0, text}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
+        button.dataset.phasebSaved = '1';
+        const newId = data.sentence?.sentence_id || data.sentence?.id;
+        if (newId) _savedSentenceMap.set(normSentenceKey(text), newId);
+        button.textContent = '✓ 已收藏';
+      }
+    } else {
+      await toggleManualSavedSentence(button, text, {label: '☆ 收藏句子', translation: String(payload.translation || '')});
+    }
   } catch (error) {
+    window.alert(error.message || '操作失败，请稍后重试');
+  } finally {
     button.disabled = false;
-    button.textContent = '☆ 收藏句子';
-    window.alert(error.message || '收藏失败，请稍后重试');
   }
 }
 
@@ -7025,8 +6970,7 @@ function setFilter(val) {
   stopVocabAutoPlay();
   currentVocabPage = 1;
   if (val === 'all') { currentFilters.clear(); }
-  else if (val === 'ai-recommended') { const active=currentFilters.has(val); currentFilters.clear(); if(!active)currentFilters.add(val); }
-  else { currentFilters.delete('ai-recommended'); currentFilters.has(val) ? currentFilters.delete(val) : currentFilters.add(val); }
+  else { currentFilters.has(val) ? currentFilters.delete(val) : currentFilters.add(val); }
   document.querySelectorAll('#vocab-filter-group .filter-btn').forEach(b => {
     const f = b.dataset.filter;
     b.classList.toggle('active', f === 'all' ? currentFilters.size === 0 : currentFilters.has(f));
@@ -7223,10 +7167,14 @@ function encodeAiSentence(text) {
 }
 
 function aiSentenceActions(encodedText, includeSpeak=true) {
+  const text = decodeURIComponent(encodedText || '');
+  const savedId = _savedSentenceMap.get(normSentenceKey(text));
+  const favAttrs = savedId ? ` data-sentence-id="${savedId}"` : '';
+  const favLabel = savedId ? '✓ 已收藏' : '⭐ 收藏句子';
   return `<div class="ai-sentence-actions">
     ${includeSpeak ? `<button type="button" onclick="speakAiExample(event,'${encodedText}')">🔊 朗读</button>` : ''}
     <button type="button" onclick="translateAiSentence(this,'${encodedText}')">🌐 翻译</button>
-    <button type="button" onclick="favoriteAiSentence(this,'${encodedText}')">⭐ 收藏句子</button>
+    <button type="button" onclick="favoriteAiSentence(this,'${encodedText}')"${favAttrs}>${favLabel}</button>
   </div><div class="ai-sentence-translation"></div>`;
 }
 
@@ -7255,15 +7203,9 @@ async function favoriteAiSentence(button, encodedText) {
   if (!text) return;
   button.disabled = true;
   try {
-    const response = await fetch('/api/v2/lessons/sentence-review/manual', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text}),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || data.error || '收藏失败');
-    button.textContent = '✓ 已收藏';
+    await toggleManualSavedSentence(button, text, {label: '⭐ 收藏句子'});
   } catch (error) {
-    alert(`收藏失败：${error.message}`);
+    alert(`操作失败：${error.message}`);
   } finally {
     button.disabled = false;
   }
@@ -7463,160 +7405,9 @@ function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'
   setInterval(() => { if (!_closing) ping(document.hidden); }, 5000);
 })();
 
-// ── Local Whisper model detection/download ────
-let _whisperModelSettings = null;
-
-function renderWhisperModelSettings(data) {
-  _whisperModelSettings = data;
-  const list = document.getElementById('whisper-model-list');
-  const status = document.getElementById('whisper-model-settings-status');
-  const root = document.getElementById('whisper-download-root');
-  if (!list || !status || !root) return;
-  root.textContent = data.download_root || '—';
-  const models = Array.isArray(data.models) ? data.models : [];
-  list.innerHTML = models.map(model => {
-    const state = model.installed
-      ? `<span style="color:#15803d;">✓ 已安装</span>`
-      : `<span style="color:#a16207;">未安装</span>`;
-    const location = model.installed && model.cache_root
-      ? `<div style="font-size:12px;color:var(--muted);word-break:break-all;">缓存：${esc(model.cache_root)}</div>`
-      : '';
-    const action = model.installed
-      ? ''
-      : `<button type="button" class="btn btn-primary btn-sm" data-whisper-download="${esc(model.name)}" onclick="downloadWhisperModel('${esc(model.name)}')">下载 ${esc(model.name)}</button>`;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--line);border-radius:8px;">
-      <div><strong>${esc(model.label)}</strong> <span style="color:var(--muted);">${esc(model.size_label)}</span> ${state}${location}</div>
-      ${action}
-    </div>`;
-  }).join('') || '<div style="color:var(--muted);">当前运行模式不提供本地 Whisper 模型。</div>';
-  const installedCount = models.filter(model => model.installed).length;
-  status.style.color = installedCount ? '#15803d' : '#a16207';
-  status.textContent = `已检测：${installedCount}/${models.length} 个模型可用`;
-}
-
-async function refreshWhisperModelSettings() {
-  const list = document.getElementById('whisper-model-list');
-  const status = document.getElementById('whisper-model-settings-status');
-  if (!list || !status) return;
-  status.style.color = 'var(--muted)';
-  status.textContent = '正在检测…';
-  try {
-    const response = await fetch('/api/settings/whisper-models', {cache:'no-store'});
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || '检测失败');
-    renderWhisperModelSettings(data);
-  } catch (error) {
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '检测失败';
-  }
-}
-
-async function downloadWhisperModel(modelName) {
-  const status = document.getElementById('whisper-model-settings-status');
-  const button = document.querySelector(`[data-whisper-download="${CSS.escape(modelName)}"]`);
-  if (!status || !button) return;
-  button.disabled = true;
-  button.textContent = `正在下载 ${modelName}…`;
-  status.style.color = 'var(--muted)';
-  status.textContent = '首次下载耗时取决于网络，请勿关闭页面…';
-  try {
-    const response = await fetch(`/api/settings/whisper-models/${encodeURIComponent(modelName)}/download`, {method:'POST'});
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || '下载失败');
-    await refreshWhisperModelSettings();
-  } catch (error) {
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '下载失败';
-    button.disabled = false;
-    button.textContent = `重新下载 ${modelName}`;
-  }
-}
-
-// ── Local translation installer ───────────────
-let _localTranslationSettings = null;
-
-function renderLocalTranslationSettings(data) {
-  _localTranslationSettings = data;
-  const status = document.getElementById('local-translation-status');
-  const button = document.getElementById('local-translation-install-btn');
-  if (!status || !button) return;
-  document.getElementById('local-translation-version').textContent =
-    `${data.model || 'HY-MT1.5'} + llama.cpp ${data.llama_version || ''}`;
-  document.getElementById('local-translation-platform').textContent = data.platform || '未知';
-  document.getElementById('local-translation-location').textContent = data.install_location || '当前 EchoLingo 目录';
-  document.getElementById('local-translation-model-url').textContent = data.model_download_url || '—';
-  document.getElementById('local-translation-model-sha').textContent = data.model_sha256 || '—';
-  document.getElementById('local-translation-llama-url').textContent = data.llama_download_url || '—';
-  document.getElementById('local-translation-llama-sha').textContent = data.llama_sha256 || '—';
-  document.getElementById('local-translation-model-source').href = data.model_source || '#';
-  document.getElementById('local-translation-llama-source').href = data.llama_source || '#';
-  document.getElementById('local-translation-license').href = data.license_url || '#';
-  if (data.installed) {
-    button.style.display = 'none';
-    status.style.color = '#15803d';
-    status.textContent = '✓ 本地混元模型与 llama.cpp 已就绪，无需混元 API Key';
-  } else if (!data.supported) {
-    button.style.display = '';
-    button.disabled = true;
-    button.textContent = '当前平台暂不支持一键安装';
-    status.style.color = 'var(--danger)';
-    status.textContent = `当前仅提供 Windows x64 一键安装；检测到 ${data.platform || '未知平台'}`;
-  } else {
-    button.style.display = '';
-    button.disabled = false;
-    button.textContent = '同意许可并一键安装';
-    status.style.color = '#a16207';
-    status.textContent = '未安装；安装后本地翻译会自动启用';
-  }
-}
-
-async function refreshLocalTranslationSettings() {
-  const status = document.getElementById('local-translation-status');
-  if (status) {
-    status.style.color = 'var(--muted)';
-    status.textContent = '正在检测…';
-  }
-  try {
-    const response = await fetch('/api/settings/local-translation', {cache:'no-store'});
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || '检测失败');
-    renderLocalTranslationSettings(data);
-  } catch (error) {
-    if (status) {
-      status.style.color = 'var(--danger)';
-      status.textContent = error.message || '检测失败';
-    }
-  }
-}
-
-async function installLocalTranslation() {
-  const data = _localTranslationSettings;
-  if (!data?.supported || data.installed) return;
-  const button = document.getElementById('local-translation-install-btn');
-  const status = document.getElementById('local-translation-status');
-  button.disabled = true;
-  button.textContent = '正在下载并校验…';
-  status.style.color = 'var(--muted)';
-  status.textContent = '正在下载约 1.08 GB，请勿关闭页面；完成后会自动启用本地翻译…';
-  try {
-    const response = await fetch('/api/settings/local-translation/install', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({version:data.version, accepted_license:true}),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.detail || '安装失败');
-    await refreshLocalTranslationSettings();
-  } catch (error) {
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '安装失败';
-    button.disabled = false;
-    button.textContent = '重新安装';
-  }
-}
-
 // ── AI / Groq Settings ────────────────────────
 let _groqKeyConfigured = false;
+let _dashscopeKeyConfigured = false;
 
 const _AI_FIELD_MAP = {
   'ai-base-url':          { field: 'base_url',             badge: 'badge-base-url' },
@@ -7625,65 +7416,8 @@ const _AI_FIELD_MAP = {
   'groq-api-key':         { field: 'groq_api_key',         badge: 'badge-groq-api-key' },
   'hy-translate-api-key': { field: 'hy_translate_api_key', badge: 'badge-hy-translate-api-key' },
   'hy-translate-model':   { field: 'hy_translate_model',   badge: 'badge-hy-translate-model' },
+  'dashscope-api-key':    { field: 'dashscope_api_key',    badge: 'badge-dashscope-api-key' },
 };
-
-const _AI_PROVIDER_PRESETS = {
-  deepseek: {
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-v4-flash',
-    note: 'DeepSeek 官方接口，默认使用 deepseek-v4-flash。',
-  },
-  qwen: {
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    model: 'qwen3.6-flash',
-    note: '千问百炼 OpenAI 兼容接口：在下方通用 API Key 中填写百炼 Key，不再使用单独的“千问 Key”字段。',
-  },
-  'kimi-platform': {
-    baseUrl: 'https://api.moonshot.cn/v1',
-    model: '',
-    note: 'Kimi 开放平台按量付费：请选择后再填写控制台中可用的模型 ID。它的 Key 不能用于 Kimi Code。',
-  },
-  'kimi-code': {
-    baseUrl: 'https://api.kimi.com/coding/v1',
-    model: 'kimi-for-coding',
-    note: 'Kimi Code 会员 API：Key 来自 Kimi Code 控制台，不能与 Kimi 开放平台 Key 混用。',
-  },
-};
-
-function setAiProviderNote(value) {
-  const note = document.getElementById('ai-provider-note');
-  if (!note) return;
-  note.textContent = _AI_PROVIDER_PRESETS[value]?.note
-    || '自定义模式：填写兼容 OpenAI Chat Completions 的 Base URL、API Key 与模型 ID。';
-}
-
-function applyAiProviderPreset(value) {
-  const preset = _AI_PROVIDER_PRESETS[value];
-  setAiProviderNote(value);
-  if (!preset) return;
-  const baseUrl = document.getElementById('ai-base-url');
-  const model = document.getElementById('ai-model');
-  if (baseUrl) baseUrl.value = preset.baseUrl;
-  if (model) {
-    model.value = preset.model;
-    model.placeholder = value === 'kimi-platform'
-      ? '请填写 Kimi 开放平台模型 ID'
-      : preset.model;
-    if (!preset.model) model.focus();
-  }
-}
-
-function syncAiProviderPreset(baseUrl, model) {
-  const normalized = String(baseUrl || '').replace(/\/$/, '').toLowerCase();
-  let value = 'custom';
-  if (normalized === 'https://api.deepseek.com' && model === 'deepseek-v4-flash') value = 'deepseek';
-  else if (normalized === 'https://dashscope.aliyuncs.com/compatible-mode/v1') value = 'qwen';
-  else if (normalized === 'https://api.moonshot.cn/v1') value = 'kimi-platform';
-  else if (normalized === 'https://api.kimi.com/coding/v1') value = 'kimi-code';
-  const select = document.getElementById('ai-provider-preset');
-  if (select) select.value = value;
-  setAiProviderNote(value);
-}
 
 async function loadAiSettings() {
   try {
@@ -7694,8 +7428,7 @@ async function loadAiSettings() {
     }
 
     _groqKeyConfigured = !!d.groq_api_key;
-    preferLocalWhisperWithoutGroq();
-    syncAiProviderPreset(d.base_url || '', d.model || '');
+    _dashscopeKeyConfigured = !!d.dashscope_api_key;
 
     // 更新各字段的"已配置"标记
     for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -7707,6 +7440,10 @@ async function loadAiSettings() {
     }
 
     onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
+    // key 状态就绪后同步刷新链接导入卡的警告，避免与授权初始化竞态导致误报
+    if (typeof onLinkWhisperModelChange === 'function') {
+      onLinkWhisperModelChange(document.getElementById('link-whisper-model')?.value || '');
+    }
   } catch (_) {}
 }
 
@@ -7741,6 +7478,10 @@ async function deleteAiSetting(field) {
       _groqKeyConfigured = false;
       onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
     }
+    if (field === 'dashscope_api_key') {
+      _dashscopeKeyConfigured = false;
+      onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
+    }
   } catch (e) {
     alert('删除失败：' + e.message);
   }
@@ -7751,13 +7492,6 @@ async function saveAiSettings() {
   const body = {};
   for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
     body[meta.field] = document.getElementById(inputId)?.value.trim() || '';
-  }
-  if (!body.base_url || !body.model) {
-    if (status) {
-      status.style.color = 'var(--danger)';
-      status.textContent = '请填写 Base URL 和模型 ID';
-    }
-    return;
   }
   if (status) { status.style.color = 'var(--brand)'; status.textContent = '保存中…'; }
   try {
@@ -7773,7 +7507,7 @@ async function saveAiSettings() {
     }
     if (d.ok) {
       _groqKeyConfigured = !!body.groq_api_key;
-      preferLocalWhisperWithoutGroq();
+      _dashscopeKeyConfigured = !!body.dashscope_api_key;
       onWhisperModelChange(document.getElementById('user-media-whisper-model')?.value || '');
       // 刷新"已配置"标记
       for (const [inputId, meta] of Object.entries(_AI_FIELD_MAP)) {
@@ -7794,16 +7528,8 @@ function onWhisperModelChange(val) {
   if (warn) warn.style.display = (val === 'groq' && !_groqKeyConfigured) ? '' : 'none';
   const hint = document.getElementById('groq-net-hint');
   if (hint) hint.style.display = (val === 'groq') ? '' : 'none';
-}
-
-function preferLocalWhisperWithoutGroq() {
-  if (_groqKeyConfigured) return;
-  for (const id of ['link-whisper-model', 'user-media-whisper-model']) {
-    const select = document.getElementById(id);
-    if (select?.value === 'groq' && [...select.options].some(option => option.value === 'base')) {
-      select.value = 'base';
-    }
-  }
+  const dashWarn = document.getElementById('dashscope-key-warn');
+  if (dashWarn) dashWarn.style.display = (val === 'paraformer' && !_dashscopeKeyConfigured) ? '' : 'none';
 }
 
 // ── Init ──────────────────────────────────────
@@ -7873,16 +7599,10 @@ async function initAuthBadge() {
     if (!me.is_admin) {
       const sec = document.getElementById('ai-settings-section');
       if (sec) sec.style.display = 'none';
-      ['groq-key-warn'].forEach(id => {
+      ['groq-key-warn', 'dashscope-key-warn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
-      const panGuide = document.getElementById('baidu-pan-settings-guide');
-      if (panGuide) panGuide.style.display = 'none';
-      const localTranslationGuide = document.getElementById('local-translation-settings-guide');
-      if (localTranslationGuide) localTranslationGuide.style.display = 'none';
-      const whisperGuide = document.getElementById('whisper-model-settings-guide');
-      if (whisperGuide) whisperGuide.style.display = 'none';
     } else {
       const adminLink = document.getElementById('admin-import-link');
       if (adminLink) adminLink.style.display = 'block';
@@ -7916,168 +7636,11 @@ async function refreshCreditBadge(summary) {
 // ── 百度网盘导入 ───────────────────────────────────────────
 let _baiduPanPoll = null;
 let _panPath = '', _panSelected = null, _panCanBrowse = false;
-let _baiduPanSettings = null;
-function renderBaiduPanSettingsStatus(data) {
-  const status = document.getElementById('baidu-pan-settings-status');
-  if (!status) return;
-  _baiduPanSettings = data.installer
-    ? data
-    : (_baiduPanSettings ? {..._baiduPanSettings, ...data} : data);
-  const installer = data.installer || null;
-  if (installer) {
-    const source = document.getElementById('baidu-pan-installer-source');
-    source.textContent = installer.source_name || '百度网盘官方 bdpan-storage';
-    source.href = installer.source_repo || 'https://github.com/baidu-netdisk/bdpan-storage';
-    document.getElementById('baidu-pan-installer-version').textContent = `bdpan ${installer.version}`;
-    document.getElementById('baidu-pan-installer-platform').textContent = installer.platform;
-    document.getElementById('baidu-pan-installer-location').textContent = installer.install_location;
-    document.getElementById('baidu-pan-installer-url').textContent = installer.download_url || '当前平台不支持';
-    document.getElementById('baidu-pan-installer-sha').textContent = installer.sha256 || '—';
-    const installBtn = document.getElementById('baidu-pan-install-btn');
-    installBtn.style.display = installer.installed ? 'none' : '';
-    installBtn.disabled = !installer.supported || installer.installed;
-    installBtn.textContent = installer.supported ? `确认并安装 bdpan ${installer.version}` : '当前平台暂不支持一键安装';
-    const authBtn = document.getElementById('baidu-pan-auth-btn');
-    authBtn.style.display = installer.installed && !data.enabled ? '' : 'none';
-    document.getElementById('baidu-pan-logout-btn').style.display = data.enabled ? '' : 'none';
-  }
-  if (data.enabled) {
-    status.style.color = '#15803d';
-    status.textContent = `✓ 已配置${data.username ? `（${data.username}）` : ''}`;
-  } else if (installer && !installer.supported) {
-    status.style.color = 'var(--danger)';
-    status.textContent = `当前平台 ${installer.platform} 暂不支持一键安装`;
-  } else if (installer && installer.installed) {
-    status.style.color = '#a16207';
-    status.textContent = `✓ 已安装${installer.installed_version ? ` bdpan ${installer.installed_version}` : ' bdpan'}，等待授权`;
-  } else {
-    status.style.color = 'var(--danger)';
-    status.textContent = `未就绪：${data.reason || '尚未完成授权'}`;
-  }
-}
-async function refreshBaiduPanSettingsGuide() {
-  const status = document.getElementById('baidu-pan-settings-status');
-  if (status) {
-    status.style.color = 'var(--muted)';
-    status.textContent = '正在检测…';
-  }
-  try {
-    const resp = await fetch('/api/settings/baidu-pan?refresh=true', {cache: 'no-store'});
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || '检测失败');
-    renderBaiduPanSettingsStatus(data);
-  } catch (error) {
-    renderBaiduPanSettingsStatus({enabled:false, reason:error.message || '检测失败'});
-  }
-  await initBaiduPanCard(true);
-}
-function prepareBaiduPanAuthWindow() {
-  const popup = window.open('about:blank', 'echolingo-baidu-auth');
-  if (popup) {
-    popup.document.title = 'EchoLingo 百度网盘授权';
-    popup.document.body.innerHTML = '<p style="font:16px system-ui;padding:24px">正在准备百度网盘授权，请稍候…</p>';
-  }
-  return popup;
-}
-async function installBaiduPanAndAuthorize() {
-  const installer = _baiduPanSettings?.installer;
-  if (!installer?.supported || installer.installed) return;
-  const btn = document.getElementById('baidu-pan-install-btn');
-  const status = document.getElementById('baidu-pan-settings-status');
-  const popup = prepareBaiduPanAuthWindow();
-  btn.disabled = true;
-  btn.textContent = '正在下载并校验…';
-  status.style.color = 'var(--muted)';
-  status.textContent = `正在安装 bdpan ${installer.version}，请勿关闭页面…`;
-  try {
-    const resp = await fetch('/api/settings/baidu-pan/install', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({version: installer.version, confirmed: true}),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || '安装失败');
-    status.style.color = '#15803d';
-    status.textContent = `✓ bdpan ${data.installed_version || installer.version} 安装完成，正在打开授权页…`;
-    await startBaiduPanAuthorization(popup);
-  } catch (error) {
-    if (popup && !popup.closed) popup.close();
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '安装失败';
-    btn.disabled = false;
-    btn.textContent = `确认并安装 bdpan ${installer.version}`;
-  }
-}
-async function startBaiduPanAuthorization(existingWindow=null) {
-  const popup = existingWindow || prepareBaiduPanAuthWindow();
-  const status = document.getElementById('baidu-pan-settings-status');
-  try {
-    const resp = await fetch('/api/settings/baidu-pan/auth-url', {method: 'POST'});
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || '生成授权链接失败');
-    const link = document.getElementById('baidu-pan-auth-link');
-    link.href = data.authorization_url;
-    link.style.display = 'inline-block';
-    document.getElementById('baidu-pan-auth-code-card').style.display = '';
-    document.getElementById('baidu-pan-auth-code').focus();
-    if (popup && !popup.closed) popup.location.replace(data.authorization_url);
-    else window.open(data.authorization_url, '_blank', 'noopener');
-    status.style.color = '#a16207';
-    status.textContent = '等待粘贴授权码（授权链接约 10 分钟有效）';
-  } catch (error) {
-    if (popup && !popup.closed) popup.close();
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '生成授权链接失败';
-  }
-}
-async function completeBaiduPanAuthorization() {
-  const input = document.getElementById('baidu-pan-auth-code');
-  const code = input.value.trim();
-  const status = document.getElementById('baidu-pan-settings-status');
-  if (!/^[0-9a-fA-F]{32}$/.test(code)) {
-    status.style.color = 'var(--danger)';
-    status.textContent = '授权码应为 32 位字母或数字';
-    input.focus();
-    return;
-  }
-  const btn = document.getElementById('baidu-pan-complete-btn');
-  btn.disabled = true;
-  btn.textContent = '正在验证…';
-  try {
-    const resp = await fetch('/api/settings/baidu-pan/complete', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({code}),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || '授权失败');
-    input.value = '';
-    document.getElementById('baidu-pan-auth-code-card').style.display = 'none';
-    await refreshBaiduPanSettingsGuide();
-  } catch (error) {
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '授权失败';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '完成授权';
-  }
-}
-async function logoutBaiduPanAuthorization() {
-  const status = document.getElementById('baidu-pan-settings-status');
-  try {
-    const resp = await fetch('/api/settings/baidu-pan', {method: 'DELETE'});
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || '解除授权失败');
-    await refreshBaiduPanSettingsGuide();
-  } catch (error) {
-    status.style.color = 'var(--danger)';
-    status.textContent = error.message || '解除授权失败';
-  }
-}
 async function initBaiduPanCard(refresh=false) {
   try {
     const resp = await fetch('/api/v2/lessons/baidu-pan/capability' + (refresh ? '?refresh=true' : ''));
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || '检测失败');
-    renderBaiduPanSettingsStatus(data);
+    if (!resp.ok) return;
     document.getElementById('baidu-pan-source-card').style.display = '';
     document.getElementById('pan-unconfigured').style.display = data.enabled ? 'none' : '';
     document.getElementById('pan-share-pane').style.opacity = data.enabled ? '1' : '.55';
@@ -8085,9 +7648,7 @@ async function initBaiduPanCard(refresh=false) {
     _panCanBrowse = Boolean(data.can_browse);
     document.getElementById('pan-tab-drive').style.display = _panCanBrowse ? '' : 'none';
     if (!_panCanBrowse && document.getElementById('pan-tab-drive').classList.contains('active')) switchPanMode('share');
-  } catch (error) {
-    renderBaiduPanSettingsStatus({enabled:false, reason:error.message || '检测失败'});
-  }
+  } catch (_) {}
 }
 function switchPanMode(mode) {
   if (mode === 'drive' && !_panCanBrowse) return;
@@ -8311,9 +7872,6 @@ function pollBaiduPanImport(jobId) {
   }
 })();
 initBaiduPanCard();
-refreshBaiduPanSettingsGuide();
-refreshLocalTranslationSettings();
-refreshWhisperModelSettings();
 // ── 普通用户浏览器音视频上传 ─────────────────────────────
 let _userMediaUpload = null;  // {upload_id, filename, quote}
 function onUserMediaSelected() {
